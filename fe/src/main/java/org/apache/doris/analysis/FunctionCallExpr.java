@@ -252,6 +252,22 @@ public class FunctionCallExpr extends Expr {
         return false;
     }
 
+    public boolean couldRewriteToBitmap() {
+        if (!fnParams.isDistinct()) {
+            return false;
+        }
+
+        if (!fnName.getFunction().equalsIgnoreCase("count")) {
+            return false;
+        }
+
+        if (children.size() == 1 && getChild(0) instanceof SlotRef) {
+            SlotRef slotRef = (SlotRef) getChild(0);
+            return slotRef.getDesc().getColumn().getAggregationType() == AggregateType.BITMAP_UNION;
+        }
+        return false;
+    }
+
     @Override
     protected void toThrift(TExprNode msg) {
         // TODO: we never serialize this to thrift if it's an aggregate function

@@ -308,8 +308,8 @@ public class SelectStmt extends QueryStmt {
                     throw new AnalysisException(
                             "Subqueries are not supported in the select list.");
                 }
-
-                resultExprs.add(item.getExpr());
+                Expr expr = rewriteIntCountDistinctToBitmap(item.getExpr(), analyzer);
+                resultExprs.add(expr);
                 SlotRef aliasRef = new SlotRef(null, item.toColumnLabel());
                 Expr existingAliasExpr = aliasSMap.get(aliasRef);
                 if (existingAliasExpr != null && !existingAliasExpr.equals(item.getExpr())) {
@@ -1076,6 +1076,22 @@ public class SelectStmt extends QueryStmt {
         } else {
             aggInfo = AggregateInfo.create(groupingExprs, aggExprs, null, analyzer);
         }
+    }
+
+    private Expr rewriteIntCountDistinctToBitmap(Expr expr, Analyzer analyzer) {
+        if (!(expr instanceof FunctionCallExpr)) {
+            return expr;
+        }
+        FunctionCallExpr functionCallExpr = (FunctionCallExpr) expr;
+        if (functionCallExpr.couldRewriteToBitmap()) {
+            FunctionParams newParams = new FunctionParams(false, functionCallExpr.getParams().exprs());
+            FunctionCallExpr bitmapExpr = new FunctionCallExpr("bitmap_union", newParams);
+            FunctionCallExpr bitmapCountExpr = new FunctionCallExpr("bitmap_count", Lists.newArrayList(bitmapExpr));
+            bitmapCountExpr.analyzeNoThrow(analyzer);
+            LOG.info("rewrite {} to {}", functionCallExpr.debugString(), bitmapCountExpr.debugString());
+            return bitmapCountExpr;
+        }
+        return expr;
     }
 
     /**
