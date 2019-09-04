@@ -21,6 +21,7 @@ import org.apache.doris.analysis.Analyzer;
 import org.apache.doris.analysis.ArithmeticExpr;
 import org.apache.doris.analysis.Expr;
 import org.apache.doris.analysis.FunctionCallExpr;
+import org.apache.doris.analysis.FunctionParams;
 import org.apache.doris.analysis.IntLiteral;
 import org.apache.doris.analysis.NullLiteral;
 import org.apache.doris.analysis.SlotDescriptor;
@@ -121,6 +122,8 @@ public class StreamLoadScanNode extends LoadScanNode {
         Load.initColumns(dstTable, streamLoadTask.getColumnExprDescs(), null /* no hadoop function */,
                 exprsByName, analyzer, srcTupleDesc, slotDescByName, params);
 
+        addExprForBitmapUnionColumn();
+
         // analyze where statement
         initWhereExpr(streamLoadTask.getWhereExpr(), analyzer);
 
@@ -139,6 +142,22 @@ public class StreamLoadScanNode extends LoadScanNode {
         brokerScanRange.setParams(params);
 
         brokerScanRange.setBroker_addresses(Lists.newArrayList());
+    }
+
+
+    // MT internal
+    private void addExprForBitmapUnionColumn() throws AnalysisException {
+        for (Column column : dstTable.getBaseSchema()) {
+            if (column.getAggregationType() == AggregateType.BITMAP_UNION) {
+                if (!exprsByName.containsKey(column.getName())) {
+                    SlotRef slotRef = new SlotRef(slotDescByName.get(column.getName()));
+                    FunctionParams params = new FunctionParams(false, Lists.newArrayList(slotRef));
+                    FunctionCallExpr expr = new FunctionCallExpr("to_bitmap", params);
+                    expr.analyze(analyzer);
+                    exprsByName.put(column.getName(), expr);
+                }
+            }
+        }
     }
 
     @Override
