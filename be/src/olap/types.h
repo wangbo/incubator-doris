@@ -64,6 +64,14 @@ public:
         _direct_copy(dest, src);
     }
 
+    inline char* get_type_value_with_arena(Arena* arena) const {
+        return _get_type_value_with_arena(arena);
+    }
+
+    inline char* get_type_value_with_arena_size(Arena* arena, size_t size) const {
+        return _get_type_value_with_arena_size(arena, size);
+    }
+
     OLAPStatus from_string(void* buf, const std::string& scan_key) const {
         return _from_string(buf, scan_key);
     }
@@ -85,6 +93,8 @@ private:
     void (*_deep_copy)(void* dest, const void* src, MemPool* mem_pool);
     void (*_deep_copy_with_arena)(void* dest, const void* src, Arena* arena);
     void (*_direct_copy)(void* dest, const void* src);
+    char* (*_get_type_value_with_arena)(Arena* arena);
+    char* (*_get_type_value_with_arena_size)(Arena* arena, size_t size);
 
     OLAPStatus (*_from_string)(void* buf, const std::string& scan_key);
     std::string (*_to_string)(const void* src);
@@ -211,6 +221,14 @@ struct BaseFieldtypeTraits : public CppTypeTraits<field_type> {
 
     static inline uint32_t hash_code(const void* data, uint32_t seed) {
         return HashUtil::hash(data, sizeof(CppType), seed);
+    }
+
+    static inline char* get_type_value_with_arena(Arena* arena) {
+        return arena->Allocate(sizeof(CppType));
+    }
+
+    static inline char* get_type_value_with_arena_size(Arena* arena, size_t size) {
+        return arena->Allocate(sizeof(CppType));
     }
 
     static std::string to_string(const void* src) {
@@ -568,6 +586,13 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_CHAR> : public BaseFieldtypeTraits<OLAP_F
         auto slice = reinterpret_cast<const Slice*>(data);
         return HashUtil::hash(slice->data, slice->size, seed);
     }
+    static char* get_type_value_with_arena_size(Arena* arena, size_t size) {
+        char* type_value = arena->Allocate(sizeof(Slice));
+        Slice* real_type_value = (Slice*)type_value;
+        real_type_value->size = size;
+        real_type_value->data = arena->Allocate(size);
+        return type_value;
+    }
 };
 
 template<>
@@ -587,12 +612,18 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_VARCHAR> : public FieldTypeTraits<OLAP_FI
     }
     static void set_to_max(void* buf) {
         auto slice = reinterpret_cast<Slice*>(buf);
-        slice->size = 1;
-        memset(slice->data, 0xFF, 1);
+        memset(slice->data, 0xFF, slice->size);
     }
     static void set_to_min(void* buf) {
         auto slice = reinterpret_cast<Slice*>(buf);
         slice->size = 0;
+    }
+    static char* get_type_value_with_arena_size(Arena* arena, size_t size) {
+        char* type_value = arena->Allocate(sizeof(Slice));
+        Slice* real_type_value = (Slice*)type_value;
+        real_type_value->size = size;
+        real_type_value->data = arena->Allocate(size);
+        return type_value;
     }
 };
 

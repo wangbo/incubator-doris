@@ -41,12 +41,12 @@ namespace doris {
 class Field {
 public:
     explicit Field(const TabletColumn& column)
-        : _type_info(get_type_info(column.type())),
-        _key_coder(get_key_coder(column.type())),
+        : _key_coder(get_key_coder(column.type())),
         _index_size(column.index_length()),
         _is_nullable(column.is_nullable()),
         _agg_info(get_aggregate_info(column.aggregation(), column.type())),
-        _length(column.length()) {
+        _length(column.length()),
+        _type_info(get_type_info(column.type())) {
     }
 
     virtual ~Field() = default;
@@ -57,6 +57,7 @@ public:
 
     inline void set_to_max(char* buf) const { return _type_info->set_to_max(buf); }
     inline void set_to_min(char* buf) const { return _type_info->set_to_min(buf); }
+    virtual inline char* get_type_value_with_arena(Arena* arena) const { return _type_info->get_type_value_with_arena(arena); }
 
     inline void agg_update(RowCursorCell* dest, const RowCursorCell& src, Arena* arena = nullptr) const {
         _agg_info->update(dest, src, arena);
@@ -199,6 +200,10 @@ public:
         _type_info->deep_copy_with_arena(dest, src, arena);
     }
 
+    inline void direct_copy_content(char* dest, const char* src) const {
+        _type_info->direct_copy(dest, src);
+    }
+
     // Copy srouce content to destination in index format.
     template<typename DstCellType, typename SrcCellType>
     void to_index(DstCellType* dst, const SrcCellType& src) const;
@@ -243,8 +248,6 @@ public:
         return _key_coder->decode_ascending(encoded_key, _index_size, cell_ptr, arena);
     }
 private:
-    // Field的最大长度，单位为字节，通常等于length， 变长字符串不同
-    const TypeInfo* _type_info;
     const KeyCoder* _key_coder;
     uint16_t _index_size;
     bool _is_nullable;
@@ -254,6 +257,8 @@ protected:
     // 长度，单位为字节
     // 除字符串外，其它类型都是确定的
     uint32_t _length;
+    // Field的最大长度，单位为字节，通常等于length， 变长字符串不同
+    const TypeInfo* _type_info;
 };
 
 template<typename LhsCellType, typename RhsCellType>
@@ -370,6 +375,8 @@ public:
         return variable_ptr;
     }
 
+    char* get_type_value_with_arena(Arena* arena) const { return _type_info->get_type_value_with_arena_size(arena, _length); }
+
     CharField* clone() const override {
         return new CharField(*this);
     }
@@ -391,6 +398,8 @@ public:
         variable_ptr += slice->size;
         return variable_ptr;
     }
+
+    char* get_type_value_with_arena(Arena* arena) const { return _type_info->get_type_value_with_arena_size(arena, _length); }
 
     VarcharField* clone() const override {
         return new VarcharField(*this);

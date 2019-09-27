@@ -57,9 +57,10 @@ class PageBuilder;
 class ColumnWriter {
 public:
     ColumnWriter(const ColumnWriterOptions& opts,
-                 const TypeInfo* typeinfo,
+                 Field* field,
                  bool is_nullable,
                  WritableFile* output_file);
+
     ~ColumnWriter();
 
     Status init();
@@ -138,7 +139,6 @@ private:
 
 private:
     ColumnWriterOptions _opts;
-    const TypeInfo* _type_info = nullptr;
     bool _is_nullable;
     WritableFile* _output_file = nullptr;
 
@@ -154,6 +154,7 @@ private:
     std::unique_ptr<NullBitmapBuilder> _null_bitmap_builder;
     std::unique_ptr<OrdinalPageIndexBuilder> _ordinal_index_builder;
     std::unique_ptr<ColumnZoneMapBuilder> _column_zone_map_builder;
+    std::shared_ptr<Field> _field;
 
     PagePointer _ordinal_index_pp;
     PagePointer _zone_map_pp;

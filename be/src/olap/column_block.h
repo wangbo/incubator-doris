@@ -42,7 +42,9 @@ public:
     bool is_nullable() const { return _null_bitmap != nullptr; }
     Arena* arena() const { return _arena; }
     const uint8_t* cell_ptr(size_t idx) const { return _data + idx * _type_info->size(); }
-    uint8_t* mutable_cell_ptr(size_t idx) const { return _data + idx * _type_info->size(); }
+    uint8_t* mutable_cell_ptr(size_t idx) const {
+        std::cout << "type info size: " << _type_info->size()<< std::endl;
+        return _data + idx * _type_info->size(); }
     bool is_null(size_t idx) const {
         return BitmapTest(_null_bitmap, idx);
     }
