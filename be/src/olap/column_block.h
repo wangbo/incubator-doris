@@ -34,7 +34,9 @@ class ColumnBlockCell;
 class ColumnBlock {
 public:
     ColumnBlock(const TypeInfo* type_info, uint8_t* data, uint8_t* null_bitmap, Arena* arena)
-        : _type_info(type_info), _data(data), _null_bitmap(null_bitmap), _arena(arena) { }
+        : _type_info(type_info), _data(data), _null_bitmap(null_bitmap), _arena(arena) {
+        std::cout << "type info size 3 : " << type_info->size()<< std::endl;
+        std::cout << "type info size 4 : " << _type_info->size()<< std::endl; }
 
     const TypeInfo* type_info() const { return _type_info; }
     uint8_t* data() const { return _data; }
@@ -43,7 +45,7 @@ public:
     Arena* arena() const { return _arena; }
     const uint8_t* cell_ptr(size_t idx) const { return _data + idx * _type_info->size(); }
     uint8_t* mutable_cell_ptr(size_t idx) const {
-        std::cout << "type info size: " << _type_info->size()<< std::endl;
+        std::cout << "type info size 7 : " << _type_info->size()<< std::endl;
         return _data + idx * _type_info->size(); }
     bool is_null(size_t idx) const {
         return BitmapTest(_null_bitmap, idx);
