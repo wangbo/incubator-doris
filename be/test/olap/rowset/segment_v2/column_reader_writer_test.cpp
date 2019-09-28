@@ -112,7 +112,9 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         st = reader.new_iterator(&iter);
         ASSERT_TRUE(st.ok());
 
-        std::cout << "typeinfo size 7:" << field->type_info()->size() << std::endl;
+        std::cout << "typeinfo size pre" << std::endl;
+        size_t = field->type_info()->size();
+        std::cout << "typeinfo size 7__:" << size_t << std::endl;
         // sequence read
         {
             st = iter->seek_to_first();
