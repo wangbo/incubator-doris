@@ -112,6 +112,7 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         st = reader.new_iterator(&iter);
         ASSERT_TRUE(st.ok());
 
+        std::cout << "typeinfo size 7:" << field->type_info()->size() << std::endl;
         // sequence read
         {
             st = iter->seek_to_first();
@@ -120,11 +121,13 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
             Arena arena;
             Type vals[1024];
             uint8_t is_null[1024];
+            std::cout << "typeinfo size 70:" << field->type_info()->size() << std::endl;
             ColumnBlock col(field->type_info(), (uint8_t*)vals, is_null, &arena);
 
             int idx = 0;
             while (true) {
                 size_t rows_read = 1024;
+                std::cout << "typeinfo size 77:" << field->type_info()->size() << std::endl;
                 auto st = iter->next_batch(&rows_read, &col);
                 ASSERT_TRUE(st.ok());
                 for (int j = 0; j < rows_read; ++j) {
