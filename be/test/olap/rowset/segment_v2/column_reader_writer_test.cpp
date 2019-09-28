@@ -49,7 +49,7 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
 
     const TypeInfo* type_info = get_type_info(type);
 
-    std::cout << "typeinfo size 1:" << field->type_info()->size() << endl;
+    std::cout << "typeinfo size 1:" << field->type_info()->size() << std::endl;
 
     ColumnMetaPB meta;
 
@@ -92,7 +92,7 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         // close the file
         wfile.reset();
     }
-    std::cout << "typeinfo size 2:" << field->type_info()->size() << endl;
+    std::cout << "typeinfo size 2:" << field->type_info()->size() << std::endl;
     // read and check
     {
         // read and check
