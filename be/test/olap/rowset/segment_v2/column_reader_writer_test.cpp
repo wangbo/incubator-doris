@@ -125,6 +125,8 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
             Arena arena;
             Type vals[1024];
             uint8_t is_null[1024];
+            bool ret2 = field->type_info() == nullptr;
+            std::cout << "is null2" << ret2 << std::endl;
             std::cout << "typeinfo size 70:" << field->type_info()->size() << std::endl;
             ColumnBlock col(type_info, (uint8_t*)vals, is_null, &arena);
 
