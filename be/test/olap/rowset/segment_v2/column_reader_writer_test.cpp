@@ -177,7 +177,7 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
 //            }
 //        }
 
-        delete iter;
+//        delete iter;
     }
 }
 
