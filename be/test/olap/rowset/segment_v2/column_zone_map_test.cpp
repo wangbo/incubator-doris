@@ -67,11 +67,10 @@ public:
 
 // Test for int
 TEST_F(ColumnZoneMapTest, NormalTestIntPage) {
-    TabletColumn char_column = create_int_key(0);
-    Field* field = FieldFactory::create(char_column);
-    std::shared_ptr<Field> field_ptr(field);
+    TabletColumn int_column = create_int_key(0);
+    Field* field = FieldFactory::create(int_column);
 
-    ColumnZoneMapBuilder builder(field_ptr);
+    ColumnZoneMapBuilder builder(field);
     std::vector<int> values1 = {1, 10, 11, 20, 21, 22};
     for (auto value : values1) {
         builder.add((const uint8_t*)&value, 1);
