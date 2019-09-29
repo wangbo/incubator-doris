@@ -226,11 +226,11 @@ struct BaseFieldtypeTraits : public CppTypeTraits<field_type> {
     }
 
     static inline char* get_type_value_with_arena(Arena* arena) {
-        return arena->Allocate(sizeof(CppType));
+        return arena->Allocate(type_size);
     }
 
     static inline char* get_type_value_with_arena_size(Arena* arena, size_t size) {
-        return arena->Allocate(sizeof(CppType));
+        return arena->Allocate(type_size);
     }
 
     static std::string to_string(const void* src) {
