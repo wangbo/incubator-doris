@@ -587,7 +587,7 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_CHAR> : public BaseFieldtypeTraits<OLAP_F
         return HashUtil::hash(slice->data, slice->size, seed);
     }
     static char* get_type_value_with_arena_size(Arena* arena, size_t size) {
-        char* type_value = arena->Allocate(sizeof(Slice));
+        char* type_value = arena->Allocate(sizeof(CppType));
         Slice* real_type_value = (Slice*)type_value;
         real_type_value->size = size;
         real_type_value->data = arena->Allocate(size);
@@ -619,7 +619,7 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_VARCHAR> : public FieldTypeTraits<OLAP_FI
         slice->size = 0;
     }
     static char* get_type_value_with_arena_size(Arena* arena, size_t size) {
-        char* type_value = arena->Allocate(sizeof(Slice));
+        char* type_value = arena->Allocate(sizeof(CppType));
         Slice* real_type_value = (Slice*)type_value;
         real_type_value->size = size;
         real_type_value->data = arena->Allocate(size);
