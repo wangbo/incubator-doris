@@ -23,7 +23,7 @@ namespace doris {
 
 namespace segment_v2 {
 
-ColumnZoneMapBuilder::ColumnZoneMapBuilder(std::shared_ptr<Field> field) : _field(field) {
+ColumnZoneMapBuilder::ColumnZoneMapBuilder(Field* field) : _field(field) {
     PageBuilderOptions options;
     options.data_page_size = 0;
     _page_builder.reset(new BinaryPlainPageBuilder(options));

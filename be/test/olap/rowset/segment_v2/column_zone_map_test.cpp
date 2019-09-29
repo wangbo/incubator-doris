@@ -27,9 +27,7 @@ namespace segment_v2 {
 class ColumnZoneMapTest : public testing::Test {
 public:
     void test_string(Field* field) {
-        std::shared_ptr<Field> field_ptr(field);
-
-        ColumnZoneMapBuilder builder(field_ptr);
+        ColumnZoneMapBuilder builder(field);
         std::vector<std::string> values1 = {"aaaa", "bbbb", "cccc", "dddd", "eeee", "ffff"};
         for (auto value : values1) {
             builder.add((const uint8_t*)&value, 1);

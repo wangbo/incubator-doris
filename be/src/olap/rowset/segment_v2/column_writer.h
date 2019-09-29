@@ -154,7 +154,7 @@ private:
     std::unique_ptr<NullBitmapBuilder> _null_bitmap_builder;
     std::unique_ptr<OrdinalPageIndexBuilder> _ordinal_index_builder;
     std::unique_ptr<ColumnZoneMapBuilder> _column_zone_map_builder;
-    std::shared_ptr<Field> _field;
+    std::unique_ptr<Field> _field;
 
     PagePointer _ordinal_index_pp;
     PagePointer _zone_map_pp;

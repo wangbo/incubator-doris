@@ -115,7 +115,7 @@ Status ColumnWriter::init() {
         _null_bitmap_builder.reset(new NullBitmapBuilder());
     }
     if (_opts.need_zone_map) {
-        _column_zone_map_builder.reset(new ColumnZoneMapBuilder(_field));
+        _column_zone_map_builder.reset(new ColumnZoneMapBuilder(_field.get()));
     }
     return Status::OK();
 }
