@@ -70,11 +70,11 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         ColumnWriter writer(writer_opts, field, true, wfile.get());
         st = writer.init();
         ASSERT_TRUE(st.ok());
-//
-//        for (int i = 0; i < num_rows; ++i) {
-//            st = writer.append(BitmapTest(src_is_null, i), src + i);
-//            ASSERT_TRUE(st.ok());
-//        }
+
+        for (int i = 0; i < num_rows; ++i) {
+            st = writer.append(BitmapTest(src_is_null, i), src + i);
+            ASSERT_TRUE(st.ok());
+        }
 //
 //        st = writer.finish();
 //        ASSERT_TRUE(st.ok());
