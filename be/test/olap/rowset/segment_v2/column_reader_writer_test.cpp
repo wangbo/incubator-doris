@@ -58,18 +58,18 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
     FileUtils::create_dir(dname);
     std::string fname = dname + "/" + test_name;
     {
-//        std::unique_ptr<WritableFile> wfile;
-//        auto st = Env::Default()->new_writable_file(fname, &wfile);
-//        ASSERT_TRUE(st.ok());
-//
-//        ColumnWriterOptions writer_opts;
-//        writer_opts.encoding_type = encoding;
-//        writer_opts.compression_type = segment_v2::CompressionTypePB::LZ4F;
-//        writer_opts.need_zone_map = true;
-//
-//        ColumnWriter writer(writer_opts, field, true, wfile.get());
-//        st = writer.init();
-//        ASSERT_TRUE(st.ok());
+        std::unique_ptr<WritableFile> wfile;
+        auto st = Env::Default()->new_writable_file(fname, &wfile);
+        ASSERT_TRUE(st.ok());
+
+        ColumnWriterOptions writer_opts;
+        writer_opts.encoding_type = encoding;
+        writer_opts.compression_type = segment_v2::CompressionTypePB::LZ4F;
+        writer_opts.need_zone_map = true;
+
+        ColumnWriter writer(writer_opts, field, true, wfile.get());
+        st = writer.init();
+        ASSERT_TRUE(st.ok());
 //
 //        for (int i = 0; i < num_rows; ++i) {
 //            st = writer.append(BitmapTest(src_is_null, i), src + i);
