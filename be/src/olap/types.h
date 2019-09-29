@@ -177,6 +177,8 @@ template<FieldType field_type>
 struct BaseFieldtypeTraits : public CppTypeTraits<field_type> {
     using CppType = typename CppTypeTraits<field_type>::CppType;
 
+    static const int32_t type_size = sizeof(CppType);
+
     static inline bool equal(const void* left, const void* right) {
         CppType l_value = *reinterpret_cast<const CppType*>(left);
         CppType r_value = *reinterpret_cast<const CppType*>(right);
@@ -587,7 +589,7 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_CHAR> : public BaseFieldtypeTraits<OLAP_F
         return HashUtil::hash(slice->data, slice->size, seed);
     }
     static char* get_type_value_with_arena_size(Arena* arena, size_t size) {
-        char* type_value = arena->Allocate(sizeof(CppType));
+        char* type_value = arena->Allocate(type_size);
         Slice* real_type_value = (Slice*)type_value;
         real_type_value->size = size;
         real_type_value->data = arena->Allocate(size);
@@ -619,7 +621,7 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_VARCHAR> : public FieldTypeTraits<OLAP_FI
         slice->size = 0;
     }
     static char* get_type_value_with_arena_size(Arena* arena, size_t size) {
-        char* type_value = arena->Allocate(sizeof(CppType));
+        char* type_value = arena->Allocate(type_size);
         Slice* real_type_value = (Slice*)type_value;
         real_type_value->size = size;
         real_type_value->data = arena->Allocate(size);
