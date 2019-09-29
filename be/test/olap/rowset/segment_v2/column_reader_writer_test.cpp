@@ -101,17 +101,17 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         auto st = Env::Default()->new_random_access_file(fname, &rfile);
         ASSERT_TRUE(st.ok());
 
-        ColumnReaderOptions reader_opts;
-        ColumnReader reader(reader_opts, meta, num_rows, rfile.get());
-
-        st = reader.init();
-        ASSERT_TRUE(st.ok());
-
-        ASSERT_EQ(reader._ordinal_index->num_pages(), reader._column_zone_map->get_column_zone_map().size());
-
-        ColumnIterator* iter = nullptr;
-        st = reader.new_iterator(&iter);
-        ASSERT_TRUE(st.ok());
+//        ColumnReaderOptions reader_opts;
+//        ColumnReader reader(reader_opts, meta, num_rows, rfile.get());
+//
+//        st = reader.init();
+//        ASSERT_TRUE(st.ok());
+//
+//        ASSERT_EQ(reader._ordinal_index->num_pages(), reader._column_zone_map->get_column_zone_map().size());
+//
+//        ColumnIterator* iter = nullptr;
+//        st = reader.new_iterator(&iter);
+//        ASSERT_TRUE(st.ok());
 
         std::cout << "typeinfo size pre" << std::endl;
         bool ret = field->type_info() == nullptr;
