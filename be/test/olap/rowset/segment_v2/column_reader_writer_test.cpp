@@ -63,8 +63,8 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         writer_opts.need_zone_map = true;
 
         TabletColumn column(OLAP_FIELD_AGGREGATION_NONE, type);
-        Field field(column);
-        ColumnWriter writer(writer_opts, &field, true, wfile.get());
+        Field* field = new Field(column);
+        ColumnWriter writer(writer_opts, field, true, wfile.get());
         st = writer.init();
         ASSERT_TRUE(st.ok());
 
