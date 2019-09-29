@@ -76,21 +76,21 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
             ASSERT_TRUE(st.ok());
         }
 //
-//        st = writer.finish();
-//        ASSERT_TRUE(st.ok());
-//
-//        st = writer.write_data();
-//        ASSERT_TRUE(st.ok());
-//        st = writer.write_ordinal_index();
-//        ASSERT_TRUE(st.ok());
-//        st = writer.write_zone_map();
-//        ASSERT_TRUE(st.ok());
-//
-//        writer.write_meta(&meta);
-//        ASSERT_TRUE(meta.has_zone_map_page());
-//
-//        // close the file
-//        wfile.reset();
+        st = writer.finish();
+        ASSERT_TRUE(st.ok());
+
+        st = writer.write_data();
+        ASSERT_TRUE(st.ok());
+        st = writer.write_ordinal_index();
+        ASSERT_TRUE(st.ok());
+        st = writer.write_zone_map();
+        ASSERT_TRUE(st.ok());
+
+        writer.write_meta(&meta);
+        ASSERT_TRUE(meta.has_zone_map_page());
+
+        // close the file
+        wfile.reset();
     }
     std::cout << "typeinfo size 2:" << field->type_info()->size() << std::endl;
     std::cout << "sizeof4 " << sizeof(field->type_info()->size()) << std::endl;
