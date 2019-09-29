@@ -114,9 +114,9 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         ASSERT_TRUE(st.ok());
 
         std::cout << "typeinfo size pre" << std::endl;
-        size_t n = type_info->size();
+        size_t n = field->type_info()->size();
         std::cout << "sizeof " << sizeof(n) << std::endl;
-        std::cout << "sizeof1 " << sizeof(type_info->size()) << std::endl;
+        std::cout << "sizeof1 " << sizeof(field->type_info()->size()) << std::endl;
         std::cout << "typeinfo size 7__:" << n << std::endl;
         // sequence read
         {
@@ -126,7 +126,7 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
             Arena arena;
             Type vals[1024];
             uint8_t is_null[1024];
-            std::cout << "typeinfo size 70:" << type_info->size() << std::endl;
+            std::cout << "typeinfo size 70:" << field->type_info()->size() << std::endl;
             ColumnBlock col(type_info, (uint8_t*)vals, is_null, &arena);
 
             int idx = 0;
