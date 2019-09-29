@@ -49,7 +49,9 @@ public:
         _type_info(get_type_info(column.type())) {
     }
 
-    virtual ~Field() = default;
+    virtual ~Field() {
+        std::cout << "field ~ goes:" << std::endl;
+    };
 
     inline size_t size() const { return _type_info->size(); }
     inline size_t field_size() const { return size() + 1; }
