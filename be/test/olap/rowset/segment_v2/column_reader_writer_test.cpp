@@ -44,12 +44,7 @@ template<FieldType type, EncodingTypePB encoding>
 void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, std::string test_name) {
     using Type = typename TypeTraits<type>::CppType;
     Type* src = (Type*)src_data;
-    TabletColumn* column = new TabletColumn(OLAP_FIELD_AGGREGATION_NONE, type);
-    Field* field = new Field(*column);
-
     const TypeInfo* type_info = get_type_info(type);
-
-    std::cout << "typeinfo size 1:" << field->type_info()->size() << std::endl;
 
     ColumnMetaPB meta;
 
@@ -67,7 +62,9 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         writer_opts.compression_type = segment_v2::CompressionTypePB::LZ4F;
         writer_opts.need_zone_map = true;
 
-        ColumnWriter writer(writer_opts, field, true, wfile.get());
+        TabletColumn column(OLAP_FIELD_AGGREGATION_NONE, type);
+        Field field(column);
+        ColumnWriter writer(writer_opts, &field, true, wfile.get());
         st = writer.init();
         ASSERT_TRUE(st.ok());
 
@@ -92,8 +89,6 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         // close the file
         wfile.reset();
     }
-    std::cout << "typeinfo size 2:" << field->type_info()->size() << std::endl;
-    std::cout << "sizeof4 " << sizeof(field->type_info()->size()) << std::endl;
     // read and check
     {
         // read and check
@@ -101,83 +96,75 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         auto st = Env::Default()->new_random_access_file(fname, &rfile);
         ASSERT_TRUE(st.ok());
 
-//        ColumnReaderOptions reader_opts;
-//        ColumnReader reader(reader_opts, meta, num_rows, rfile.get());
-//
-//        st = reader.init();
-//        ASSERT_TRUE(st.ok());
-//
-//        ASSERT_EQ(reader._ordinal_index->num_pages(), reader._column_zone_map->get_column_zone_map().size());
-//
-//        ColumnIterator* iter = nullptr;
-//        st = reader.new_iterator(&iter);
-//        ASSERT_TRUE(st.ok());
+        ColumnReaderOptions reader_opts;
+        ColumnReader reader(reader_opts, meta, num_rows, rfile.get());
 
-        std::cout << "typeinfo size pre" << std::endl;
-        bool ret = field->type_info() == nullptr;
-        std::cout << "is null" << ret << std::endl;
-        std::cout << "sizeof1 " << sizeof(field->type_info()->size()) << std::endl;
+        st = reader.init();
+        ASSERT_TRUE(st.ok());
+
+        ASSERT_EQ(reader._ordinal_index->num_pages(), reader._column_zone_map->get_column_zone_map().size());
+
+        ColumnIterator* iter = nullptr;
+        st = reader.new_iterator(&iter);
+        ASSERT_TRUE(st.ok());
+
         // sequence read
         {
-//            st = iter->seek_to_first();
-//            ASSERT_TRUE(st.ok());
+            st = iter->seek_to_first();
+            ASSERT_TRUE(st.ok());
 
-//            Arena arena;
-//            Type vals[1024];
-//            uint8_t is_null[1024];
-            bool ret2 = field->type_info() == nullptr;
-            std::cout << "is null2" << ret2 << std::endl;
-            std::cout << "typeinfo size 70:" << field->type_info()->size() << std::endl;
-//            ColumnBlock col(type_info, (uint8_t*)vals, is_null, &arena);
-//
-//            int idx = 0;
-//            while (true) {
-//                size_t rows_read = 1024;
-////                std::cout << "typeinfo size 77:" << type_info->size() << std::endl;
-//                auto st = iter->next_batch(&rows_read, &col);
-//                ASSERT_TRUE(st.ok());
-//                for (int j = 0; j < rows_read; ++j) {
-//                    // LOG(INFO) << "is_null=" << is_null[j] << ", src_is_null[]=" << src_is_null[idx]
-//                        // << ", src[idx]=" << src[idx] << ", vals[j]=" << vals[j];
-//                    ASSERT_EQ(BitmapTest(src_is_null, idx), BitmapTest(is_null, j));
-//                    if (!BitmapTest(is_null, j)) {
-//                        ASSERT_EQ(src[idx], vals[j]);
-//                    }
-//                    idx++;
-//                }
-//                if (rows_read < 1024) {
-//                    break;
-//                }
-//            }
+            Arena arena;
+            Type vals[1024];
+            uint8_t is_null[1024];
+            ColumnBlock col(type_info, (uint8_t*)vals, is_null, &arena);
+
+            int idx = 0;
+            while (true) {
+                size_t rows_read = 1024;
+                auto st = iter->next_batch(&rows_read, &col);
+                ASSERT_TRUE(st.ok());
+                for (int j = 0; j < rows_read; ++j) {
+                    // LOG(INFO) << "is_null=" << is_null[j] << ", src_is_null[]=" << src_is_null[idx]
+                        // << ", src[idx]=" << src[idx] << ", vals[j]=" << vals[j];
+                    ASSERT_EQ(BitmapTest(src_is_null, idx), BitmapTest(is_null, j));
+                    if (!BitmapTest(is_null, j)) {
+                        ASSERT_EQ(src[idx], vals[j]);
+                    }
+                    idx++;
+                }
+                if (rows_read < 1024) {
+                    break;
+                }
+            }
         }
         // random read
-//        {
-//            Arena arena;
-//            Type vals[1024];
-//            uint8_t is_null[1024];
-//            ColumnBlock col(type_info, (uint8_t*)vals, is_null, &arena);
-//
-//            for (int rowid = 0; rowid < num_rows; rowid += 4025) {
-//                st = iter->seek_to_ordinal(rowid);
-//                ASSERT_TRUE(st.ok());
-//
-//                int idx = rowid;
-//                size_t rows_read = 1024;
-//                auto st = iter->next_batch(&rows_read, &col);
-//                ASSERT_TRUE(st.ok());
-//                for (int j = 0; j < rows_read; ++j) {
-//                    // LOG(INFO) << "is_null=" << is_null[j] << ", src_is_null[]=" << src_is_null[idx]
-//                        // << ", src[idx]=" << src[idx] << ", vals[j]=" << vals[j];
-//                    ASSERT_EQ(BitmapTest(src_is_null, idx), BitmapTest(is_null, j));
-//                    if (!BitmapTest(is_null, j)) {
-//                        ASSERT_EQ(src[idx], vals[j]);
-//                    }
-//                    idx++;
-//                }
-//            }
-//        }
+        {
+            Arena arena;
+            Type vals[1024];
+            uint8_t is_null[1024];
+            ColumnBlock col(type_info, (uint8_t*)vals, is_null, &arena);
 
-//        delete iter;
+            for (int rowid = 0; rowid < num_rows; rowid += 4025) {
+                st = iter->seek_to_ordinal(rowid);
+                ASSERT_TRUE(st.ok());
+
+                int idx = rowid;
+                size_t rows_read = 1024;
+                auto st = iter->next_batch(&rows_read, &col);
+                ASSERT_TRUE(st.ok());
+                for (int j = 0; j < rows_read; ++j) {
+                    // LOG(INFO) << "is_null=" << is_null[j] << ", src_is_null[]=" << src_is_null[idx]
+                        // << ", src[idx]=" << src[idx] << ", vals[j]=" << vals[j];
+                    ASSERT_EQ(BitmapTest(src_is_null, idx), BitmapTest(is_null, j));
+                    if (!BitmapTest(is_null, j)) {
+                        ASSERT_EQ(src[idx], vals[j]);
+                    }
+                    idx++;
+                }
+            }
+        }
+
+        delete iter;
     }
 }
 
