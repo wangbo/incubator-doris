@@ -484,8 +484,8 @@ namespace config {
 
     // config for default rowset type
     // Valid configs: ALPHA, BETA
-    CONF_String(default_rowset_type, "ALPHA");
-    CONF_String(compaction_rowset_type, "ALPHA");
+    CONF_String(default_rowset_type, "BETA");
+    CONF_String(compaction_rowset_type, "BETA");
 } // namespace config
 
 } // namespace doris
