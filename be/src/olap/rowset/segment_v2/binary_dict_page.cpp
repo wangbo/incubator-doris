@@ -105,7 +105,7 @@ Slice BinaryDictPageBuilder::finish() {
     Slice data_slice = _data_page_builder->finish();
     _buffer.append(data_slice.data, data_slice.size);
     encode_fixed32_le(&_buffer[0], _encoding_type);
-    return Slice(_buffer);
+    return Slice(_buffer.release(), _buffer.size());
 }
 
 void BinaryDictPageBuilder::reset() {

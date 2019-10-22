@@ -169,7 +169,7 @@ private:
         encode_fixed32_le(&_buffer[8], num_elems_after_padding);
         encode_fixed32_le(&_buffer[12], final_size_of_type);
         _finished = true;
-        return Slice(_buffer.data(), BITSHUFFLE_PAGE_HEADER_SIZE + bytes);
+        return Slice(_buffer.release(), BITSHUFFLE_PAGE_HEADER_SIZE + bytes);
     }
 
     typedef typename TypeTraits<Type>::CppType CppType;

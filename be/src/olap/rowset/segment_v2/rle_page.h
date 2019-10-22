@@ -103,7 +103,7 @@ public:
         // or it will lead to a bug if the header is less than 8 byte and the data is small
         _rle_encoder->Flush();
         encode_fixed32_le(&_buf[0], _count);
-        return Slice(_buf.data(), _buf.size());
+        return Slice(_buf.release(), _buf.size());
     }
 
     void reset() override {
