@@ -87,7 +87,7 @@ public:
         }
         put_fixed32_le(&_buffer, _offsets.size());
 
-        return Slice(_buffer);
+        return Slice(_buffer.release(), _buffer.size());
     }
 
     void reset() override {
