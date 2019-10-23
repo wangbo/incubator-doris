@@ -219,7 +219,7 @@ Status ColumnWriter::write_data() {
         _page_builder->get_dictionary_page(&dict_page);
         std::vector<Slice> origin_data;
         origin_data.push_back(dict_page);
-        Status status = _write_physical_page(&origin_data, &_dict_page_pp)
+        Status status = _write_physical_page(&origin_data, &_dict_page_pp);
         delete[] dict_page.data;
         return status;
     }
