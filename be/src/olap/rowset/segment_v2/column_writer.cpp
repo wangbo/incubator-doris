@@ -220,6 +220,7 @@ Status ColumnWriter::write_data() {
         std::vector<Slice> origin_data;
         origin_data.push_back(dict_page);
         RETURN_IF_ERROR(_write_physical_page(&origin_data, &_dict_page_pp));
+        delete[] dict_page.data;
     }
     return Status::OK();
 }
@@ -234,7 +235,9 @@ Status ColumnWriter::write_zone_map() {
     if (_opts.need_zone_map) {
         Slice data = _column_zone_map_builder->finish();
         std::vector<Slice> slices{data};
-        return _write_physical_page(&slices, &_zone_map_pp);
+        Status status = _write_physical_page(&slices, &_zone_map_pp);
+        delete[] data.data;
+        return status;
     }
     return Status::OK();
 }
