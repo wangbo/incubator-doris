@@ -41,6 +41,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
+import static org.apache.doris.common.util.PropertyAnalyzer.PROPERTIES_STORAGE_COLDOWN_TIME;
+import static org.apache.doris.common.util.PropertyAnalyzer.PROPERTIES_STORAGE_MEDIUM;
+
 public class RangePartitionInfo extends PartitionInfo {
     private static final Logger LOG = LogManager.getLogger(RangePartitionInfo.class);
 
@@ -380,13 +383,16 @@ public class RangePartitionInfo extends PartitionInfo {
             Partition partition = table.getPartition(entry.getKey());
             String partitionName = partition.getName();
             Range<PartitionKey> range = entry.getValue();
+            DataProperty paritionDataProperty = idToDataProperty.get(partition.getId());
 
             // print all partitions' range is fixed range, even if some of them is created by less than range
             sb.append("PARTITION ").append(partitionName).append(" VALUES [");
             sb.append(range.lowerEndpoint().toSql());
             sb.append(", ").append(range.upperEndpoint().toSql()).append(")");
 
-            sb.append(", storage_medium=").append(idToDataProperty.get(partition.getId()).getStorageMedium());
+
+            sb.append(", ").append(PROPERTIES_STORAGE_MEDIUM).append("=").append(paritionDataProperty.getStorageMedium());
+            sb.append(", ").append(PROPERTIES_STORAGE_COLDOWN_TIME).append("=").append(paritionDataProperty.getCooldownTimeString());
             if (partitionId != null) {
                 partitionId.add(entry.getKey());
                 break;
