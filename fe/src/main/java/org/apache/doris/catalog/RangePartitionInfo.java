@@ -391,8 +391,8 @@ public class RangePartitionInfo extends PartitionInfo {
             sb.append(", ").append(range.upperEndpoint().toSql()).append(")");
 
 
-            sb.append(", ").append(PROPERTIES_STORAGE_MEDIUM).append("=").append(paritionDataProperty.getStorageMedium());
-            sb.append(", ").append(PROPERTIES_STORAGE_COLDOWN_TIME).append("=").append(paritionDataProperty.getCooldownTimeString());
+            sb.append(", \"").append(PROPERTIES_STORAGE_MEDIUM).append("\"=\"").append(paritionDataProperty.getStorageMedium()).append("\"");
+            sb.append(", \"").append(PROPERTIES_STORAGE_COLDOWN_TIME).append("\"=\"").append(paritionDataProperty.getCooldownTimeString()).append("\"");
             if (partitionId != null) {
                 partitionId.add(entry.getKey());
                 break;
