@@ -27,6 +27,7 @@ import com.google.common.collect.BoundType;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
 
+import org.apache.doris.thrift.TStorageMedium;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -392,7 +393,9 @@ public class RangePartitionInfo extends PartitionInfo {
 
 
             sb.append(", \"").append(PROPERTIES_STORAGE_MEDIUM).append("\"=\"").append(paritionDataProperty.getStorageMedium()).append("\"");
-            sb.append(", \"").append(PROPERTIES_STORAGE_COLDOWN_TIME).append("\"=\"").append(paritionDataProperty.getCooldownTimeString()).append("\"");
+            if (paritionDataProperty.getStorageMedium().equals(TStorageMedium.SSD)) {
+                sb.append(", \"").append(PROPERTIES_STORAGE_COLDOWN_TIME).append("\"=\"").append(paritionDataProperty.getCooldownTimeString()).append("\"");
+            }
             if (partitionId != null) {
                 partitionId.add(entry.getKey());
                 break;

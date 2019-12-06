@@ -211,6 +211,7 @@ public class DateLiteral extends LiteralExpr {
             hour = dateTime.getHourOfDay();
             minute = dateTime.getMinuteOfHour();
             second = dateTime.getSecondOfMinute();
+            millisecond = DATE_TIME_FORMATTER.parseMillis(s);
             this.type = type;
         } catch (Exception ex) {
             throw new AnalysisException("date literal [" + s + "] is invalid");
@@ -304,6 +305,10 @@ public class DateLiteral extends LiteralExpr {
     @Override
     public long getLongValue() {
         return (year * 10000 + month * 100 + day) * 1000000L + hour * 10000 + minute * 100 + second;
+    }
+
+    public long getTimeMillis() {
+        return millisecond;
     }
 
     @Override
@@ -617,4 +622,5 @@ public class DateLiteral extends LiteralExpr {
     private long minute;
     private long second;
     private long microsecond;
+    private long millisecond;
 }

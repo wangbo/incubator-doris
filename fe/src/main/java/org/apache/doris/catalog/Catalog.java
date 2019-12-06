@@ -3918,8 +3918,10 @@ public class Catalog {
                 DataProperty dataProperty = olapTable.getPartitionInfo().idToDataProperty.values().iterator().next();
                 sb.append(",\n \"").append(PROPERTIES_STORAGE_MEDIUM).append("\" = \"");
                 sb.append(dataProperty.getStorageMedium()).append("\"");
-                sb.append(",\n \"").append(PROPERTIES_STORAGE_COLDOWN_TIME).append("\" = \"");
-                sb.append(dataProperty.getCooldownTimeString()).append("\"");
+                if (dataProperty.getStorageMedium() == TStorageMedium.SSD) {
+                    sb.append(",\n \"").append(PROPERTIES_STORAGE_COLDOWN_TIME).append("\" = \"");
+                    sb.append(dataProperty.getCooldownTimeString()).append("\"");
+                }
             }
 
             sb.append("\n)");
@@ -4016,7 +4018,9 @@ public class Catalog {
 
                 DataProperty partitionDataProperty = partitionInfo.getDataProperty(partition.getId());
                 sb.append(",\"").append(PROPERTIES_STORAGE_MEDIUM).append("\" = \"").append(partitionDataProperty.getStorageMedium()).append("\"");
-                sb.append(",\"").append(PROPERTIES_STORAGE_COLDOWN_TIME).append("\" = \"").append(partitionDataProperty.getCooldownTimeString()).append("\"");
+                if (partitionDataProperty.getStorageMedium() == TStorageMedium.SSD) {
+                    sb.append(",\"").append(PROPERTIES_STORAGE_COLDOWN_TIME).append("\" = \"").append(partitionDataProperty.getCooldownTimeString()).append("\"");
+                }
                 if (replicationNum > 0) {
                     sb.append(", \"replication_num\" = \"").append(replicationNum).append("\"");
                 }
