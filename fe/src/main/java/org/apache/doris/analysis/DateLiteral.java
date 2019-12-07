@@ -194,14 +194,18 @@ public class DateLiteral extends LiteralExpr {
             if (type == Type.DATE) {
                 if (s.split("-")[0].length() == 2) {
                     dateTime = DATE_FORMATTER_TWO_DIGIT.parseLocalDateTime(s);
+                    millisecond = DATE_FORMATTER_TWO_DIGIT.parseMillis(s);
                 } else {
                     dateTime = DATE_FORMATTER.parseLocalDateTime(s);
+                    millisecond = DATE_FORMATTER.parseMillis(s);
                 }
             } else {
                 if (s.split("-")[0].length() == 2) {
                     dateTime = DATE_TIME_FORMATTER_TWO_DIGIT.parseLocalDateTime(s);
+                    millisecond = DATE_TIME_FORMATTER_TWO_DIGIT.parseMillis(s);
                 } else {
                     dateTime = DATE_TIME_FORMATTER.parseLocalDateTime(s);
+                    millisecond = DATE_TIME_FORMATTER.parseMillis(s);
                 }
             }
 
@@ -211,7 +215,6 @@ public class DateLiteral extends LiteralExpr {
             hour = dateTime.getHourOfDay();
             minute = dateTime.getMinuteOfHour();
             second = dateTime.getSecondOfMinute();
-            millisecond = DATE_TIME_FORMATTER.parseMillis(s);
             this.type = type;
         } catch (Exception ex) {
             throw new AnalysisException("date literal [" + s + "] is invalid");
