@@ -298,6 +298,7 @@ Status ColumnWriter::_write_data_page(Page* page) {
 
     PagePointer pp;
     RETURN_IF_ERROR(_write_physical_page(&origin_data, &pp));
+    LOG(INFO) << "write page size: " << page->data.slice().size << " " << pp.size;
     _ordinal_index_builder->append_entry(page->first_rowid, pp);
     return Status::OK();
 }

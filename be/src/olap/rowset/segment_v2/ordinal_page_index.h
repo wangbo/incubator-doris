@@ -81,6 +81,7 @@ public:
     OrdinalPageIndexIterator(OrdinalPageIndex* index, int cur_idx) : _index(index), _cur_idx(cur_idx) { }
     inline bool valid() const;
     inline void next();
+    inline void back();
     inline rowid_t rowid() const;
     inline int32_t cur_idx() const;
     inline const PagePointer& page() const;
@@ -144,6 +145,11 @@ inline bool OrdinalPageIndexIterator::valid() const {
 inline void OrdinalPageIndexIterator::next() {
     DCHECK_LT(_cur_idx, _index->_num_pages);
     _cur_idx++;
+}
+
+inline void OrdinalPageIndexIterator::back() {
+    _cur_idx--;
+    DCHECK_LT(0, _cur_idx);
 }
 
 inline rowid_t OrdinalPageIndexIterator::rowid() const {

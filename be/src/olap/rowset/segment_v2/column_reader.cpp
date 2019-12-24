@@ -82,6 +82,86 @@ Status ColumnReader::new_bitmap_index_iterator(BitmapIndexIterator** iterator) {
     return Status::OK();
 }
 
+Status ColumnReader::read_pages(const PagePointer* pp, OlapReaderStatistics* stats, vector<PageHandle>* handles, size_t page_num) {
+    stats->total_pages_num++;
+    auto cache = StoragePageCache::instance();
+    vector<Slice> missed_slice;
+    bool cache_hit[page_num];
+    uint64_t start_offset = 0;
+    vector<uint8_t*> page_data_array;
+
+    for (size_t i = 0; i < page_num; i++) {
+        PagePointer pp_ =  pp[i];
+        PageCacheHandle cache_handle;
+        StoragePageCache::CacheKey cache_key(_file->file_name(), pp_.offset);
+        if (cache->lookup(cache_key, &cache_handle)) {
+            handles->push_back(PageHandle(std::move(cache_handle)));
+            stats->cached_pages_num++;
+            cache_hit[i] = true;
+        } else {
+            uint8_t* page_data = new uint8_t[pp_.size];
+            page_data_array.push_back(page_data);
+            start_offset = missed_slice.size() == 0 ? pp_.offset : start_offset;
+            missed_slice.push_back(Slice(page_data, pp_.size));
+            cache_hit[i] = false;
+            handles->push_back(PageHandle());
+        }
+    }
+
+    if (missed_slice.size() == 0) {
+        return Status::OK();
+    }
+
+    // batch read sequential page from disk
+    {
+        SCOPED_RAW_TIMER(&stats->io_ns);
+        RETURN_IF_ERROR(_file->readv_at(start_offset, &missed_slice[0], missed_slice.size()));
+        stats->compressed_bytes_read += 0;
+    }
+
+    size_t j = 0;
+    for (size_t i = 0; i < page_num; i++) {
+        if (!cache_hit[i]) {
+            Slice page_slice = missed_slice[j];
+            if (_opts.verify_checksum) {
+                uint32_t expect = decode_fixed32_le((uint8_t*)page_slice.data + page_slice.size - 4);
+                uint32_t actual = crc32c::Value(page_slice.data, page_slice.size - 4);
+                if (expect != actual) {
+                    return Status::Corruption(
+                            Substitute("Page checksum mismatch, actual=$0 vs expect=$1", actual, expect));
+                }
+                page_slice.size = pp[i].size - 4;
+            }
+
+            if (_compress_codec != nullptr) {
+                PageDecompressor decompressor(page_slice, _compress_codec);
+                Slice uncompressed_page;
+                {
+                    SCOPED_RAW_TIMER(&stats->decompress_ns);
+                    RETURN_IF_ERROR(decompressor.decompress_to(&uncompressed_page));
+
+                    // If decompressor create new heap memory for uncompressed data,
+                    // assign this uncompressed page to page and page slice
+                    if (uncompressed_page.data != page_slice.data) {
+                        delete[] page_data_array[j];
+                    }
+
+                    page_slice = uncompressed_page;
+                    stats->uncompressed_bytes_read += page_slice.size;
+                }
+            }
+
+            PageCacheHandle cache_handle;
+            StoragePageCache::CacheKey cache_key(_file->file_name(), pp[i].offset);
+            cache->insert(cache_key, page_slice, &cache_handle);
+            (*handles)[i] = PageHandle(std::move(cache_handle));
+            j++;
+        }
+    }
+
+    return Status::OK();
+}
+
 Status ColumnReader::read_page(const PagePointer& pp, OlapReaderStatistics* stats, PageHandle* handle) {
     stats->total_pages_num++;
     auto cache = StoragePageCache::instance();
@@ -405,15 +485,114 @@ Status FileColumnIterator::next_batch(size_t* n, ColumnBlockView* dst) {
 }
 
 Status FileColumnIterator::_load_next_page(bool* eos) {
-    _page_iter.next();
-    if (!_page_iter.valid()) {
-        *eos = true;
-        return Status::OK();
+    RETURN_IF_ERROR(_read_pages(eos));
+    if (!*eos) {
+        _seek_to_pos_in_page(_page.get(), 0);
     }
+    return Status::OK();
+}
+
+Status FileColumnIterator::_read_pages(bool* eos) {
+    long max_io_size = 1024 * 1024;
+    uint64 pre_page_end_offset = 0;
+
+    // for debug
+    long max_page_size = 0;
+    // batch load sequential pages
+    if (_page_pointers.size() == 0) {
+        long cur_io_size = 0;
+        for (size_t i = 0;;i++) {
+            if (!_page_iter.valid()) {
+                if (_page_pointers.size() == 0) {
+                    *eos = true;
+                    return Status::OK();
+                } else {
+                    break;
+                }
+            }
+            PagePointer page_pointer = _page_iter.page();
+            cur_io_size += page_pointer.size;
+            max_page_size = page_pointer.size > max_page_size ? page_pointer.size : max_page_size;
+
+            // check whether next page is follow current page in the file
+            if ((i != 0) && (pre_page_end_offset != page_pointer.offset || cur_io_size > max_io_size)) {
+                break;
+            }
+            _page_pointers.push_back(page_pointer);
+
+            // for debug, read one page from file one time
+//            vector<PageHandle> _page_handles_tmp;
+//            RETURN_IF_ERROR(_reader->read_pages(&_page_pointers[i], _opts.stats, &_page_handles_tmp, 1));
+//            _page_handles.push_back(std::move(_page_handles_tmp[0]));
+
+            pre_page_end_offset = i == 0 ? page_pointer.offset + page_pointer.size : pre_page_end_offset + page_pointer.size;
+            _page_iter.next();
+        }
+        LOG(INFO) << "batch read page size:" << _page_pointers.size() << ",cur io size: " <<  cur_io_size << " ,max_page_size: " << max_page_size;
+        RETURN_IF_ERROR(_reader->read_pages(&_page_pointers[0], _opts.stats, &_page_handles, _page_pointers.size()));
+    }
+
     _page.reset(new ParsedPage());
-    RETURN_IF_ERROR(_read_page(_page_iter, _page.get()));
-    _seek_to_pos_in_page(_page.get(), 0);
-    *eos = false;
+    ParsedPage* page = _page.get();
+    // get one page handle from page handles
+    page->page_pointer = _page_pointers[0];
+    _page_pointers.erase(_page_pointers.begin());
+
+    page->page_handle = std::move(_page_handles[0]);
+    _page_handles.erase(_page_handles.begin());
+
+    // decode page
+    Slice data = page->page_handle.data();
+
+    // decode first rowid
+    if (!get_varint32(&data, &page->first_rowid)) {
+        return Status::Corruption("Bad page, failed to decode first rowid");
+    }
+    // decode number rows
+    if (!get_varint32(&data, &page->num_rows)) {
+        return Status::Corruption("Bad page, failed to decode rows count");
+    }
+    if (_reader->is_nullable()) {
+        uint32_t null_bitmap_size = 0;
+        if (!get_varint32(&data, &null_bitmap_size)) {
+            return Status::Corruption("Bad page, failed to decode null bitmap size");
+        }
+        if (null_bitmap_size > data.size) {
+            return Status::Corruption(
+                    Substitute("Bad page, null bitmap too large $0 vs $1", null_bitmap_size, data.size));
+        }
+        page->null_decoder = RleDecoder<bool>((uint8_t*)data.data, null_bitmap_size, 1);
+        page->null_bitmap = Slice(data.data, null_bitmap_size);
+
+        // remove null bitmap
+        data.remove_prefix(null_bitmap_size);
+    }
+
+    // create page data decoder
+    PageDecoderOptions options;
+    RETURN_IF_ERROR(_reader->encoding_info()->create_page_decoder(data, options, &page->data_decoder));
+    RETURN_IF_ERROR(page->data_decoder->init());
+
+    // lazy init dict_encoding'dict for three reasons
+    // 1. a column use dictionary encoding still has non-dict-encoded data pages are seeked,load dict when necessary
+    // 2. ColumnReader which is owned by Segment and Rowset can being alive even when there is no query,it should retain memory as small as possible.
+    // 3. Iterators of the same column won't repeat load the dict page because of page cache.
+    if (_reader->encoding_info()->encoding() == DICT_ENCODING) {
+        BinaryDictPageDecoder* binary_dict_page_decoder = (BinaryDictPageDecoder*)page->data_decoder;
+        if (binary_dict_page_decoder->is_dict_encoding()) {
+            if (_dict_decoder == nullptr) {
+                PagePointer pp = _reader->get_dict_page_pointer();
+                RETURN_IF_ERROR(_reader->read_page(pp, _opts.stats, &_dict_page_handle));
+
+                _dict_decoder.reset(new BinaryPlainPageDecoder(_dict_page_handle.data()));
+                RETURN_IF_ERROR(_dict_decoder->init());
+            }
+            binary_dict_page_decoder->set_dict_decoder(_dict_decoder.get());
+        }
+    }
+
+    page->offset_in_page = 0;
+    page->page_index = _page_iter.cur_idx();
     return Status::OK();
 }
 

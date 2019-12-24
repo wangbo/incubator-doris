@@ -86,6 +86,9 @@ public:
     // read a page from file into a page handle
     Status read_page(const PagePointer& pp, OlapReaderStatistics* stats, PageHandle* handle);
 
+    // read page list from file into a page handle list
+    Status read_pages(const PagePointer* pp, OlapReaderStatistics* stats, vector<PageHandle>* handles, size_t page_num);
+
     bool is_nullable() const { return _meta.is_nullable(); }
 
     const EncodingInfo* encoding_info() const { return _encoding_info; }
@@ -229,11 +232,13 @@ public:
     Status get_row_ranges_by_conditions(CondColumn* cond_column,
                                       const std::vector<CondColumn*>& delete_conditions,
                                       RowRanges* row_ranges) override;
+    vector<PageHandle> _page_handles;
 
 private:
     void _seek_to_pos_in_page(ParsedPage* page, uint32_t offset_in_page);
     Status _load_next_page(bool* eos);
     Status _read_page(const OrdinalPageIndexIterator& iter, ParsedPage* page);
+    Status _read_pages(bool* eos);
 
 private:
     ColumnReader* _reader;
@@ -243,6 +248,9 @@ private:
     //    If new seek is issued, the _page will be reset.
     // 3. When _page is null, it means that this reader can not be read.
     std::unique_ptr<ParsedPage> _page;
+
+
+    vector<PagePointer> _page_pointers;
 
     // keep dict page decoder
     std::unique_ptr<PageDecoder> _dict_decoder;
