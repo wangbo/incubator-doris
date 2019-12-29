@@ -528,7 +528,7 @@ Status FileColumnIterator::_read_pages(bool* eos) {
             pre_page_end_offset = i == 0 ? page_pointer.offset + page_pointer.size : pre_page_end_offset + page_pointer.size;
             _page_iter.next();
         }
-//        LOG(INFO) << "batch read page size:" << _page_pointers.size() << ",cur io size: " <<  cur_io_size << " ,max_page_size: " << max_page_size;
+        LOG(INFO) << "batch read page size:" << _page_pointers.size() << ",cur io size: " <<  cur_io_size << " ,max_page_size: " << max_page_size;
         RETURN_IF_ERROR(_reader->read_pages(&_page_pointers[0], _opts.stats, &_page_handles, _page_pointers.size()));
     }
 
