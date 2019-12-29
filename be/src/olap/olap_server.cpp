@@ -168,7 +168,7 @@ void* StorageEngine::_base_compaction_thread_callback(void* arg, DataDir* data_d
         // add tid to cgroup
         CgroupsMgr::apply_system_cgroup();
         if (!data_dir->reach_capacity_limit(0)) {
-//            perform_base_compaction(data_dir);
+            perform_base_compaction(data_dir);
         }
 
         usleep(interval * 1000000);
@@ -262,7 +262,7 @@ void* StorageEngine::_cumulative_compaction_thread_callback(void* arg, DataDir* 
         // add tid to cgroup
         CgroupsMgr::apply_system_cgroup();
         if (!data_dir->reach_capacity_limit(0)) {
-//            perform_cumulative_compaction(data_dir);
+            perform_cumulative_compaction(data_dir);
         }
         usleep(interval * 1000000);
     }
