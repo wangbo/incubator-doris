@@ -499,6 +499,8 @@ namespace config {
     // disk scan io size
     CONF_Int64(scan_disk_max_io_size, "1048576");
 
+    CONF_Int64(beta_rowset_reader_block_rows, "1024000");
+
 } // namespace config
 
 } // namespace doris
