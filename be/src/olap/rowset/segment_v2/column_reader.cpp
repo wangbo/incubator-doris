@@ -116,7 +116,11 @@ Status ColumnReader::read_pages(const PagePointer* pp, OlapReaderStatistics* sta
     {
         SCOPED_RAW_TIMER(&stats->io_ns);
         RETURN_IF_ERROR(_file->readv_at(start_offset, &missed_slice[0], missed_slice.size()));
-        stats->compressed_bytes_read += 0;
+        for (size_t i = 0; i < page_num; i++) {
+            if (!cache_hit[i]) {
+                stats->compressed_bytes_read += missed_slice[i].size;
+            }
+        }
     }
 
     size_t j = 0;
