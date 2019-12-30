@@ -534,6 +534,8 @@ Status FileColumnIterator::_read_pages(bool* eos) {
         }
         LOG(INFO) << "batch read page size:" << _page_pointers.size() << ",cur io size: " <<  cur_io_size << " ,max_page_size: " << max_page_size;
         RETURN_IF_ERROR(_reader->read_pages(&_page_pointers[0], _opts.stats, &_page_handles, _page_pointers.size()));
+    } else {
+        LOG(INFO) << "hit batch load page, pp size: " << _page_pointers.size() << " ,ph size " << _page_handles.size();
     }
 
     _page.reset(new ParsedPage());
