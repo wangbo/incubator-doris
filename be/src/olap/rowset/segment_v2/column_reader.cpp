@@ -493,7 +493,7 @@ Status FileColumnIterator::_load_next_page(bool* eos) {
 }
 
 Status FileColumnIterator::_read_pages(bool* eos) {
-    long max_io_size = 1024 * 1024;
+    long max_io_size = config::scan_disk_max_io_size;
     uint64 pre_page_end_offset = 0;
 
     // for debug

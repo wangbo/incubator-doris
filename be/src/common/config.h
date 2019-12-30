@@ -496,6 +496,9 @@ namespace config {
     // this is a self protection to avoid too many txns saving in manager
     CONF_Int64(max_runnings_transactions, "200");
 
+    // disk scan io size
+    CONF_Int64(scan_disk_max_io_size, "1048576");
+
 } // namespace config
 
 } // namespace doris
