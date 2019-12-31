@@ -93,12 +93,12 @@ OLAPStatus BetaRowsetReader::init(RowsetReaderContext* read_context) {
     _iterator.reset(final_iterator);
 
     // init input block
-    _input_block.reset(new RowBlockV2(schema, config::beta_rowset_reader_block_rows));
+    _input_block.reset(new RowBlockV2(schema, 1024));
 
     // init output block and row
     _output_block.reset(new RowBlock(read_context->tablet_schema));
     RowBlockInfo output_block_info;
-    output_block_info.row_num = config::beta_rowset_reader_block_rows;
+    output_block_info.row_num = 1024;
     output_block_info.null_supported = true;
     // the output block's schema should be seek_columns to comform to v1
     // TODO(hkp): this should be optimized to use return_columns
