@@ -94,16 +94,9 @@ public class SparkEtlJobHandler {
                 .setAppResource(APP_RESOURCE)
                 .setMainClass(MAIN_CLASS)
                 .setAppName(String.format(ETL_JOB_NAME, loadLabel))
-                .addFile(configFilePath)
-                .addFile("/opt/meituan/spark-2.2/conf/hive-site.xml");
+                .addFile(configFilePath);
                 //.addSparkArg("--jars", "")
                 //addSparkArg("--files", "")
-
-        launcher.addSparkArg("--jars", "/home/sankuai/lion_lib/lion-client-0.8.9.2.jar," +
-                "/home/sankuai/lion_lib/lion-common-0.8.9.1.jar," +
-                "/home/sankuai/datanu/datanucleus-api-jdo-4.2.1.jar," +
-                "/home/sankuai/datanu/datanucleus-core-4.1.6.jar," +
-                "/home/sankuai/datanu/datanucleus-rdbms-4.1.7.jar");
 
         for (Map.Entry<String, String> entry : sparkConfigs.entrySet()) {
             launcher = launcher.setConf(entry.getKey(), entry.getValue());
