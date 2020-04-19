@@ -30,6 +30,7 @@ import org.apache.parquet.example.data.simple.SimpleGroupFactory;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.example.GroupWriteSupport;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.apache.parquet.io.api.Binary;
 import org.apache.parquet.schema.MessageType;
 import org.apache.parquet.schema.OriginalType;
 import org.apache.parquet.schema.PrimitiveType;
@@ -99,8 +100,15 @@ public final class SparkDpp implements java.io.Serializable {
     }
 
     public void init() {
-        spark.udf().register("bitmap_union_str", new BitmapUnion(DataTypes.StringType));
-        spark.udf().register("bitmap_union_binary", new BitmapUnion(DataTypes.BinaryType));
+        spark.udf().register("bitmap_union_str", new BitmapUnionUDAF(DataTypes.StringType));
+        spark.udf().register("bitmap_union_binary", new BitmapUnionUDAF(DataTypes.BinaryType));
+
+        spark.udf().register("hll_union_str", new HllUnionUDAF(DataTypes.StringType));
+        spark.udf().register("hll_union_binary", new HllUnionUDAF(DataTypes.BinaryType));
+
+        spark.udf().register("replace_if_not_null_str", new ReplaceUDAF(false));
+        spark.udf().register("replace_str", new ReplaceUDAF(true));
+
         abnormalRowAcc = spark.sparkContext().longAccumulator();
         unselectedRowAcc = spark.sparkContext().longAccumulator();
         scannedRowsAcc = spark.sparkContext().longAccumulator();
@@ -143,6 +151,20 @@ public final class SparkDpp implements java.io.Serializable {
                         sb.append("bitmap_union_binary(" + column.columnName + ") as " + column.columnName);
                         sb.append(",");
                     }
+                } else if (column.aggregationType.equalsIgnoreCase("HLL_UNION")) {
+                    if (indexMeta.isBaseIndex) {
+                        sb.append("hll_union_str(" + column.columnName + ") as " + column.columnName);
+                        sb.append(",");
+                    } else {
+                        sb.append("hll_union_binary(" + column.columnName + ") as " + column.columnName);
+                        sb.append(",");
+                    }
+                } else if (column.aggregationType.equalsIgnoreCase("REPLACE_IF_NOT_NULL")) {
+                    sb.append("replace_if_not_null_str(" + column.columnName + ") as " + column.columnName);
+                    sb.append(",");
+                } else if (column.aggregationType.equalsIgnoreCase("REPLACE")) {
+                    sb.append("replace_str(" + column.columnName + ") as " + column.columnName);
+                    sb.append(",");
                 }
             }
         }
@@ -266,6 +288,10 @@ public final class SparkDpp implements java.io.Serializable {
                     Group group = groupFactory.newGroup();
                     for (int i = 1; i < row.length(); i++) {
                         Object columnObject = row.get(i);
+                        // means
+                        if (columnObject == null && indexMeta.columns.get(i - 1).aggregationType.equals("REPLACE")) {
+                            continue;
+                        }
                         if (columnObject instanceof Short) {
                             group.add(indexMeta.columns.get(i - 1).columnName, row.getShort(i));
                         } else if (columnObject instanceof Integer) {
@@ -274,6 +300,8 @@ public final class SparkDpp implements java.io.Serializable {
                             group.add(indexMeta.columns.get(i - 1).columnName, row.getString(i));
                         } else if (columnObject instanceof Long) {
                             group.add(indexMeta.columns.get(i - 1).columnName, row.getLong(i));
+                        } else if (columnObject instanceof byte[]) {
+                            group.add(indexMeta.columns.get(i - 1).columnName, Binary.fromConstantByteArray((byte[])row.get(i)));
                         }
                     }
                     try {
