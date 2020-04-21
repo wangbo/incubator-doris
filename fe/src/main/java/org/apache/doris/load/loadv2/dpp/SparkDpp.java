@@ -296,12 +296,16 @@ public final class SparkDpp implements java.io.Serializable {
                             continue;
                         }
                         if (columnObject instanceof Short) {
+                            System.out.println("print short aggregate type:" + indexMeta.columns.get(i - 1).aggregationType);
                             group.add(indexMeta.columns.get(i - 1).columnName, row.getShort(i));
                         } else if (columnObject instanceof Integer) {
+                            System.out.println("print  int aggregate type:" + indexMeta.columns.get(i - 1).aggregationType);
                             group.add(indexMeta.columns.get(i - 1).columnName, row.getInt(i));
                         } else if (columnObject instanceof String) {
+                            System.out.println("print Stirng aggregate type:" + indexMeta.columns.get(i - 1).aggregationType);
                             group.add(indexMeta.columns.get(i - 1).columnName, row.getString(i));
                         } else if (columnObject instanceof Long) {
+                            System.out.println("print  long aggregate type:" + indexMeta.columns.get(i - 1).aggregationType);
                             group.add(indexMeta.columns.get(i - 1).columnName, row.getLong(i));
                         } else if (columnObject instanceof byte[]) {
                             System.out.println("print byte aggregate type:" + indexMeta.columns.get(i - 1).aggregationType);
