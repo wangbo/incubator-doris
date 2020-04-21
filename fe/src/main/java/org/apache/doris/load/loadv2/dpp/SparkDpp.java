@@ -304,6 +304,7 @@ public final class SparkDpp implements java.io.Serializable {
                         } else if (columnObject instanceof Long) {
                             group.add(indexMeta.columns.get(i - 1).columnName, row.getLong(i));
                         } else if (columnObject instanceof byte[]) {
+                            System.out.println("print byte aggregate type:" + indexMeta.columns.get(i - 1).aggregationType);
                             group.add(indexMeta.columns.get(i - 1).columnName, Binary.fromConstantByteArray((byte[])row.get(i)));
                             if (indexMeta.columns.get(i - 1).aggregationType.equalsIgnoreCase("HLL_UNION")) {
                                 Hll hll = HllUnionUDAF.deserializeHll((byte[])row.get(i));
