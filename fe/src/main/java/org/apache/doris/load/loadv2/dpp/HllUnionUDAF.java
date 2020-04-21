@@ -108,9 +108,7 @@ public class HllUnionUDAF extends UserDefinedAggregateFunction {
         Object srcValue = input.get(0);
 
         if (srcValue instanceof String) {
-            String valueStr = srcValue.toString();
-            int id = Integer.parseInt(valueStr);
-            dstHll.updateWithHash(id);
+            dstHll.updateWithHash(srcValue.toString());
         } else if (srcValue instanceof byte[]) {
             byte[] srcByte = (byte[]) srcValue;
             dstHll.merge(deserializeHll(srcByte));
