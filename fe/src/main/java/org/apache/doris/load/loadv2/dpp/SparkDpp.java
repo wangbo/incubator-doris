@@ -182,6 +182,9 @@ public final class SparkDpp implements java.io.Serializable {
         Dataset<Row> aggDataFrame = spark.sql(aggSql);
         // after agg, the type of sum column maybe be changed, so should add type cast for value column
         for (Map.Entry<String, DataType> entry : valueColumnsOriginalType.entrySet()) {
+            if (entry.getKey().equals("uuid")) {
+                continue;
+            }
             DataType currentType = aggDataFrame.schema().apply(entry.getKey()).dataType();
             if (!currentType.equals(entry.getValue())) {
                 aggDataFrame = aggDataFrame.withColumn(entry.getKey(), aggDataFrame.col(entry.getKey()).cast(entry.getValue()));
@@ -195,6 +198,8 @@ public final class SparkDpp implements java.io.Serializable {
                                                              String pathPattern,
                                                              long tableId,
                                                              EtlJobConfig.EtlIndex indexMeta) throws UserException {
+
+
         dataframe.foreachPartition(new ForeachPartitionFunction<Row>() {
             @Override
             public void call(Iterator<Row> t) throws Exception {
