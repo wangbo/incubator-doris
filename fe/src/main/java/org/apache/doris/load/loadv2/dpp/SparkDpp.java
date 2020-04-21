@@ -198,6 +198,7 @@ public final class SparkDpp implements java.io.Serializable {
         dataframe.foreachPartition(new ForeachPartitionFunction<Row>() {
             @Override
             public void call(Iterator<Row> t) throws Exception {
+                System.out.println("dataframe.foreachPartition: 1");
                 // write the data to dst file
                 Configuration conf = new Configuration();
                 FileSystem fs = FileSystem.get(URI.create(etlJobConfig.outputPath), conf);
@@ -286,8 +287,10 @@ public final class SparkDpp implements java.io.Serializable {
                     }
                     SimpleGroupFactory groupFactory = new SimpleGroupFactory(index_schema);
                     Group group = groupFactory.newGroup();
+                    System.out.println("dataframe.foreachPartition: 2");
                     for (int i = 1; i < row.length(); i++) {
                         Object columnObject = row.get(i);
+                        System.out.println("print aggregate:" + indexMeta.columns.get(i - 1).aggregationType);
                         // means
                         if (columnObject == null && indexMeta.columns.get(i - 1).aggregationType.equalsIgnoreCase("REPLACE")) {
                             continue;
