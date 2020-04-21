@@ -77,7 +77,7 @@ public class ReplaceUDAF extends UserDefinedAggregateFunction {
     @Override
     public void update(MutableAggregationBuffer buffer, Row input) {
         if (!input.isNullAt(0)) {
-            buffer.update(0, input.get(0).toString().getBytes(StandardCharsets.UTF_8));
+            buffer.update(0, input.get(0));
         } else if (isAllowedNull) {
             buffer.update(0, input.get(0));
         }
