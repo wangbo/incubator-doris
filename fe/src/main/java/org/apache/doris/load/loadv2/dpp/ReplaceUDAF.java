@@ -71,8 +71,7 @@ public class ReplaceUDAF extends UserDefinedAggregateFunction {
 
     @Override
     public void initialize(MutableAggregationBuffer buffer) {
-        String str = "";
-        buffer.update(0, str.getBytes());
+        buffer.update(0, null);
     }
 
     @Override
