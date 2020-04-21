@@ -289,7 +289,7 @@ public final class SparkDpp implements java.io.Serializable {
                     for (int i = 1; i < row.length(); i++) {
                         Object columnObject = row.get(i);
                         // means
-                        if (columnObject == null && indexMeta.columns.get(i - 1).aggregationType.equals("REPLACE")) {
+                        if (columnObject == null && indexMeta.columns.get(i - 1).aggregationType.equalsIgnoreCase("REPLACE")) {
                             continue;
                         }
                         if (columnObject instanceof Short) {
@@ -302,6 +302,10 @@ public final class SparkDpp implements java.io.Serializable {
                             group.add(indexMeta.columns.get(i - 1).columnName, row.getLong(i));
                         } else if (columnObject instanceof byte[]) {
                             group.add(indexMeta.columns.get(i - 1).columnName, Binary.fromConstantByteArray((byte[])row.get(i)));
+                            if (indexMeta.columns.get(i - 1).aggregationType.equalsIgnoreCase("HLL_UNION")) {
+                                Hll hll = HllUnionUDAF.deserializeHll((byte[])row.get(i));
+                                System.out.println("print hll before write to parquet:" + hll.estimateCardinality());
+                            }
                         }
                     }
                     try {

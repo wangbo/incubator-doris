@@ -68,7 +68,7 @@ public class HllUnionUDAF extends UserDefinedAggregateFunction {
         return true;
     }
 
-    public byte[] serializeHll(Hll hll) {
+    public static byte[] serializeHll(Hll hll) {
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             DataOutputStream outputStream = new DataOutputStream(bos);
@@ -80,7 +80,7 @@ public class HllUnionUDAF extends UserDefinedAggregateFunction {
         }
     }
 
-    public Hll deserializeHll(byte[] hllByte) {
+    public static Hll deserializeHll(byte[] hllByte) {
         try {
             DataInputStream inputStream = new DataInputStream(new ByteArrayInputStream(hllByte));
             Hll hll = new Hll();
@@ -130,6 +130,9 @@ public class HllUnionUDAF extends UserDefinedAggregateFunction {
 
     @Override
     public Object evaluate(Row buffer) {
-        return buffer.get(0);
+        byte[] testByte = (byte[])buffer.get(0);
+        Hll hll = deserializeHll(testByte);
+        System.out.println("print hll evaluate: " + hll.estimateCardinality());
+        return testByte;
     }
 }
