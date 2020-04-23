@@ -34,18 +34,14 @@ import org.apache.doris.thrift.TBrokerFileStatus;
 import org.apache.doris.thrift.TEtlState;
 
 import org.apache.hadoop.conf.Configuration;
-//import org.apache.hadoop.yarn.api.records.ApplicationReport;
+import org.apache.hadoop.yarn.api.records.ApplicationReport;
 import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.client.api.YarnClient;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-//import org.apache.hadoop.yarn.exceptions.ApplicationNotFoundException;
+import org.apache.hadoop.yarn.exceptions.ApplicationNotFoundException;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.util.ConverterUtils;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.launcher.SparkAppHandle;
@@ -61,7 +57,6 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 
 public class SparkEtlJobHandler {
     private static final Logger LOG = LogManager.getLogger(SparkEtlJobHandler.class);
@@ -186,65 +181,32 @@ public class SparkEtlJobHandler {
         if (etlCluster.isYarnMaster()) {
             // state from yarn
             Preconditions.checkState(appId != null && !appId.isEmpty());
+            YarnClient client = startYarnClient(etlCluster);
             try {
-                CloseableHttpClient httpclient = HttpClients.createDefault();
-                HttpGet httpget = new HttpGet("http://rz-data-hdp-rm01.rz.sankuai.com:8088/ws/v1/cluster/apps/" + appId);
-                HttpResponse httpresponse = httpclient.execute(httpget);
-                Scanner sc = new Scanner(httpresponse.getEntity().getContent());
+                ApplicationReport report = client.getApplicationReport(ConverterUtils.toApplicationId(appId));
+                LOG.info("yarn application -status {}, load job id: {}, result: {}", appId, loadJobId, report);
 
-                boolean isSucc = false;
-                boolean isFailed = false;
-                String ret = "";
-                while(sc.hasNext()) {
-                    String line = sc.nextLine();
-                    if (line.contains("\"finalStatus\":\"SUCCEEDED\"")) {
-                        isSucc = true;
-                    } else if (line.contains("\"finalStatus\":\"FAILED\"")) {
-                        isFailed = true;
+                YarnApplicationState state = report.getYarnApplicationState();
+                FinalApplicationStatus faStatus = report.getFinalApplicationStatus();
+                status.setState(fromYarnState(state, faStatus));
+                if (status.getState() == TEtlState.CANCELLED) {
+                    if (state == YarnApplicationState.FINISHED) {
+                        status.setFailMsg("spark app state: " + faStatus.toString());
+                    } else {
+                        status.setFailMsg("yarn app state: " + state.toString());
                     }
-                    ret = line;
                 }
-                LOG.info(ret);
-                if (isSucc) {
-                    status.setState(TEtlState.FINISHED);
-                    status.setProgress(100);
-                } else if (isFailed) {
-                    status.setState(TEtlState.CANCELLED);
-                    status.setProgress(100);
-                }else {
-                    status.setState(TEtlState.RUNNING);
-                    status.setProgress(0);
-                }
-                status.setTrackingUrl(appId);
-            } catch (Exception e) {
-                LOG.error(e);
+                status.setTrackingUrl(report.getTrackingUrl());
+                status.setProgress((int) (report.getProgress() * 100));
+            } catch (ApplicationNotFoundException e) {
+                LOG.warn("spark app not found, spark app id: {}, load job id: {}", appId, loadJobId, e);
+                status.setState(TEtlState.CANCELLED);
+                status.setFailMsg(e.getMessage());
+            } catch (YarnException | IOException e) {
+                LOG.warn("yarn application status failed, spark app id: {}, load job id: {}", appId, loadJobId, e);
+            } finally {
+                stopYarnClient(client);
             }
-//            YarnClient client = startYarnClient(etlCluster);
-//            try {
-//                ApplicationReport report = client.getApplicationReport(ConverterUtils.toApplicationId(appId));
-//                LOG.info("yarn application -status {}, load job id: {}, result: {}", appId, loadJobId, report);
-//
-//                YarnApplicationState state = report.getYarnApplicationState();
-//                FinalApplicationStatus faStatus = report.getFinalApplicationStatus();
-//                status.setState(fromYarnState(state, faStatus));
-//                if (status.getState() == TEtlState.CANCELLED) {
-//                    if (state == YarnApplicationState.FINISHED) {
-//                        status.setFailMsg("spark app state: " + faStatus.toString());
-//                    } else {
-//                        status.setFailMsg("yarn app state: " + state.toString());
-//                    }
-//                }
-//                status.setTrackingUrl(report.getTrackingUrl());
-//                status.setProgress((int) (report.getProgress() * 100));
-//            } catch (ApplicationNotFoundException e) {
-//                LOG.warn("spark app not found, spark app id: {}, load job id: {}", appId, loadJobId, e);
-//                status.setState(TEtlState.CANCELLED);
-//                status.setFailMsg(e.getMessage());
-//            } catch (YarnException | IOException e) {
-//                LOG.warn("yarn application status failed, spark app id: {}, load job id: {}", appId, loadJobId, e);
-//            } finally {
-//                stopYarnClient(client);
-//            }
         } else {
             // state from handle
             if (handle == null) {
