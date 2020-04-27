@@ -17,7 +17,6 @@
 
 package org.apache.doris.load.loadv2.etl;
 
-import org.apache.commons.lang.StringUtils;
 import org.apache.doris.load.loadv2.dpp.GlobalDictBuilder;
 import org.apache.doris.load.loadv2.dpp.SparkDpp;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlColumn;
@@ -28,23 +27,16 @@ import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlTable;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.sql.AnalysisException;
-import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 
 import com.google.common.collect.Lists;
 import com.google.gson.FieldNamingPolicy;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import org.apache.spark.sql.catalog.Column;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class SparkEtlJob {
     private static final String BITMAP_TYPE = "bitmap";
