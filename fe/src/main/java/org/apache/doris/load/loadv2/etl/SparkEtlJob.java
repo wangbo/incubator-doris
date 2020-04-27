@@ -19,6 +19,7 @@ package org.apache.doris.load.loadv2.etl;
 
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.apache.doris.load.loadv2.dpp.GlobalDictBuilder;
 import org.apache.doris.load.loadv2.dpp.SparkDpp;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlColumn;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlColumnMapping;
@@ -26,26 +27,19 @@ import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlFileGroup;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlIndex;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlTable;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Dataset;
-import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.catalog.Column;
 import org.apache.spark.sql.functions;
 
 import com.google.common.collect.Lists;
 import com.google.gson.FieldNamingPolicy;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class SparkEtlJob {
     private static final String BITMAP_DICT_FUNC = "bitmap_dict";
@@ -138,7 +132,7 @@ public class SparkEtlJob {
 
         EtlFileGroup fileGroup = table.fileGroups.get(0);
         String sourceHiveDBTableName = fileGroup.hiveTableName;
-        String dorisHiveDB = sourceHiveDBTableName.split("\\.")[0];
+        String dorisHiveDB = "kylin2x_test";
         String sourceHiveFilter = fileGroup.where;
 
         String taskId = etlJobConfig.outputPath.substring(etlJobConfig.outputPath.lastIndexOf("/") + 1);
@@ -158,10 +152,12 @@ public class SparkEtlJob {
         System.err.println("****** dorisIntermediateHiveTable: " + dorisIntermediateHiveTable);
 
         try {
+            List<String> veryHighCardinalityColumn = new ArrayList<>();
+            veryHighCardinalityColumn.add("union_id");
             GlobalDictBuilder buildGlobalDict = new GlobalDictBuilder(distinctColumnList, dorisOlapTableColumnList,
                     mapSideJoinColumns, sourceHiveDBTableName,
                     sourceHiveFilter, dorisHiveDB, distinctKeyTableName,
-                    globalDictTableName, dorisIntermediateHiveTable, 1, new ArrayList<>(), 1, false, spark);
+                    globalDictTableName, dorisIntermediateHiveTable, 10, veryHighCardinalityColumn, 10, false, spark);
             buildGlobalDict.createHiveIntermediateTable();
             buildGlobalDict.extractDistinctColumn();
             buildGlobalDict.buildGlobalDict();
