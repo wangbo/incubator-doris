@@ -65,12 +65,14 @@ import org.apache.doris.persist.OperationType;
 import org.apache.doris.persist.PartitionPersistInfo;
 import org.apache.doris.persist.PrivInfo;
 import org.apache.doris.persist.RecoverInfo;
+import org.apache.doris.persist.RemoveAlterJobV2OperationLog;
 import org.apache.doris.persist.ReplacePartitionOperationLog;
 import org.apache.doris.persist.ReplicaPersistInfo;
 import org.apache.doris.persist.RoutineLoadOperation;
 import org.apache.doris.persist.TableInfo;
 import org.apache.doris.persist.TablePropertyInfo;
 import org.apache.doris.persist.TruncateTableInfo;
+import org.apache.doris.plugin.PluginInfo;
 import org.apache.doris.qe.SessionVariable;
 import org.apache.doris.system.Backend;
 import org.apache.doris.system.Frontend;
@@ -222,7 +224,7 @@ public class JournalEntity implements Writable {
                 break;
             }
             case OperationType.OP_BATCH_DROP_ROLLUP: {
-                data = ((BatchDropInfo) data).read(in);
+                data = BatchDropInfo.read(in);
                 isRead = true;
                 break;
             }
@@ -277,6 +279,12 @@ public class JournalEntity implements Writable {
                 isRead = true;
                 break;
             case OperationType.OP_FINISH_SYNC_DELETE: {
+                data = new DeleteInfo();
+                ((DeleteInfo) data).readFields(in);
+                isRead = true;
+                break;
+            }
+            case OperationType.OP_FINISH_DELETE: {
                 data = new DeleteInfo();
                 ((DeleteInfo) data).readFields(in);
                 isRead = true;
@@ -537,6 +545,21 @@ public class JournalEntity implements Writable {
             }
             case OperationType.OP_REPLACE_TEMP_PARTITION: {
                 data = ReplacePartitionOperationLog.read(in);
+                isRead = true;
+                break;
+            }
+            case OperationType.OP_INSTALL_PLUGIN: {
+                data = PluginInfo.read(in);
+                isRead = true;
+                break;
+            }
+            case OperationType.OP_UNINSTALL_PLUGIN: {
+                data = PluginInfo.read(in);
+                isRead = true;
+                break;
+            }              
+            case OperationType.OP_REMOVE_ALTER_JOB_V2: {
+                data = RemoveAlterJobV2OperationLog.read(in);
                 isRead = true;
                 break;
             }

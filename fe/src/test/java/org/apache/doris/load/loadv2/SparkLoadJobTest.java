@@ -38,6 +38,7 @@ import mockit.Injectable;
 import mockit.Mock;
 import mockit.MockUp;
 import mockit.Mocked;
+import org.apache.doris.qe.OriginStatement;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -102,7 +103,7 @@ public class SparkLoadJobTest {
         };
 
         try {
-            BulkLoadJob bulkLoadJob = BulkLoadJob.fromLoadStmt(loadStmt, originStmt);
+            BulkLoadJob bulkLoadJob = BulkLoadJob.fromLoadStmt(loadStmt, new OriginStatement(originStmt, 0));
             Assert.assertEquals(Long.valueOf(dbId), Deencapsulation.getField(bulkLoadJob, "dbId"));
             Assert.assertEquals(label, Deencapsulation.getField(bulkLoadJob, "label"));
             Assert.assertEquals(JobState.PENDING, Deencapsulation.getField(bulkLoadJob, "state"));

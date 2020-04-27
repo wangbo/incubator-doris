@@ -17,17 +17,6 @@
 
 package org.apache.doris.planner;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import org.apache.doris.analysis.Analyzer;
 import org.apache.doris.analysis.TupleDescriptor;
 import org.apache.doris.catalog.Catalog;
@@ -43,18 +32,31 @@ import org.apache.doris.external.EsTableState;
 import org.apache.doris.system.Backend;
 import org.apache.doris.thrift.TEsScanNode;
 import org.apache.doris.thrift.TEsScanRange;
+import org.apache.doris.thrift.TExplainLevel;
 import org.apache.doris.thrift.TNetworkAddress;
 import org.apache.doris.thrift.TPlanNode;
 import org.apache.doris.thrift.TPlanNodeType;
 import org.apache.doris.thrift.TScanRange;
 import org.apache.doris.thrift.TScanRangeLocation;
 import org.apache.doris.thrift.TScanRangeLocations;
+
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 
 public class EsScanNode extends ScanNode {
     
@@ -122,8 +124,10 @@ public class EsScanNode extends ScanNode {
         if (table.isDocValueScanEnable()) {
             esScanNode.setDocvalue_context(table.docValueContext());
         }
+        if (table.isKeywordSniffEnable() && table.fieldsContext().size() > 0) {
+            esScanNode.setFields_context(table.fieldsContext());
+        }
         msg.es_scan_node = esScanNode;
-
     }
 
     // TODO(ygl) assign backend that belong to the same cluster
@@ -240,19 +244,49 @@ public class EsScanNode extends ScanNode {
         }
         PartitionPruner partitionPruner = null;
         switch (partitionInfo.getType()) {
-        case RANGE: {
-            RangePartitionInfo rangePartitionInfo = (RangePartitionInfo) partitionInfo;
-            Map<Long, Range<PartitionKey>> keyRangeById = rangePartitionInfo.getIdToRange();
-            partitionPruner = new RangePartitionPruner(keyRangeById, rangePartitionInfo.getPartitionColumns(),
-                    columnFilters);
-            return partitionPruner.prune();
+            case RANGE: {
+                RangePartitionInfo rangePartitionInfo = (RangePartitionInfo) partitionInfo;
+                    Map<Long, Range<PartitionKey>> keyRangeById = rangePartitionInfo.getIdToRange(false);
+                partitionPruner = new RangePartitionPruner(keyRangeById, rangePartitionInfo.getPartitionColumns(),
+                        columnFilters);
+                return partitionPruner.prune();
+            }
+            case UNPARTITIONED: {
+                return null;
+            }
+            default: {
+                return null;
+            }
         }
-        case UNPARTITIONED: {
-            return null;
+    }
+
+    @Override
+    protected String getNodeExplainString(String prefix, TExplainLevel detailLevel) {
+        StringBuilder output = new StringBuilder();
+
+        output.append(prefix).append("TABLE: ").append(table.getName()).append("\n");
+
+        if (null != sortColumn) {
+            output.append(prefix).append("SORT COLUMN: ").append(sortColumn).append("\n");
         }
-        default: {
-            return null;
+
+        if (!conjuncts.isEmpty()) {
+            output.append(prefix).append("PREDICATES: ").append(
+                    getExplainString(conjuncts)).append("\n");
+            // reserved for later using: LOCAL_PREDICATES is processed by Doris EsScanNode
+            output.append(prefix).append("LOCAL_PREDICATES: ").append(" ").append("\n");
+            // reserved for later using: REMOTE_PREDICATES is processed by remote ES Cluster
+            output.append(prefix).append("REMOTE_PREDICATES: ").append(" ").append("\n");
+            // reserved for later using: translate predicates to ES queryDSL
+            output.append(prefix).append("ES_QUERY_DSL: ").append(" ").append("\n");
+        } else {
+            output.append(prefix).append("ES_QUERY_DSL: ").append("{\"match_all\": {}}").append("\n");
         }
-        }
+        String indexName = table.getIndexName();
+        String typeName = table.getMappingType();
+        output.append(prefix)
+                .append(String.format("ES index/type: %s/%s", indexName, typeName))
+                .append("\n");
+        return output.toString();
     }
 }

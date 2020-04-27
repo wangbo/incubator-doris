@@ -124,7 +124,6 @@ public class BDBJEJournal implements Journal {
             Util.stdoutWithTime(msg);
             System.exit(-1);
         }
-        return;
     }
 
     @Override
@@ -135,7 +134,7 @@ public class BDBJEJournal implements Journal {
         
         // id is the key
         long id = nextJournalId.getAndIncrement();
-        Long idLong = new Long(id);
+        Long idLong = id;
         DatabaseEntry theKey = new DatabaseEntry();
         TupleBinding<Long> idBinding = TupleBinding.getPrimitiveBinding(Long.class);
         idBinding.objectToEntry(idLong, theKey);
@@ -247,8 +246,7 @@ public class BDBJEJournal implements Journal {
 
     @Override
     public JournalCursor read(long fromKey, long toKey) {
-        JournalCursor cursor = BDBJournalCursor.getJournalCursor(bdbEnvironment, fromKey, toKey);
-        return cursor;
+        return BDBJournalCursor.getJournalCursor(bdbEnvironment, fromKey, toKey);
     }
     
     @Override
@@ -363,7 +361,6 @@ public class BDBJEJournal implements Journal {
                 bdbEnvironment.close();
                 bdbEnvironment.setup(new File(environmentPath), selfNodeName, selfNodeHostPort, 
                                      helperNode.first + ":" + helperNode.second, Catalog.getInstance().isElectable());
-                continue;
             }
         }
     }

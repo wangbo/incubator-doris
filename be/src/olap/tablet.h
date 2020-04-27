@@ -48,7 +48,7 @@ using TabletSharedPtr = std::shared_ptr<Tablet>;
 class Tablet : public std::enable_shared_from_this<Tablet> {
 public:
     static TabletSharedPtr create_tablet_from_meta(TabletMetaSharedPtr tablet_meta,
-                                                   DataDir* data_dir  = nullptr);
+                                                   DataDir* data_dir = nullptr);
 
     Tablet(TabletMetaSharedPtr tablet_meta, DataDir* data_dir);
     ~Tablet();
@@ -59,8 +59,8 @@ public:
     bool is_used();
 
     inline DataDir* data_dir() const;
-    OLAPStatus register_tablet_into_dir();
-    OLAPStatus deregister_tablet_from_dir();
+    void register_tablet_into_dir();
+    void deregister_tablet_from_dir();
 
     std::string tablet_path() const;
 
@@ -138,7 +138,7 @@ public:
                                   vector<RowsetReaderSharedPtr>* rs_readers) const;
 
     DelPredicateArray delete_predicates() { return _tablet_meta->delete_predicates(); }
-    OLAPStatus add_delete_predicate(const DeletePredicatePB& delete_predicate, int64_t version);
+    void add_delete_predicate(const DeletePredicatePB& delete_predicate, int64_t version);
     bool version_for_delete_predicate(const Version& version);
     bool version_for_load_deletion(const Version& version);
 
@@ -147,7 +147,7 @@ public:
     OLAPStatus add_alter_task(int64_t related_tablet_id, int32_t related_schema_hash,
                         const vector<Version>& versions_to_alter,
                         const AlterTabletType alter_type);
-    OLAPStatus delete_alter_task();
+    void delete_alter_task();
     OLAPStatus set_alter_state(AlterTabletState state);
 
     // meta lock
@@ -224,7 +224,8 @@ public:
 
     TabletInfo get_tablet_info() const;
 
-    void pick_candicate_rowsets_to_cumulative_compaction(std::vector<RowsetSharedPtr>* candidate_rowsets);
+    void pick_candicate_rowsets_to_cumulative_compaction(int64_t skip_window_sec,
+                                                         std::vector<RowsetSharedPtr>* candidate_rowsets);
     void pick_candicate_rowsets_to_base_compaction(std::vector<RowsetSharedPtr>* candidate_rowsets);
 
     OLAPStatus calculate_cumulative_point();
@@ -242,7 +243,7 @@ public:
 
     void build_tablet_report_info(TTabletInfo* tablet_info);
 
-    OLAPStatus generate_tablet_meta_copy(TabletMetaSharedPtr new_tablet_meta);
+    void generate_tablet_meta_copy(TabletMetaSharedPtr new_tablet_meta);
 
     // return a json string to show the compaction status of this tablet
     OLAPStatus get_compaction_status(std::string* json_result);
@@ -323,12 +324,12 @@ inline DataDir* Tablet::data_dir() const {
     return _data_dir;
 }
 
-inline OLAPStatus Tablet::register_tablet_into_dir() {
-    return _data_dir->register_tablet(this);
+inline void Tablet::register_tablet_into_dir() {
+    _data_dir->register_tablet(this);
 }
 
-inline OLAPStatus Tablet::deregister_tablet_from_dir() {
-    return _data_dir->deregister_tablet(this);
+inline void Tablet::deregister_tablet_from_dir() {
+    _data_dir->deregister_tablet(this);
 }
 
 inline string Tablet::tablet_path() const {

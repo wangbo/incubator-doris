@@ -17,6 +17,9 @@
 
 package org.apache.doris.qe;
 
+import org.apache.doris.analysis.KillStmt;
+import org.apache.doris.analysis.SqlParser;
+import org.apache.doris.analysis.SqlScanner;
 import org.apache.doris.analysis.StatementBase;
 import org.apache.doris.analysis.UserIdentity;
 import org.apache.doris.catalog.Catalog;
@@ -24,29 +27,33 @@ import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.Database;
 import org.apache.doris.catalog.Table;
 import org.apache.doris.cluster.ClusterNamespace;
-import org.apache.doris.common.AuditLog;
-import org.apache.doris.common.Config;
+import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.DdlException;
 import org.apache.doris.common.ErrorCode;
 import org.apache.doris.common.ErrorReport;
+import org.apache.doris.common.UserException;
 import org.apache.doris.common.util.DebugUtil;
+import org.apache.doris.common.util.SqlParserUtils;
 import org.apache.doris.metric.MetricRepo;
 import org.apache.doris.mysql.MysqlChannel;
 import org.apache.doris.mysql.MysqlCommand;
 import org.apache.doris.mysql.MysqlPacket;
 import org.apache.doris.mysql.MysqlProto;
 import org.apache.doris.mysql.MysqlSerializer;
+import org.apache.doris.mysql.MysqlServerStatusFlag;
+import org.apache.doris.plugin.AuditEvent.EventType;
 import org.apache.doris.proto.PQueryStatistics;
+import org.apache.doris.service.FrontendOptions;
 import org.apache.doris.thrift.TMasterOpRequest;
 import org.apache.doris.thrift.TMasterOpResult;
 
-import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousCloseException;
@@ -99,15 +106,14 @@ public class ConnectProcessor {
     private void auditAfterExec(String origStmt, StatementBase parsedStmt, PQueryStatistics statistics) {
         // slow query
         long elapseMs = System.currentTimeMillis() - ctx.getStartTime();
-        // query state log
-        ctx.getAuditBuilder().put("State", ctx.getState());
-        ctx.getAuditBuilder().put("Time", elapseMs);
-        Preconditions.checkNotNull(statistics); 
-        ctx.getAuditBuilder().put("ScanBytes", statistics.scan_bytes);
-        ctx.getAuditBuilder().put("ScanRows", statistics.scan_rows);
-        ctx.getAuditBuilder().put("ReturnRows", ctx.getReturnRows());
-        ctx.getAuditBuilder().put("StmtId", ctx.getStmtId());
-        ctx.getAuditBuilder().put("QueryId", ctx.queryId() == null ? "NaN" : DebugUtil.printId(ctx.queryId()));
+        
+        ctx.getAuditEventBuilder().setEventType(EventType.AFTER_QUERY)
+            .setState(ctx.getState().toString()).setQueryTime(elapseMs)
+            .setScanBytes(statistics == null ? 0 : statistics.scan_bytes)
+            .setScanRows(statistics == null ? 0 : statistics.scan_rows)
+            .setReturnRows(ctx.getReturnRows())
+            .setStmtId(ctx.getStmtId())
+            .setQueryId(ctx.queryId() == null ? "NaN" : DebugUtil.printId(ctx.queryId()));
 
         if (ctx.getState().isQuery()) {
             MetricRepo.COUNTER_QUERY_ALL.increase(1L);
@@ -119,23 +125,21 @@ public class ConnectProcessor {
                 // ok query
                 MetricRepo.HISTO_QUERY_LATENCY.update(elapseMs);
             }
-            ctx.getAuditBuilder().put("IsQuery", 1);
+            ctx.getAuditEventBuilder().setIsQuery(true);
         } else {
-            ctx.getAuditBuilder().put("IsQuery", 0);
+            ctx.getAuditEventBuilder().setIsQuery(false);
         }
+        
+        ctx.getAuditEventBuilder().setFeIp(FrontendOptions.getLocalHostAddress());
+
         // We put origin query stmt at the end of audit log, for parsing the log more convenient.
         if (!ctx.getState().isQuery() && (parsedStmt != null && parsedStmt.needAuditEncryption())) {
-            ctx.getAuditBuilder().put("Stmt", parsedStmt.toSql());
+            ctx.getAuditEventBuilder().setStmt(parsedStmt.toSql());
         } else {
-            ctx.getAuditBuilder().put("Stmt", origStmt);
+            ctx.getAuditEventBuilder().setStmt(origStmt);
         }
-
-        AuditLog.getQueryAudit().log(ctx.getAuditBuilder().toString());
-
-        // slow query
-        if (elapseMs > Config.qe_slow_log_ms) {
-            AuditLog.getSlowAudit().log(ctx.getAuditBuilder().toString());
-        }
+        
+        Catalog.getCurrentAuditEventProcessor().handleAuditEvent(ctx.getAuditEventBuilder().build());
     }
 
     // process COM_QUERY statement,
@@ -143,50 +147,100 @@ public class ConnectProcessor {
     private void handleQuery() {
         MetricRepo.COUNTER_REQUEST_ALL.increase(1L);
         // convert statement to Java string
-        String stmt = null;
+        String originStmt = null;
         try {
             byte[] bytes = packetBuf.array();
             int ending = packetBuf.limit() - 1;
             while (ending >= 1 && bytes[ending] == '\0') {
                 ending--;
             }
-            stmt = new String(bytes, 1, ending, "UTF-8");
+            originStmt = new String(bytes, 1, ending, "UTF-8");
         } catch (UnsupportedEncodingException e) {
             // impossible
             LOG.error("UTF8 is not supported in this environment.");
             ctx.getState().setError("Unsupported character set(UTF-8)");
             return;
         }
-        ctx.getAuditBuilder().reset();
-        ctx.getAuditBuilder().put("Client", ctx.getMysqlChannel().getRemoteHostPortString());
-        ctx.getAuditBuilder().put("User", ctx.getQualifiedUser());
-        ctx.getAuditBuilder().put("Db", ctx.getDatabase());
+        ctx.getAuditEventBuilder().reset();
+        ctx.getAuditEventBuilder()
+            .setTimestamp(System.currentTimeMillis())
+            .setClientIp(ctx.getMysqlChannel().getRemoteHostPortString())
+            .setUser(ctx.getQualifiedUser())
+            .setDb(ctx.getDatabase());
 
         // execute this query.
+        StatementBase parsedStmt = null;
         try {
-            executor = new StmtExecutor(ctx, stmt);
-            ctx.setExecutor(executor);
-            executor.execute();
-            // set if this is a QueryStmt
-            ctx.getState().setQuery(executor.isQueryStmt());
-        } catch (DdlException e) {
-            LOG.warn("Process one query failed because DdlException.", e);
-            ctx.getState().setError(e.getMessage());
+            List<StatementBase> stmts = analyze(originStmt);
+            for (int i = 0; i < stmts.size(); ++i) {
+                ctx.getState().reset();
+                if (i > 0) {
+                    ctx.resetRetureRows();
+                }
+                parsedStmt = stmts.get(i);
+                executor = new StmtExecutor(ctx, parsedStmt, new OriginStatement(originStmt, i));
+                executor.execute();
+
+                if (i != stmts.size() - 1) {
+                    ctx.getState().serverStatus |= MysqlServerStatusFlag.SERVER_MORE_RESULTS_EXISTS;
+                    finalizeCommand();
+                }
+            }
         } catch (IOException e) {
             // Client failed.
             LOG.warn("Process one query failed because IOException: ", e);
-            ctx.getState().setError("Palo process failed");
+            ctx.getState().setError("Doris process failed");
+        } catch (UserException e) {
+            LOG.warn("Process one query failed because.", e);
+            ctx.getState().setError(e.getMessage());
+            // set is as ANALYSIS_ERR so that it won't be treated as a query failure.
+            ctx.getState().setErrType(QueryState.ErrType.ANALYSIS_ERR);
         } catch (Throwable e) {
             // Catch all throwable.
             // If reach here, maybe palo bug.
             LOG.warn("Process one query failed because unknown reason: ", e);
             ctx.getState().setError("Unexpected exception: " + e.getMessage());
+            if (parsedStmt instanceof KillStmt) {
+                // ignore kill stmt execute err(not monitor it)
+                ctx.getState().setErrType(QueryState.ErrType.ANALYSIS_ERR);
+            }
         }
 
         // audit after exec
         // replace '\n' to '\\n' to make string in one line
-        auditAfterExec(stmt.replace("\n", " \\n"), executor.getParsedStmt(), 
-                executor.getQueryStatisticsForAuditLog());
+        // TODO(cmy): when user send multi-statement, the executor is the last statement's executor.
+        // We may need to find some way to resolve this.
+        if (executor != null) {
+            auditAfterExec(originStmt.replace("\n", " \\n"), executor.getParsedStmt(), executor.getQueryStatisticsForAuditLog());
+        } else {
+            // executor can be null if we encounter analysis error.
+            auditAfterExec(originStmt.replace("\n", " \\n"), null, null);
+        }
+    }
+
+    // analyze the origin stmt and return multi-statements
+    private List<StatementBase> analyze(String originStmt) throws AnalysisException {
+        LOG.debug("the originStmts are: {}", originStmt);
+        // Parse statement with parser generated by CUP&FLEX
+        SqlScanner input = new SqlScanner(new StringReader(originStmt), ctx.getSessionVariable().getSqlMode());
+        SqlParser parser = new SqlParser(input);
+        try {
+            return SqlParserUtils.getMultiStmts(parser);
+        } catch (Error e) {
+            throw new AnalysisException("Please check your sql, we meet an error when parsing.", e);
+        } catch (AnalysisException e) {
+            LOG.warn("origin_stmt: " + originStmt + "; Analyze error message: " + parser.getErrorMsg(originStmt), e);
+            String errorMessage = parser.getErrorMsg(originStmt);
+            if (errorMessage == null) {
+                throw e;
+            } else {
+                throw new AnalysisException(errorMessage, e);
+            }
+        } catch (Exception e) {
+            // TODO(lingbin): we catch 'Exception' to prevent unexpected error,
+            // should be removed this try-catch clause future.
+            throw new AnalysisException("Internal Error, maybe this is a bug, please contact with Palo RD.");
+        }
     }
 
     // Get the column definitions of a table
@@ -371,7 +425,9 @@ public class ConnectProcessor {
 
         StmtExecutor executor = null;
         try {
-            executor = new StmtExecutor(ctx, request.getSql(), true);
+            // 0 for compatibility.
+            int idx = request.isSetStmtIdx() ? request.getStmtIdx() : 0;
+            executor = new StmtExecutor(ctx, new OriginStatement(request.getSql(), idx), true);
             executor.execute();
         } catch (IOException e) {
             // Client failed.

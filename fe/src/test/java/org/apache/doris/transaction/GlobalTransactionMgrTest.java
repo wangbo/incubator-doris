@@ -50,6 +50,8 @@ import org.apache.doris.thrift.TLoadSourceType;
 import org.apache.doris.thrift.TRLTaskTxnCommitAttachment;
 import org.apache.doris.thrift.TUniqueId;
 import org.apache.doris.transaction.TransactionState.LoadJobSourceType;
+import org.apache.doris.transaction.TransactionState.TxnSourceType;
+import org.apache.doris.transaction.TransactionState.TxnCoordinator;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -79,7 +81,7 @@ public class GlobalTransactionMgrTest {
     private static Catalog masterCatalog;
     private static Catalog slaveCatalog;
 
-    private String transactionSource = "localfe";
+    private TransactionState.TxnCoordinator transactionSource = new TransactionState.TxnCoordinator(TransactionState.TxnSourceType.FE, "localfe");
 
     @Before
     public void setUp() throws InstantiationException, IllegalAccessException, IllegalArgumentException,
@@ -106,7 +108,7 @@ public class GlobalTransactionMgrTest {
     public void testBeginTransaction() throws LabelAlreadyUsedException, AnalysisException,
             BeginTransactionException, DuplicatedRequestException {
         FakeCatalog.setCatalog(masterCatalog);
-        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                 CatalogTestUtil.testTxnLable1,
                 transactionSource,
                 LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
@@ -115,7 +117,7 @@ public class GlobalTransactionMgrTest {
         assertEquals(transactionId, transactionState.getTransactionId());
         assertEquals(TransactionStatus.PREPARE, transactionState.getTransactionStatus());
         assertEquals(CatalogTestUtil.testDbId1, transactionState.getDbId());
-        assertEquals(transactionSource, transactionState.getCoordinator());
+        assertEquals(transactionSource.toString(), transactionState.getCoordinator().toString());
     }
 
     @Test
@@ -124,13 +126,11 @@ public class GlobalTransactionMgrTest {
         FakeCatalog.setCatalog(masterCatalog);
         long transactionId = 0;
         try {
-            transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+            transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                     CatalogTestUtil.testTxnLable1,
                     transactionSource,
                     LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
-        } catch (AnalysisException e) {
-            e.printStackTrace();
-        } catch (LabelAlreadyUsedException e) {
+        } catch (AnalysisException | LabelAlreadyUsedException e) {
             e.printStackTrace();
         }
         TransactionState transactionState = masterTransMgr.getTransactionState(transactionId);
@@ -138,10 +138,10 @@ public class GlobalTransactionMgrTest {
         assertEquals(transactionId, transactionState.getTransactionId());
         assertEquals(TransactionStatus.PREPARE, transactionState.getTransactionStatus());
         assertEquals(CatalogTestUtil.testDbId1, transactionState.getDbId());
-        assertEquals(transactionSource, transactionState.getCoordinator());
+        assertEquals(transactionSource.toString(), transactionState.getCoordinator().toString());
 
         try {
-            transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+            transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                     CatalogTestUtil.testTxnLable1,
                     transactionSource,
                     LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
@@ -154,7 +154,7 @@ public class GlobalTransactionMgrTest {
     @Test
     public void testCommitTransaction1() throws UserException {
         FakeCatalog.setCatalog(masterCatalog);
-        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                 CatalogTestUtil.testTxnLable1,
                 transactionSource,
                 LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
@@ -195,7 +195,7 @@ public class GlobalTransactionMgrTest {
     public void testCommitTransactionWithOneFailed() throws UserException {
         TransactionState transactionState = null;
         FakeCatalog.setCatalog(masterCatalog);
-        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                 CatalogTestUtil.testTxnLable1,
                 transactionSource,
                 LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
@@ -217,7 +217,7 @@ public class GlobalTransactionMgrTest {
 
         FakeCatalog.setCatalog(masterCatalog);
         // commit another transaction with 1,3 success
-        long transactionId2 = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+        long transactionId2 = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                 CatalogTestUtil.testTxnLable2,
                 transactionSource,
                 LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
@@ -311,7 +311,8 @@ public class GlobalTransactionMgrTest {
         transTablets.add(tabletCommitInfo2);
         transTablets.add(tabletCommitInfo3);
 
-        KafkaRoutineLoadJob routineLoadJob = new KafkaRoutineLoadJob(1L, "test", "default_cluster", 1L, 1L, 3L, "host:port", "topic");
+        KafkaRoutineLoadJob routineLoadJob = new KafkaRoutineLoadJob(1L, "test", "default_cluster", 1L, 1L, "host:port",
+                "topic");
         List<RoutineLoadTaskInfo> routineLoadTaskInfoList = Deencapsulation.getField(routineLoadJob, "routineLoadTaskInfoList");
         Map<Integer, Long> partitionIdToOffset = Maps.newHashMap();
         partitionIdToOffset.put(1, 0L);
@@ -319,8 +320,8 @@ public class GlobalTransactionMgrTest {
                 partitionIdToOffset);
         Deencapsulation.setField(routineLoadTaskInfo, "txnId", 1L);
         routineLoadTaskInfoList.add(routineLoadTaskInfo);
-        TransactionState transactionState = new TransactionState(1L, 1L, "label", null,
-                LoadJobSourceType.ROUTINE_LOAD_TASK, "be1", routineLoadJob.getId(),
+        TransactionState transactionState = new TransactionState(1L, Lists.newArrayList(1L), 1L, "label", null,
+                LoadJobSourceType.ROUTINE_LOAD_TASK, new TxnCoordinator(TxnSourceType.BE, "be1"), routineLoadJob.getId(),
                 Config.stream_load_default_timeout_second);
         transactionState.setTransactionStatus(TransactionStatus.PREPARE);
         masterTransMgr.getCallbackFactory().addCallback(routineLoadJob);
@@ -378,7 +379,7 @@ public class GlobalTransactionMgrTest {
         transTablets.add(tabletCommitInfo2);
         transTablets.add(tabletCommitInfo3);
 
-        KafkaRoutineLoadJob routineLoadJob = new KafkaRoutineLoadJob(1L, "test", "default_cluster", 1L, 1L, 3L, "host:port", "topic");
+        KafkaRoutineLoadJob routineLoadJob = new KafkaRoutineLoadJob(1L, "test", "default_cluster", 1L, 1L, "host:port", "topic");
         List<RoutineLoadTaskInfo> routineLoadTaskInfoList = Deencapsulation.getField(routineLoadJob, "routineLoadTaskInfoList");
         Map<Integer, Long> partitionIdToOffset = Maps.newHashMap();
         partitionIdToOffset.put(1, 0L);
@@ -386,8 +387,8 @@ public class GlobalTransactionMgrTest {
                 partitionIdToOffset);
         Deencapsulation.setField(routineLoadTaskInfo, "txnId", 1L);
         routineLoadTaskInfoList.add(routineLoadTaskInfo);
-        TransactionState transactionState = new TransactionState(1L, 1L, "label", null,
-                LoadJobSourceType.ROUTINE_LOAD_TASK, "be1", routineLoadJob.getId(),
+        TransactionState transactionState = new TransactionState(1L, Lists.newArrayList(1L), 1L, "label", null,
+                LoadJobSourceType.ROUTINE_LOAD_TASK, new TxnCoordinator(TxnSourceType.BE, "be1"), routineLoadJob.getId(),
                 Config.stream_load_default_timeout_second);
         transactionState.setTransactionStatus(TransactionStatus.PREPARE);
         masterTransMgr.getCallbackFactory().addCallback(routineLoadJob);
@@ -430,7 +431,7 @@ public class GlobalTransactionMgrTest {
     }
 
     public void testFinishTransaction() throws UserException {
-        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                 CatalogTestUtil.testTxnLable1,
                 transactionSource,
                 LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
@@ -476,7 +477,7 @@ public class GlobalTransactionMgrTest {
                 .getPartition(CatalogTestUtil.testPartition1);
         Tablet tablet = testPartition.getIndex(CatalogTestUtil.testIndexId1).getTablet(CatalogTestUtil.testTabletId1);
         FakeCatalog.setCatalog(masterCatalog);
-        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                 CatalogTestUtil.testTxnLable1,
                 transactionSource,
                 LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
@@ -530,7 +531,7 @@ public class GlobalTransactionMgrTest {
 
         FakeCatalog.setCatalog(masterCatalog);
         // commit another transaction with 1,3 success
-        long transactionId2 = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+        long transactionId2 = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                 CatalogTestUtil.testTxnLable2,
                 transactionSource,
                 LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
@@ -602,7 +603,7 @@ public class GlobalTransactionMgrTest {
     public void testDeleteTransaction() throws LabelAlreadyUsedException,
             AnalysisException, BeginTransactionException, DuplicatedRequestException {
 
-        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1,
+        long transactionId = masterTransMgr.beginTransaction(CatalogTestUtil.testDbId1, Lists.newArrayList(CatalogTestUtil.testTableId1),
                 CatalogTestUtil.testTxnLable1,
                 transactionSource,
                 LoadJobSourceType.FRONTEND, Config.stream_load_default_timeout_second);
@@ -611,7 +612,7 @@ public class GlobalTransactionMgrTest {
         assertEquals(transactionId, transactionState.getTransactionId());
         assertEquals(TransactionStatus.PREPARE, transactionState.getTransactionStatus());
         assertEquals(CatalogTestUtil.testDbId1, transactionState.getDbId());
-        assertEquals(transactionSource, transactionState.getCoordinator());
+        assertEquals(transactionSource.toString(), transactionState.getCoordinator().toString());
 
         masterTransMgr.deleteTransaction(transactionId);
         transactionState = fakeEditLog.getTransaction(transactionId);

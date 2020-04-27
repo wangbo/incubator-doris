@@ -43,8 +43,8 @@ enum TStatusCode {
     INTERNAL_ERROR                  = 6,
     THRIFT_RPC_ERROR                = 7,
     TIMEOUT                         = 8,
-    KUDU_NOT_ENABLED                = 9,
-    KUDU_NOT_SUPPORTED_ON_OS        = 10,
+    KUDU_NOT_ENABLED                = 9,  // Deprecated
+    KUDU_NOT_SUPPORTED_ON_OS        = 10, // Deprecated
     MEM_ALLOC_FAILED                = 11,
     BUFFER_ALLOCATION_FAILED        = 12,
     MINIMUM_RESERVATION_UNAVAILABLE = 13,
@@ -72,7 +72,8 @@ enum TStatusCode {
     SERVICE_UNAVAILABLE = 41,
     UNINITIALIZED       = 42,
     CONFIGURATION_ERROR = 43,
-    INCOMPLETE          = 44
+    INCOMPLETE          = 44,
+    OLAP_ERR_VERSION_ALREADY_MERGED = 45
 }
 
 struct TStatus {

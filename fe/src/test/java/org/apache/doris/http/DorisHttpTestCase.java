@@ -46,6 +46,7 @@ import org.apache.doris.qe.ConnectContext;
 import org.apache.doris.system.Backend;
 import org.apache.doris.system.SystemInfoService;
 import org.apache.doris.thrift.TStorageMedium;
+import org.apache.doris.thrift.TStorageType;
 
 import com.google.common.collect.Lists;
 
@@ -149,12 +150,13 @@ abstract public class DorisHttpTestCase {
 
         // table
         PartitionInfo partitionInfo = new SinglePartitionInfo();
-        partitionInfo.setDataProperty(testPartitionId, DataProperty.DEFAULT_HDD_DATA_PROPERTY);
+        partitionInfo.setDataProperty(testPartitionId, DataProperty.DEFAULT_DATA_PROPERTY);
         partitionInfo.setReplicationNum(testPartitionId, (short) 3);
         OlapTable table = new OlapTable(testTableId, name, columns, KeysType.AGG_KEYS, partitionInfo,
                 distributionInfo);
         table.addPartition(partition);
-        table.setIndexSchemaInfo(testIndexId, "testIndex", columns, 0, testSchemaHash, (short) 1);
+        table.setIndexMeta(testIndexId, "testIndex", columns, 0, testSchemaHash, (short) 1, TStorageType.COLUMN,
+                KeysType.AGG_KEYS);
         table.setBaseIndexId(testIndexId);
         return table;
     }
@@ -166,7 +168,7 @@ abstract public class DorisHttpTestCase {
         columns.add(k1);
         columns.add(k2);
         PartitionInfo partitionInfo = new SinglePartitionInfo();
-        partitionInfo.setDataProperty(testPartitionId + 100, DataProperty.DEFAULT_HDD_DATA_PROPERTY);
+        partitionInfo.setDataProperty(testPartitionId + 100, DataProperty.DEFAULT_DATA_PROPERTY);
         partitionInfo.setReplicationNum(testPartitionId + 100, (short) 3);
         EsTable table = null;
         Map<String, String> props = new HashMap<>();

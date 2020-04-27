@@ -17,6 +17,8 @@
 
 package org.apache.doris.load.loadv2.dpp;
 
+import com.google.common.base.Preconditions;
+
 import java.io.Serializable;
 import java.util.List;
 import java.util.ArrayList;
@@ -28,15 +30,9 @@ class DppColumns implements Comparable<DppColumns>, Serializable {
     public List<Object> columns;
     public List<Class> schema;
 
-    public DppColumns() {
-        columns = null;
-        schema = null;
-    }
-
     public DppColumns(List<Object> keys, List<Class> schema){
         this.columns = keys;
         this.schema = schema;
-
     }
 
     public DppColumns(DppColumns key, List<Integer> indexes){
@@ -50,8 +46,8 @@ class DppColumns implements Comparable<DppColumns>, Serializable {
 
     @Override
     public int compareTo(DppColumns other) {
-        assert (columns.size() == other.columns.size());
-        assert (schema.size() == other.schema.size());
+        Preconditions.checkState(columns.size() == other.columns.size());
+        Preconditions.checkState(schema.size() == other.schema.size());
 
         int cmp = 0;
         for (int i = 0; i < columns.size(); i++) {

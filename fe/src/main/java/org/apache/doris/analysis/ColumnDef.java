@@ -106,7 +106,7 @@ public class ColumnDef {
     public String getDefaultValue() { return defaultValue.value; }
     public String getName() { return name; }
     public AggregateType getAggregateType() { return aggregateType; }
-    public void setAggregateType(AggregateType aggregateType, boolean xxx) { this.aggregateType = aggregateType; }
+    public void setAggregateType(AggregateType aggregateType) { this.aggregateType = aggregateType; }
     public boolean isKey() { return isKey; }
     public void setIsKey(boolean isKey) { this.isKey = isKey; }
     public TypeDef getTypeDef() { return typeDef; }
@@ -205,7 +205,7 @@ public class ColumnDef {
                 break;
             case FLOAT:
                 FloatLiteral floatLiteral = new FloatLiteral(defaultValue);
-                if (floatLiteral.getType() == Type.DOUBLE) {
+                if (floatLiteral.getType().equals(Type.DOUBLE)) {
                     throw new AnalysisException("Default value will loose precision: " + defaultValue);
                 }
             case DOUBLE:

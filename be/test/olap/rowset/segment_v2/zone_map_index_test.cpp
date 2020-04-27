@@ -21,6 +21,8 @@
 #include <string>
 
 #include "env/env.h"
+#include "olap/fs/block_manager.h"
+#include "olap/fs/fs_util.h"
 #include "olap/rowset/segment_v2/zone_map_index.h"
 #include "olap/tablet_schema_helper.h"
 #include "util/file_utils.h"
@@ -68,12 +70,13 @@ public:
         // write out zone map index
         ColumnIndexMetaPB index_meta;
         {
-            std::unique_ptr<WritableFile> out_file;
-            ASSERT_TRUE(Env::Default()->new_writable_file(filename, &out_file).ok());
-            ASSERT_TRUE(builder.finish(out_file.get(), &index_meta).ok());
+            std::unique_ptr<fs::WritableBlock> wblock;
+            fs::CreateBlockOptions opts({ filename });
+            ASSERT_TRUE(fs::fs_util::block_mgr_for_ut()->create_block(opts, &wblock).ok());
+            ASSERT_TRUE(builder.finish(wblock.get(), &index_meta).ok());
             ASSERT_EQ(ZONE_MAP_INDEX, index_meta.type());
+            ASSERT_TRUE(wblock->close().ok());
         }
-
 
         ZoneMapIndexReader column_zone_map(filename, &index_meta.zone_map_index());
         Status status = column_zone_map.load(true, false);
@@ -120,10 +123,12 @@ TEST_F(ColumnZoneMapTest, NormalTestIntPage) {
     // write out zone map index
     ColumnIndexMetaPB index_meta;
     {
-        std::unique_ptr<WritableFile> out_file;
-        ASSERT_TRUE(Env::Default()->new_writable_file(filename, &out_file).ok());
-        ASSERT_TRUE(builder.finish(out_file.get(), &index_meta).ok());
+        std::unique_ptr<fs::WritableBlock> wblock;
+        fs::CreateBlockOptions opts({ filename });
+        ASSERT_TRUE(fs::fs_util::block_mgr_for_ut()->create_block(opts, &wblock).ok());
+        ASSERT_TRUE(builder.finish(wblock.get(), &index_meta).ok());
         ASSERT_EQ(ZONE_MAP_INDEX, index_meta.type());
+        ASSERT_TRUE(wblock->close().ok());
     }
 
     ZoneMapIndexReader column_zone_map(filename, &index_meta.zone_map_index());
@@ -145,6 +150,7 @@ TEST_F(ColumnZoneMapTest, NormalTestIntPage) {
 
     ASSERT_EQ(true, zone_maps[2].has_null());
     ASSERT_EQ(false, zone_maps[2].has_not_null());
+    delete field;
 }
 
 // Test for string
@@ -152,6 +158,7 @@ TEST_F(ColumnZoneMapTest, NormalTestVarcharPage) {
     TabletColumn varchar_column = create_varchar_key(0);
     Field* field = FieldFactory::create(varchar_column);
     test_string("NormalTestVarcharPage", field);
+    delete field;
 }
 
 // Test for string
@@ -159,6 +166,7 @@ TEST_F(ColumnZoneMapTest, NormalTestCharPage) {
     TabletColumn char_column = create_char_key(0);
     Field* field = FieldFactory::create(char_column);
     test_string("NormalTestCharPage", field);
+    delete field;
 }
 
 }

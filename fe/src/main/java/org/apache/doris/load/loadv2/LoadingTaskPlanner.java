@@ -20,9 +20,7 @@ package org.apache.doris.load.loadv2;
 import org.apache.doris.analysis.Analyzer;
 import org.apache.doris.analysis.BrokerDesc;
 import org.apache.doris.analysis.DescriptorTable;
-import org.apache.doris.analysis.Expr;
 import org.apache.doris.analysis.SlotDescriptor;
-import org.apache.doris.analysis.SlotRef;
 import org.apache.doris.analysis.TupleDescriptor;
 import org.apache.doris.catalog.Catalog;
 import org.apache.doris.catalog.Column;
@@ -40,6 +38,7 @@ import org.apache.doris.planner.PlanFragment;
 import org.apache.doris.planner.PlanFragmentId;
 import org.apache.doris.planner.PlanNodeId;
 import org.apache.doris.planner.ScanNode;
+import org.apache.doris.qe.ConnectContext;
 import org.apache.doris.thrift.TBrokerFileStatus;
 import org.apache.doris.thrift.TUniqueId;
 
@@ -67,7 +66,8 @@ public class LoadingTaskPlanner {
     private final long timeoutS;    // timeout of load job, in second
 
     // Something useful
-    private Analyzer analyzer = new Analyzer(Catalog.getInstance(), null);
+    // ConnectContext here is just a dummy object to avoid some NPE problem, like ctx.getDatabase()
+    private Analyzer analyzer = new Analyzer(Catalog.getInstance(), new ConnectContext());
     private DescriptorTable descTable = analyzer.getDescTbl();
 
     // Output params
@@ -88,12 +88,19 @@ public class LoadingTaskPlanner {
         this.strictMode = strictMode;
         this.analyzer.setTimezone(timezone);
         this.timeoutS = timeoutS;
+
+        /*
+         * TODO(cmy): UDF currently belongs to a database. Therefore, before using UDF,
+         * we need to check whether the user has corresponding permissions on this database.
+         * But here we have lost user information and therefore cannot check permissions.
+         * So here we first prohibit users from using UDF in load. If necessary, improve it later.
+         */
+        this.analyzer.setUDFAllowed(false);
     }
 
     public void plan(TUniqueId loadId, List<List<TBrokerFileStatus>> fileStatusesList, int filesAdded)
             throws UserException {
         // Generate tuple descriptor
-        List<Expr> slotRefs = Lists.newArrayList();
         TupleDescriptor tupleDesc = descTable.createTupleDescriptor();
         // use full schema to fill the descriptor table
         for (Column col : table.getFullSchema()) {
@@ -105,7 +112,6 @@ public class LoadingTaskPlanner {
             } else {
                 slotDesc.setIsNullable(false);
             }
-            slotRefs.add(new SlotRef(slotDesc));
         }
 
         // Generate plan trees
@@ -122,7 +128,7 @@ public class LoadingTaskPlanner {
         List<Long> partitionIds = getAllPartitionIds();
         OlapTableSink olapTableSink = new OlapTableSink(table, tupleDesc, partitionIds);
         olapTableSink.init(loadId, txnId, dbId, timeoutS);
-        olapTableSink.finalize();
+        olapTableSink.complete();
 
         // 3. Plan fragment
         PlanFragment sinkFragment = new PlanFragment(new PlanFragmentId(0), scanNode, DataPartition.RANDOM);
@@ -135,7 +141,7 @@ public class LoadingTaskPlanner {
             try {
                 fragment.finalize(analyzer, false);
             } catch (NotImplementedException e) {
-                LOG.info("Fragment finalize failed.{}", e);
+                LOG.info("Fragment finalize failed.{}", e.getMessage());
                 throw new UserException("Fragment finalize failed.");
             }
         }

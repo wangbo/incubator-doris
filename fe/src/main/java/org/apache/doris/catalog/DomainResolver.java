@@ -55,13 +55,13 @@ public class DomainResolver extends MasterDaemon {
     // 'public' for test
     @Override
     public void runAfterCatalogReady() {
-        // domain name -> set of user names
-        Map<String, Set<String>> domainMap = Maps.newHashMap();
-        auth.getDomainMap(domainMap);
+        // domain names
+        Set<String> allDomains = Sets.newHashSet();
+        auth.getAllDomains(allDomains);
         
         // resolve domain name
         Map<String, Set<String>> resolvedIPsMap = Maps.newHashMap();
-        for (String domain : domainMap.keySet()) {
+        for (String domain : allDomains) {
             LOG.debug("begin to resolve domain: {}", domain);
             Set<String> resolvedIPs = Sets.newHashSet();
             if (!resolveWithBNS(domain, resolvedIPs) && !resolveWithDNS(domain, resolvedIPs)) {
@@ -141,11 +141,7 @@ public class DomainResolver extends MasterDaemon {
                 return false;
             }
             return true;
-        } catch (IOException e) {
-            LOG.warn("failed to revole domain with BNS", e);
-            resolvedIPs.clear();
-            return false;
-        } catch (InterruptedException e) {
+        } catch (IOException | InterruptedException e) {
             LOG.warn("failed to revole domain with BNS", e);
             resolvedIPs.clear();
             return false;

@@ -124,19 +124,19 @@ public class ColocateTableIndex implements Writable {
 
     }
 
-    private final void readLock() {
+    private void readLock() {
         this.lock.readLock().lock();
     }
 
-    private final void readUnlock() {
+    private void readUnlock() {
         this.lock.readLock().unlock();
     }
 
-    private final void writeLock() {
+    private void writeLock() {
         this.lock.writeLock().lock();
     }
 
-    private final void writeUnlock() {
+    private void writeUnlock() {
         this.lock.writeLock().unlock();
     }
 
@@ -208,7 +208,7 @@ public class ColocateTableIndex implements Writable {
             if (unstableGroups.remove(groupId)) {
                 if (needEditLog) {
                     ColocatePersistInfo info = ColocatePersistInfo.createForMarkStable(groupId);
-                    Catalog.getInstance().getEditLog().logColocateMarkUnstable(info);
+                    Catalog.getInstance().getEditLog().logColocateMarkStable(info);
                 }
                 LOG.info("mark group {} as stable", groupId);
             }

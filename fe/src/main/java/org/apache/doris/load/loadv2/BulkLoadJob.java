@@ -17,10 +17,6 @@
 
 package org.apache.doris.load.loadv2;
 
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import org.apache.doris.analysis.BrokerDesc;
 import org.apache.doris.analysis.DataDescription;
 import org.apache.doris.analysis.EtlClusterDesc;
@@ -37,14 +33,22 @@ import org.apache.doris.common.MetaNotFoundException;
 import org.apache.doris.common.io.Text;
 import org.apache.doris.common.util.LogBuilder;
 import org.apache.doris.common.util.LogKey;
+import org.apache.doris.common.util.SqlParserUtils;
 import org.apache.doris.load.BrokerFileGroup;
 import org.apache.doris.load.BrokerFileGroupAggInfo;
 import org.apache.doris.load.FailMsg;
 import org.apache.doris.qe.ConnectContext;
+import org.apache.doris.qe.OriginStatement;
 import org.apache.doris.qe.SessionVariable;
 import org.apache.doris.qe.SqlModeHelper;
 import org.apache.doris.transaction.TabletCommitInfo;
 import org.apache.doris.transaction.TransactionState;
+
+import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -67,7 +71,7 @@ public abstract class BulkLoadJob extends LoadJob {
     // this param is used to persist the expr of columns
     // the origin stmt is persisted instead of columns expr
     // the expr of columns will be reanalyze when the log is replayed
-    private String originStmt = "";
+    private OriginStatement originStmt;
 
     // include broker desc and data desc
     protected BrokerFileGroupAggInfo fileGroupAggInfo = new BrokerFileGroupAggInfo();
@@ -82,9 +86,9 @@ public abstract class BulkLoadJob extends LoadJob {
         super();
     }
 
-    public BulkLoadJob(long dbId, String label, String originStmt) throws MetaNotFoundException {
+    public BulkLoadJob(long dbId, String label, OriginStatement originStmt) throws MetaNotFoundException {
         super(dbId, label);
-        this.originStmt = Strings.nullToEmpty(originStmt);
+        this.originStmt = originStmt;
         this.authorizationInfo = gatherAuthInfo();
 
         if (ConnectContext.get() != null) {
@@ -95,7 +99,7 @@ public abstract class BulkLoadJob extends LoadJob {
         }
     }
 
-    public static BulkLoadJob fromLoadStmt(LoadStmt stmt, String originStmt) throws DdlException {
+    public static BulkLoadJob fromLoadStmt(LoadStmt stmt, OriginStatement originStmt) throws DdlException {
         // get db id
         String dbName = stmt.getLabel().getDbName();
         Database db = Catalog.getCurrentCatalog().getDb(stmt.getLabel().getDbName());
@@ -119,7 +123,7 @@ public abstract class BulkLoadJob extends LoadJob {
                 case DELETE:
                 case HADOOP:
                 case INSERT:
-                    throw new DdlException("LoadManager only support the broker and spark load.");
+                    throw new DdlException("LoadManager only support create broker and spark load job from stmt.");
                 default:
                     throw new DdlException("Unknown load job type.");
             }
@@ -237,16 +241,16 @@ public abstract class BulkLoadJob extends LoadJob {
      */
     @Override
     public void analyze() {
-        if (Strings.isNullOrEmpty(originStmt)) {
+        if (originStmt == null || Strings.isNullOrEmpty(originStmt.originStmt)) {
             return;
         }
         // Reset dataSourceInfo, it will be re-created in analyze
         fileGroupAggInfo = new BrokerFileGroupAggInfo();
-        SqlParser parser = new SqlParser(new SqlScanner(new StringReader(originStmt),
-                Long.valueOf(sessionVariables.get(SessionVariable.SQL_MODE))));
+        SqlParser parser = new SqlParser(new SqlScanner(new StringReader(originStmt.originStmt),
+                                                        Long.valueOf(sessionVariables.get(SessionVariable.SQL_MODE))));
         LoadStmt stmt = null;
         try {
-            stmt = (LoadStmt) parser.parse().value;
+            stmt = (LoadStmt) SqlParserUtils.getStmt(parser, originStmt.idx);
             for (DataDescription dataDescription : stmt.getDataDescriptions()) {
                 dataDescription.analyzeWithoutCheckPriv();
             }
@@ -280,7 +284,7 @@ public abstract class BulkLoadJob extends LoadJob {
     public void write(DataOutput out) throws IOException {
         super.write(out);
         brokerDesc.write(out);
-        Text.writeString(out, originStmt);
+        originStmt.write(out);
 
         out.writeInt(sessionVariables.size());
         for (Map.Entry<String, String> entry : sessionVariables.entrySet()) {
@@ -297,9 +301,14 @@ public abstract class BulkLoadJob extends LoadJob {
         }
 
         if (Catalog.getCurrentCatalogJournalVersion() >= FeMetaVersion.VERSION_58) {
-            originStmt = Text.readString(in);
+            if (Catalog.getCurrentCatalogJournalVersion() < FeMetaVersion.VERSION_76) {
+                String stmt = Text.readString(in);
+                originStmt = new OriginStatement(stmt, 0);
+            } else {
+                originStmt = OriginStatement.read(in);
+            }
         } else {
-            originStmt = "";
+            originStmt = new OriginStatement("", 0);
         }
         // The origin stmt does not be analyzed in here.
         // The reason is that it will thrown MetaNotFoundException when the tableId could not be found by tableName.

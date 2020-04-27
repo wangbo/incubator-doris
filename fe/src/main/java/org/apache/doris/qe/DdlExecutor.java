@@ -18,13 +18,16 @@
 package org.apache.doris.qe;
 
 import org.apache.doris.analysis.AdminCancelRepairTableStmt;
+import org.apache.doris.analysis.AdminCheckTabletsStmt;
 import org.apache.doris.analysis.AdminRepairTableStmt;
 import org.apache.doris.analysis.AdminSetConfigStmt;
+import org.apache.doris.analysis.AdminSetReplicaStatusStmt;
 import org.apache.doris.analysis.AlterClusterStmt;
 import org.apache.doris.analysis.AlterDatabaseQuotaStmt;
 import org.apache.doris.analysis.AlterDatabaseRename;
 import org.apache.doris.analysis.AlterSystemStmt;
 import org.apache.doris.analysis.AlterTableStmt;
+import org.apache.doris.analysis.AlterViewStmt;
 import org.apache.doris.analysis.BackupStmt;
 import org.apache.doris.analysis.CancelAlterSystemStmt;
 import org.apache.doris.analysis.CancelAlterTableStmt;
@@ -48,11 +51,13 @@ import org.apache.doris.analysis.DropClusterStmt;
 import org.apache.doris.analysis.DropDbStmt;
 import org.apache.doris.analysis.DropFileStmt;
 import org.apache.doris.analysis.DropFunctionStmt;
+import org.apache.doris.analysis.DropMaterializedViewStmt;
 import org.apache.doris.analysis.DropRepositoryStmt;
 import org.apache.doris.analysis.DropRoleStmt;
 import org.apache.doris.analysis.DropTableStmt;
 import org.apache.doris.analysis.DropUserStmt;
 import org.apache.doris.analysis.GrantStmt;
+import org.apache.doris.analysis.InstallPluginStmt;
 import org.apache.doris.analysis.LinkDbStmt;
 import org.apache.doris.analysis.LoadStmt;
 import org.apache.doris.analysis.MigrateDbStmt;
@@ -68,6 +73,7 @@ import org.apache.doris.analysis.StopRoutineLoadStmt;
 import org.apache.doris.analysis.SyncStmt;
 import org.apache.doris.analysis.TruncateTableStmt;
 import org.apache.doris.analysis.AlterViewStmt;
+import org.apache.doris.analysis.UninstallPluginStmt;
 import org.apache.doris.catalog.Catalog;
 import org.apache.doris.common.Config;
 import org.apache.doris.common.DdlException;
@@ -75,7 +81,8 @@ import org.apache.doris.load.EtlJobType;
 import org.apache.doris.load.Load;
 
 public class DdlExecutor {
-    public static void execute(Catalog catalog, DdlStmt ddlStmt, String origStmt) throws DdlException, Exception {
+    public static void execute(Catalog catalog, DdlStmt ddlStmt, OriginStatement origStmt)
+            throws DdlException, QueryStateException, Exception {
         if (ddlStmt instanceof CreateClusterStmt) {
             CreateClusterStmt stmt = (CreateClusterStmt) ddlStmt;
             catalog.createCluster(stmt);
@@ -101,6 +108,8 @@ public class DdlExecutor {
             catalog.dropTable((DropTableStmt) ddlStmt);
         } else if (ddlStmt instanceof CreateMaterializedViewStmt) {
             catalog.createMaterializedView((CreateMaterializedViewStmt) ddlStmt);
+        } else if (ddlStmt instanceof DropMaterializedViewStmt) {
+            catalog.dropMaterializedView((DropMaterializedViewStmt) ddlStmt);
         } else if (ddlStmt instanceof AlterTableStmt) {
             catalog.alterTable((AlterTableStmt) ddlStmt);
         } else if (ddlStmt instanceof AlterViewStmt) {
@@ -144,7 +153,7 @@ public class DdlExecutor {
         } else if (ddlStmt instanceof StopRoutineLoadStmt) {
             catalog.getRoutineLoadManager().stopRoutineLoadJob((StopRoutineLoadStmt) ddlStmt);
         }  else if (ddlStmt instanceof DeleteStmt) {
-            catalog.getLoadInstance().delete((DeleteStmt) ddlStmt);
+            catalog.getDeleteHandler().process((DeleteStmt) ddlStmt);
         } else if (ddlStmt instanceof CreateUserStmt) {
             CreateUserStmt stmt = (CreateUserStmt) ddlStmt;
             catalog.getAuth().createUser(stmt);
@@ -205,6 +214,14 @@ public class DdlExecutor {
             catalog.getSmallFileMgr().createFile((CreateFileStmt) ddlStmt);
         } else if (ddlStmt instanceof DropFileStmt) {
             catalog.getSmallFileMgr().dropFile((DropFileStmt) ddlStmt);
+        } else if (ddlStmt instanceof InstallPluginStmt) {
+            catalog.installPlugin((InstallPluginStmt) ddlStmt);
+        } else if (ddlStmt instanceof UninstallPluginStmt) {
+            catalog.uninstallPlugin((UninstallPluginStmt) ddlStmt);
+        } else if (ddlStmt instanceof AdminCheckTabletsStmt) {
+            catalog.checkTablets((AdminCheckTabletsStmt) ddlStmt);
+        } else if (ddlStmt instanceof AdminSetReplicaStatusStmt) {
+            catalog.setReplicaStatus((AdminSetReplicaStatusStmt) ddlStmt);
         } else {
             throw new DdlException("Unknown statement.");
         }

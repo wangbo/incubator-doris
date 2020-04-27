@@ -31,10 +31,22 @@
 #include "olap/olap_define.h"
 #include "olap/storage_engine.h"
 #include "agent/cgroups_mgr.h"
+#include "util/time.h"
 
 using std::string;
 
 namespace doris {
+
+// TODO(yingchun): should be more graceful in the future refactor.
+#define SLEEP_IN_BG_WORKER(seconds)               \
+  int64_t left_seconds = (seconds);               \
+  while (!_stop_bg_worker && left_seconds > 0) {  \
+      sleep(1);                                   \
+      --left_seconds;                             \
+  }                                               \
+  if (_stop_bg_worker) {                          \
+      break;                                      \
+  }
 
 // number of running SCHEMA-CHANGE threads
 volatile uint32_t g_schema_change_active_threads = 0;
@@ -148,14 +160,15 @@ void* StorageEngine::_fd_cache_clean_callback(void* arg) {
 #ifdef GOOGLE_PROFILER
     ProfilerRegisterThread();
 #endif
-    uint32_t interval = config::file_descriptor_cache_clean_interval;
-    if (interval <= 0) {
-        OLAP_LOG_WARNING("config of file descriptor clean interval is illegal: [%d], "
-                         "force set to 3600", interval);
-        interval = 3600;
-    }
-    while (true) {
-        sleep(interval);
+    while (!_stop_bg_worker) {
+        int32_t interval = config::file_descriptor_cache_clean_interval;
+        if (interval <= 0) {
+            OLAP_LOG_WARNING("config of file descriptor clean interval is illegal: [%d], "
+                             "force set to 3600", interval);
+            interval = 3600;
+        }
+        SLEEP_IN_BG_WORKER(interval);
+
         _start_clean_fd_cache();
     }
 
@@ -166,16 +179,9 @@ void* StorageEngine::_base_compaction_thread_callback(void* arg, DataDir* data_d
 #ifdef GOOGLE_PROFILER
     ProfilerRegisterThread();
 #endif
-    uint32_t interval = config::base_compaction_check_interval_seconds;
-    if (interval <= 0) {
-        OLAP_LOG_WARNING("base compaction check interval config is illegal: [%d], "
-                         "force set to 1", interval);
-        interval = 1;
-    }
-
     //string last_base_compaction_fs;
     //TTabletId last_base_compaction_tablet_id = -1;
-    while (true) {
+    while (!_stop_bg_worker) {
         // must be here, because this thread is start on start and
         // cgroup is not initialized at this time
         // add tid to cgroup
@@ -184,7 +190,13 @@ void* StorageEngine::_base_compaction_thread_callback(void* arg, DataDir* data_d
             _perform_base_compaction(data_dir);
         }
 
-        usleep(interval * 1000000);
+        int32_t interval = config::base_compaction_check_interval_seconds;
+        if (interval <= 0) {
+            OLAP_LOG_WARNING("base compaction check interval config is illegal: [%d], "
+                             "force set to 1", interval);
+            interval = 1;
+        }
+        SLEEP_IN_BG_WORKER(interval);
     }
 
     return nullptr;
@@ -210,7 +222,7 @@ void* StorageEngine::_garbage_sweeper_thread_callback(void* arg) {
     const double pi = 4 * std::atan(1);
     double usage = 1.0;
     // 程序启动后经过min_interval后触发第一轮扫描
-    while (true) {
+    while (!_stop_bg_worker) {
         usage *= 100.0;
         // 该函数特性：当磁盘使用率<60%的时候，ratio接近于1；
         // 当使用率介于[60%, 75%]之间时，ratio急速从0.87降到0.27；
@@ -222,7 +234,7 @@ void* StorageEngine::_garbage_sweeper_thread_callback(void* arg) {
         // 此时的特性，当usage<60%时，curr_interval的时间接近max_interval，
         // 当usage > 80%时，curr_interval接近min_interval
         curr_interval = curr_interval > min_interval ? curr_interval : min_interval;
-        sleep(curr_interval);
+        SLEEP_IN_BG_WORKER(curr_interval);
 
         // 开始清理，并得到清理后的磁盘使用率
         OLAPStatus res = _start_trash_sweep(&usage);
@@ -240,18 +252,16 @@ void* StorageEngine::_disk_stat_monitor_thread_callback(void* arg) {
 #ifdef GOOGLE_PROFILER
     ProfilerRegisterThread();
 #endif
-
-    uint32_t interval = config::disk_stat_monitor_interval;
-
-    if (interval <= 0) {
-        LOG(WARNING) << "disk_stat_monitor_interval config is illegal: " << interval
-                << ", force set to 1";
-        interval = 1;
-    }
-
-    while (true) {
+    while (!_stop_bg_worker) {
         _start_disk_stat_monitor();
-        sleep(interval);
+
+        int32_t interval = config::disk_stat_monitor_interval;
+        if (interval <= 0) {
+            LOG(WARNING) << "disk_stat_monitor_interval config is illegal: " << interval
+                         << ", force set to 1";
+            interval = 1;
+        }
+        SLEEP_IN_BG_WORKER(interval);
     }
 
     return nullptr;
@@ -262,14 +272,8 @@ void* StorageEngine::_cumulative_compaction_thread_callback(void* arg, DataDir* 
     ProfilerRegisterThread();
 #endif
     LOG(INFO) << "try to start cumulative compaction process!";
-    uint32_t interval = config::cumulative_compaction_check_interval_seconds;
-    if (interval <= 0) {
-        LOG(WARNING) << "cumulative compaction check interval config is illegal:" << interval
-            << "will be forced set to one";
-        interval = 1;
-    }
 
-    while (true) {
+    while (!_stop_bg_worker) {
         // must be here, because this thread is start on start and
         // cgroup is not initialized at this time
         // add tid to cgroup
@@ -277,7 +281,14 @@ void* StorageEngine::_cumulative_compaction_thread_callback(void* arg, DataDir* 
         if (!data_dir->reach_capacity_limit(0)) {
             _perform_cumulative_compaction(data_dir);
         }
-        usleep(interval * 1000000);
+
+        int32_t interval = config::cumulative_compaction_check_interval_seconds;
+        if (interval <= 0) {
+            LOG(WARNING) << "cumulative compaction check interval config is illegal:" << interval
+                         << "will be forced set to one";
+            interval = 1;
+        }
+        SLEEP_IN_BG_WORKER(interval);
     }
 
     return nullptr;
@@ -287,18 +298,86 @@ void* StorageEngine::_unused_rowset_monitor_thread_callback(void* arg) {
 #ifdef GOOGLE_PROFILER
     ProfilerRegisterThread();
 #endif
+    while (!_stop_bg_worker) {
+        start_delete_unused_rowset();
 
-    uint32_t interval = config::unused_rowset_monitor_interval;
-
-    if (interval <= 0) {
-        LOG(WARNING) << "unused_rowset_monitor_interval config is illegal: " << interval
-                << ", force set to 1";
-        interval = 1;
+        int32_t interval = config::unused_rowset_monitor_interval;
+        if (interval <= 0) {
+            LOG(WARNING) << "unused_rowset_monitor_interval config is illegal: " << interval
+                         << ", force set to 1";
+            interval = 1;
+        }
+        SLEEP_IN_BG_WORKER(interval);
     }
 
-    while (true) {
-        start_delete_unused_rowset();
-        sleep(interval);
+    return nullptr;
+}
+
+
+
+void* StorageEngine::_path_gc_thread_callback(void* arg) {
+#ifdef GOOGLE_PROFILER
+    ProfilerRegisterThread();
+#endif
+
+    LOG(INFO) << "try to start path gc thread!";
+
+    while (!_stop_bg_worker) {
+        LOG(INFO) << "try to perform path gc!";
+        // perform path gc by rowset id
+        ((DataDir*)arg)->perform_path_gc_by_rowsetid();
+
+        int32_t interval = config::path_gc_check_interval_second;
+        if (interval <= 0) {
+            LOG(WARNING) << "path gc thread check interval config is illegal:" << interval
+                         << "will be forced set to half hour";
+            interval = 1800; // 0.5 hour
+        }
+        SLEEP_IN_BG_WORKER(interval);
+    }
+
+    return nullptr;
+}
+
+void* StorageEngine::_path_scan_thread_callback(void* arg) {
+#ifdef GOOGLE_PROFILER
+    ProfilerRegisterThread();
+#endif
+
+    LOG(INFO) << "try to start path scan thread!";
+
+    while (!_stop_bg_worker) {
+        LOG(INFO) << "try to perform path scan!";
+        ((DataDir*)arg)->perform_path_scan();
+
+        int32_t interval = config::path_scan_interval_second;
+        if (interval <= 0) {
+            LOG(WARNING) << "path gc thread check interval config is illegal:" << interval
+                         << "will be forced set to one day";
+            interval = 24 * 3600; // one day
+        }
+        SLEEP_IN_BG_WORKER(interval);
+    }
+
+    return nullptr;
+}
+
+void* StorageEngine::_tablet_checkpoint_callback(void* arg) {
+#ifdef GOOGLE_PROFILER
+    ProfilerRegisterThread();
+#endif
+    LOG(INFO) << "try to start tablet meta checkpoint thread!";
+    while (!_stop_bg_worker) {
+        LOG(INFO) << "begin to do tablet meta checkpoint:" << ((DataDir*)arg)->path();
+        int64_t start_time = UnixMillis();
+        _tablet_manager->do_tablet_meta_checkpoint((DataDir*)arg);
+        int64_t used_time = (UnixMillis() - start_time) / 1000;
+        if (used_time < config::tablet_meta_checkpoint_min_interval_secs) {
+            int64_t interval = config::tablet_meta_checkpoint_min_interval_secs - used_time;
+            SLEEP_IN_BG_WORKER(interval);
+        } else {
+            sleep(1);
+        }
     }
 
     return nullptr;

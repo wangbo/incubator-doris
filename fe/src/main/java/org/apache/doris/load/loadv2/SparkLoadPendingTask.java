@@ -18,8 +18,11 @@
 package org.apache.doris.load.loadv2;
 
 import org.apache.doris.analysis.BrokerDesc;
+import org.apache.doris.analysis.Expr;
+import org.apache.doris.analysis.FunctionCallExpr;
 import org.apache.doris.analysis.ImportColumnDesc;
 import org.apache.doris.analysis.LiteralExpr;
+import org.apache.doris.catalog.AggregateType;
 import org.apache.doris.catalog.Catalog;
 import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.Database;
@@ -36,9 +39,11 @@ import org.apache.doris.catalog.RangePartitionInfo;
 import org.apache.doris.catalog.SparkEtlCluster;
 import org.apache.doris.common.LoadException;
 import org.apache.doris.common.Pair;
+import org.apache.doris.common.UserException;
 import org.apache.doris.load.BrokerFileGroup;
 import org.apache.doris.load.BrokerFileGroupAggInfo.FileGroupAggKey;
 import org.apache.doris.load.FailMsg;
+import org.apache.doris.load.Load;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlColumn;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlColumnMapping;
@@ -48,8 +53,8 @@ import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlJobProperty;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlPartition;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlPartitionInfo;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlTable;
-
 import org.apache.doris.transaction.TransactionState;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -162,7 +167,7 @@ public class SparkLoadPendingTask extends LoadTask {
 
                 // file group
                 for (BrokerFileGroup fileGroup : entry.getValue()) {
-                    etlTable.addFileGroup(createEtlFileGroup(fileGroup, tableIdToPartitionIds.get(tableId)));
+                    etlTable.addFileGroup(createEtlFileGroup(fileGroup, tableIdToPartitionIds.get(tableId), table));
                 }
             }
         } finally {
@@ -318,7 +323,7 @@ public class SparkLoadPendingTask extends LoadTask {
                 partitionColumnRefs.add(column.getName());
             }
 
-            for (Map.Entry<Long, Range<PartitionKey>> entry : rangePartitionInfo.getSortedRangeMap()) {
+            for (Map.Entry<Long, Range<PartitionKey>> entry : rangePartitionInfo.getSortedRangeMap(false)) {
                 long partitionId = entry.getKey();
                 if (!partitionIds.contains(partitionId)) {
                     continue;
@@ -388,7 +393,60 @@ public class SparkLoadPendingTask extends LoadTask {
         return new EtlPartitionInfo(type.typeString, partitionColumnRefs, distributionColumnRefs, etlPartitions);
     }
 
-    private EtlFileGroup createEtlFileGroup(BrokerFileGroup fileGroup, Set<Long> tablePartitionIds) {
+    private EtlFileGroup createEtlFileGroup(BrokerFileGroup fileGroup, Set<Long> tablePartitionIds, OlapTable table)
+            throws LoadException {
+        List<ImportColumnDesc> copiedColumnExprList = Lists.newArrayList(fileGroup.getColumnExprList());
+        Map<String, Expr> exprByName = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
+        for (ImportColumnDesc columnDesc : copiedColumnExprList) {
+            if (!columnDesc.isColumn()) {
+                exprByName.put(columnDesc.getColumnName(), columnDesc.getExpr());
+            }
+        }
+
+        // check columns
+        try {
+            Load.initColumns(table, copiedColumnExprList, fileGroup.getColumnToHadoopFunction());
+        } catch (UserException e) {
+            throw new LoadException(e.getMessage());
+        }
+        // add shadow column mapping when schema change
+        for (ImportColumnDesc columnDesc : Load.getSchemaChangeShadowColumnDesc(table, exprByName)) {
+            copiedColumnExprList.add(columnDesc);
+            exprByName.put(columnDesc.getColumnName(), columnDesc.getExpr());
+        }
+
+        // check hll and bitmap func
+        // TODO: more check
+        for (Column column : table.getBaseSchema()) {
+            String columnName = column.getName();
+            PrimitiveType columnType = column.getDataType();
+            Expr expr = exprByName.get(columnName);
+            if (columnType == PrimitiveType.HLL) {
+                checkHllMapping(columnName, expr);
+            }
+            if (columnType == PrimitiveType.BITMAP) {
+                checkBitmapMapping(columnName, expr);
+            }
+        }
+
+        // check negative for sum aggregate type
+        if (fileGroup.isNegative()) {
+            for (Column column : table.getBaseSchema()) {
+                if (!column.isKey() && column.getAggregationType() != AggregateType.SUM) {
+                    throw new LoadException("Column is not SUM AggreateType. column:" + column.getName());
+                }
+            }
+        }
+
+        // fill file field names if empty
+        List<String> fileFieldNames = fileGroup.getFileFieldNames();
+        if (fileFieldNames == null || fileFieldNames.isEmpty()) {
+            fileFieldNames = Lists.newArrayList();
+            for (Column column : table.getBaseSchema()) {
+                fileFieldNames.add(column.getName());
+            }
+        }
+
         // column mappings
         Map<String, Pair<String, List<String>>> columnToHadoopFunction = fileGroup.getColumnToHadoopFunction();
         Map<String, EtlColumnMapping> columnMappings = Maps.newHashMap();
@@ -398,7 +456,7 @@ public class SparkLoadPendingTask extends LoadTask {
                                    new EtlColumnMapping(entry.getValue().first, entry.getValue().second));
             }
         }
-        for (ImportColumnDesc columnDesc : fileGroup.getColumnExprList()) {
+        for (ImportColumnDesc columnDesc : copiedColumnExprList) {
             if (columnDesc.isColumn() || columnMappings.containsKey(columnDesc.getColumnName())) {
                 continue;
             }
@@ -413,19 +471,54 @@ public class SparkLoadPendingTask extends LoadTask {
         }
 
         // where
+        // TODO: check
         String where = "";
         if (fileGroup.getWhereExpr() != null) {
             where = fileGroup.getWhereExpr().toSql();
         }
-        EtlFileGroup etlFileGroup = new EtlFileGroup(fileGroup.getFilePaths(), fileGroup.getFileFieldNames(),
+
+        EtlFileGroup etlFileGroup = new EtlFileGroup(fileGroup.getFilePaths(), fileFieldNames,
                                                      fileGroup.getColumnsFromPath(), fileGroup.getValueSeparator(),
                                                      fileGroup.getLineDelimiter(), fileGroup.isNegative(),
                                                      fileGroup.getFileFormat(), columnMappings,
                                                      where, partitionIds);
-
         // set hive table
         etlFileGroup.hiveTableName = ((SparkLoadJob) callback).getHiveTableName();
-
         return etlFileGroup;
+    }
+
+    private void checkHllMapping(String columnName, Expr expr) throws LoadException {
+        if (expr == null) {
+            throw new LoadException("HLL column func is not assigned. column:" + columnName);
+        }
+
+        String msg = "HLL column must use hll function, like " + columnName + "=hll_hash(xxx) or "
+                + columnName + "=hll_empty()";
+        if (!(expr instanceof FunctionCallExpr)) {
+            throw new LoadException(msg);
+        }
+        FunctionCallExpr fn = (FunctionCallExpr) expr;
+        if (!fn.getFnName().getFunction().equalsIgnoreCase("hll_hash")
+                && !fn.getFnName().getFunction().equalsIgnoreCase("hll_empty")) {
+            throw new LoadException(msg);
+        }
+    }
+
+    private void checkBitmapMapping(String columnName, Expr expr) throws LoadException {
+        if (expr == null) {
+            throw new LoadException("BITMAP column func is not assigned. column:" + columnName);
+        }
+
+        String msg = "BITMAP column must use bitmap function, like " + columnName + "=to_bitmap(xxx) or "
+                + columnName + "=bitmap_hash() or " + columnName + "=bitmap_dict()";
+        if (!(expr instanceof FunctionCallExpr)) {
+            throw new LoadException(msg);
+        }
+        FunctionCallExpr fn = (FunctionCallExpr) expr;
+        if (!fn.getFnName().getFunction().equalsIgnoreCase("to_bitmap")
+                && !fn.getFnName().getFunction().equalsIgnoreCase("bitmap_hash")
+                && !fn.getFnName().getFunction().equalsIgnoreCase("bitmap_dict")) {
+            throw new LoadException(msg);
+        }
     }
 }

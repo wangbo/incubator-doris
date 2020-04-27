@@ -163,13 +163,7 @@ public class PartitionKey implements Comparable<PartitionKey>, Writable {
                 return ret;
             }
         }
-        if (this_key_len < other_key_len) {
-            return -1;
-        } else if (this_key_len > other_key_len) {
-            return 1;
-        } else {
-            return 0;
-        }
+        return Integer.compare(this_key_len, other_key_len);
     }
 
     // return: ("100", "200", "300")
@@ -333,8 +327,8 @@ public class PartitionKey implements Comparable<PartitionKey>, Writable {
     @Override
     public int hashCode() {
         int ret = types.size() * 1000;
-        for (int i = 0; i < types.size(); i++) {
-            ret += types.get(i).ordinal();
+        for (PrimitiveType type : types) {
+            ret += type.ordinal();
         }
         return ret;
     }

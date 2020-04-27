@@ -17,36 +17,17 @@
 
 #include "exec/except_node.h"
 
+#include "exec/hash_table.hpp"
 #include "exprs/expr.h"
+#include "runtime/row_batch.h"
+#include "runtime/runtime_state.h"
 
 namespace doris {
-// TODO(yangzhengguo) implememt this class
-ExceptNode::ExceptNode(ObjectPool* pool, const TPlanNode& tnode,
-    const DescriptorTbl& descs)
-    : ExecNode(pool, tnode, descs),
-      _tuple_id(tnode.except_node.tuple_id),
-      _tuple_desc(nullptr),
-      _first_materialized_child_idx(tnode.except_node.first_materialized_child_idx),
-      _child_idx(0),
-      _child_batch(nullptr),
-      _child_row_idx(0),
-      _child_eos(false),
-      _const_expr_list_idx(0),
-      _to_close_child_idx(-1) {
-}
+ExceptNode::ExceptNode(ObjectPool* pool, const TPlanNode& tnode, const DescriptorTbl& descs)
+        : SetOperationNode(pool, tnode, descs, tnode.except_node.tuple_id) {}
 
 Status ExceptNode::init(const TPlanNode& tnode, RuntimeState* state) {
-    // RETURN_IF_ERROR(ExecNode::init(tnode, state));
-    RETURN_IF_ERROR(ExecNode::init(tnode, state));
-    DCHECK(tnode.__isset.except_node);
-    DCHECK_EQ(_conjunct_ctxs.size(), 0);
-    // Create const_expr_ctx_lists_ from thrift exprs.
-    auto& const_texpr_lists = tnode.except_node.const_expr_lists;
-    for (auto& texprs : const_texpr_lists) {
-        std::vector<ExprContext*> ctxs;
-        RETURN_IF_ERROR(Expr::create_expr_trees(_pool, texprs, &ctxs));
-        _const_expr_lists.push_back(ctxs);
-    }
+    RETURN_IF_ERROR(SetOperationNode::init(tnode, state));
     // Create result_expr_ctx_lists_ from thrift exprs.
     auto& result_texpr_lists = tnode.except_node.result_expr_lists;
     for (auto& texprs : result_texpr_lists) {
@@ -56,4 +37,100 @@ Status ExceptNode::init(const TPlanNode& tnode, RuntimeState* state) {
     }
     return Status::OK();
 }
+
+Status ExceptNode::open(RuntimeState* state) {
+    RETURN_IF_ERROR(SetOperationNode::open(state));
+    // if a table is empty, the result must be empty
+
+    if (_hash_tbl->size() == 0) {
+        _hash_tbl_iterator = _hash_tbl->begin();
+        return Status::OK();
+    }
+    bool eos = false;
+
+    for (int i = 1; i < _children.size(); ++i) {
+        // rebuid hash table, for first time will rebuild with the no duplicated _hash_tbl,
+        if (i > 1) {
+            SCOPED_TIMER(_build_timer);
+            std::unique_ptr<HashTable> temp_tbl(
+                    new HashTable(_child_expr_lists[0], _child_expr_lists[i], _build_tuple_size,
+                                  true, _find_nulls, id(), mem_tracker(), 1024));
+            _hash_tbl_iterator = _hash_tbl->begin();
+            uint32_t previous_hash = -1;
+            while (_hash_tbl_iterator.has_next()) {
+                if (previous_hash != _hash_tbl_iterator.get_hash()) {
+                    previous_hash = _hash_tbl_iterator.get_hash();
+                    if (!_hash_tbl_iterator.matched()) {
+                        VLOG_ROW << "rebuild row: "
+                                 << get_row_output_string(_hash_tbl_iterator.get_row(),
+                                                          child(0)->row_desc());
+                        temp_tbl->insert(_hash_tbl_iterator.get_row());
+                    }
+                }
+                _hash_tbl_iterator.next<false>();
+            }
+            _hash_tbl.swap(temp_tbl);
+            temp_tbl->close();
+        }
+        // probe
+        _probe_batch.reset(new RowBatch(child(i)->row_desc(), state->batch_size(), mem_tracker()));
+        ScopedTimer<MonotonicStopWatch> probe_timer(_probe_timer);
+        RETURN_IF_ERROR(child(i)->open(state));
+        eos = false;
+        while (!eos) {
+            RETURN_IF_CANCELLED(state);
+            RETURN_IF_ERROR(child(i)->get_next(state, _probe_batch.get(), &eos));
+            RETURN_IF_LIMIT_EXCEEDED(state, " Except , while probing the hash table.");
+            for (int j = 0; j < _probe_batch->num_rows(); ++j) {
+                VLOG_ROW << "probe row: "
+                         << get_row_output_string(_probe_batch->get_row(j), child(i)->row_desc());
+                _hash_tbl_iterator = _hash_tbl->find(_probe_batch->get_row(j));
+                if (_hash_tbl_iterator != _hash_tbl->end()) {
+                    _hash_tbl_iterator.set_matched();
+                    VLOG_ROW << "probe matched: "
+                             << get_row_output_string(_hash_tbl_iterator.get_row(), child(0)->row_desc());
+                }
+            }
+            _probe_batch->reset();
+        }
+        // if a table is empty, the result must be empty
+        if (_hash_tbl->size() == 0) {
+            break;
+        }
+    }
+    _hash_tbl_iterator = _hash_tbl->begin();
+    return Status::OK();
 }
+
+Status ExceptNode::get_next(RuntimeState* state, RowBatch* out_batch, bool* eos) {
+    RETURN_IF_ERROR(exec_debug_action(TExecNodePhase::GETNEXT));
+    RETURN_IF_CANCELLED(state);
+    SCOPED_TIMER(_runtime_profile->total_time_counter());
+    *eos = true;
+    if (reached_limit()) {
+        return Status::OK();
+    }
+    int64_t tuple_buf_size;
+    uint8_t* tuple_buf;
+    RETURN_IF_ERROR(
+            out_batch->resize_and_allocate_tuple_buffer(state, &tuple_buf_size, &tuple_buf));
+    memset(tuple_buf, 0, tuple_buf_size);
+    while (_hash_tbl_iterator.has_next()) {
+        VLOG_ROW << "find row: "
+                 << get_row_output_string(_hash_tbl_iterator.get_row(), child(0)->row_desc())
+                 << " matched: " << _hash_tbl_iterator.matched();
+        if (!_hash_tbl_iterator.matched()) {
+            create_output_row(_hash_tbl_iterator.get_row(), out_batch, tuple_buf);
+            tuple_buf += _tuple_desc->byte_size();
+            ++_num_rows_returned;
+        }
+        _hash_tbl_iterator.next<false>();
+        *eos = !_hash_tbl_iterator.has_next() || reached_limit();
+        if (out_batch->is_full() || out_batch->at_resource_limit() || *eos) {
+            return Status::OK();
+        }
+    }
+    return Status::OK();
+}
+
+} // namespace doris

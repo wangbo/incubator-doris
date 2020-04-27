@@ -17,12 +17,16 @@
 
 package org.apache.doris.catalog;
 
-import com.google.gson.annotations.SerializedName;
+import org.apache.doris.common.FeConstants;
 import org.apache.doris.common.io.Text;
 import org.apache.doris.common.io.Writable;
 import org.apache.doris.common.util.PropertyAnalyzer;
 import org.apache.doris.persist.OperationType;
 import org.apache.doris.persist.gson.GsonUtils;
+import org.apache.doris.thrift.TStorageFormat;
+
+import com.google.common.collect.Maps;
+import com.google.gson.annotations.SerializedName;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -41,16 +45,24 @@ public class TableProperty implements Writable {
     @SerializedName(value = "properties")
     private Map<String, String> properties;
 
-    private DynamicPartitionProperty dynamicPartitionProperty;
-
-    private Short replicationNum;
+    private DynamicPartitionProperty dynamicPartitionProperty = new DynamicPartitionProperty(Maps.newHashMap());
+    // table's default replication num
+    private Short replicationNum = FeConstants.default_replication_num;
 
     private boolean isInMemory = false;
 
+    /*
+     * the default storage format of this table.
+     * DEFAULT: depends on BE's config 'default_rowset_type'
+     * V1: alpha rowset
+     * V2: beta rowset
+     * 
+     * This property should be set when creating the table, and can only be changed to V2 using Alter Table stmt.
+     */
+    private TStorageFormat storageFormat = TStorageFormat.DEFAULT;
+
     public TableProperty(Map<String, String> properties) {
         this.properties = properties;
-        dynamicPartitionProperty = null;
-        replicationNum = null;
     }
 
     public static boolean isSamePrefixProperties(Map<String, String> properties, String prefix) {
@@ -90,9 +102,8 @@ public class TableProperty implements Writable {
     }
 
     public TableProperty buildReplicationNum() {
-        if (properties.containsKey(PropertyAnalyzer.PROPERTIES_REPLICATION_NUM)) {
-            replicationNum = Short.valueOf(properties.get(PropertyAnalyzer.PROPERTIES_REPLICATION_NUM));
-        }
+        replicationNum = Short.parseShort(properties.getOrDefault(PropertyAnalyzer.PROPERTIES_REPLICATION_NUM,
+                String.valueOf(FeConstants.default_replication_num)));
         return this;
     }
 
@@ -101,11 +112,17 @@ public class TableProperty implements Writable {
         return this;
     }
 
-    void modifyTableProperties(Map<String, String> modifyProperties) {
+    public TableProperty buildStorageFormat() {
+        storageFormat = TStorageFormat.valueOf(properties.getOrDefault(PropertyAnalyzer.PROPERTIES_STORAGE_FORMAT,
+                TStorageFormat.DEFAULT.name()));
+        return this;
+    }
+
+    public void modifyTableProperties(Map<String, String> modifyProperties) {
         properties.putAll(modifyProperties);
     }
 
-    void modifyTableProperties(String key, String value) {
+    public void modifyTableProperties(String key, String value) {
         properties.put(key, value);
     }
 
@@ -125,6 +142,10 @@ public class TableProperty implements Writable {
         return isInMemory;
     }
 
+    public TStorageFormat getStorageFormat() {
+        return storageFormat;
+    }
+
     @Override
     public void write(DataOutput out) throws IOException {
         Text.writeString(out, GsonUtils.GSON.toJson(this));
@@ -134,6 +155,7 @@ public class TableProperty implements Writable {
         return GsonUtils.GSON.fromJson(Text.readString(in), TableProperty.class)
                 .buildDynamicProperty()
                 .buildReplicationNum()
-                .buildInMemory();
+                .buildInMemory()
+                .buildStorageFormat();
     }
 }

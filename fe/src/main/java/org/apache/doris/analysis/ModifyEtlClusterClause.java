@@ -19,6 +19,7 @@ package org.apache.doris.analysis;
 
 import com.google.common.base.Strings;
 import org.apache.commons.lang.NotImplementedException;
+import org.apache.doris.alter.AlterOpType;
 import org.apache.doris.catalog.EtlCluster.EtlClusterType;
 import org.apache.doris.common.AnalysisException;
 
@@ -53,6 +54,7 @@ public class ModifyEtlClusterClause extends AlterClause {
 
     // add cluster
     public ModifyEtlClusterClause(ModifyOp op, String clusterName, Map<String, String> properties) {
+        super(AlterOpType.ALTER_OTHER);
         this.op = op;
         this.clusterName = clusterName;
         this.properties = properties;

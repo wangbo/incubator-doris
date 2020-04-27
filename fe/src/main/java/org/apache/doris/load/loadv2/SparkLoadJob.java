@@ -19,6 +19,7 @@ package org.apache.doris.load.loadv2;
 
 import org.apache.doris.analysis.Analyzer;
 import org.apache.doris.analysis.BrokerDesc;
+import org.apache.doris.analysis.CastExpr;
 import org.apache.doris.analysis.DescriptorTable;
 import org.apache.doris.analysis.EtlClusterDesc;
 import org.apache.doris.analysis.Expr;
@@ -39,6 +40,7 @@ import org.apache.doris.catalog.Replica;
 import org.apache.doris.catalog.ScalarType;
 import org.apache.doris.catalog.SparkEtlCluster;
 import org.apache.doris.catalog.Tablet;
+import org.apache.doris.catalog.Type;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.Config;
 import org.apache.doris.common.DdlException;
@@ -58,6 +60,7 @@ import org.apache.doris.load.loadv2.dpp.DppResult;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig;
 import org.apache.doris.planner.PlanNodeId;
 import org.apache.doris.planner.ScanNode;
+import org.apache.doris.qe.OriginStatement;
 import org.apache.doris.service.FrontendOptions;
 import org.apache.doris.system.Backend;
 import org.apache.doris.task.AgentBatchTask;
@@ -80,6 +83,8 @@ import org.apache.doris.transaction.BeginTransactionException;
 import org.apache.doris.transaction.TabletCommitInfo;
 import org.apache.doris.transaction.TabletQuorumFailedException;
 import org.apache.doris.transaction.TransactionState.LoadJobSourceType;
+import org.apache.doris.transaction.TransactionState.TxnCoordinator;
+import org.apache.doris.transaction.TransactionState.TxnSourceType;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -219,7 +224,13 @@ public class SparkLoadJob extends BulkLoadJob {
                 SlotDescriptor srcSlotDesc = srcSlotDescByName.get(destSlotDesc.getColumn().getName());
                 destSidToSrcSidWithoutTrans.put(destSlotDesc.getId().asInt(), srcSlotDesc.getId().asInt());
                 Expr expr = new SlotRef(srcSlotDesc);
-                expr = castToSlot(destSlotDesc, expr);
+                if (destSlotDesc.getType().getPrimitiveType() == PrimitiveType.BOOLEAN) {
+                    // there is no cast string to boolean function
+                    // so we cast string to tinyint first, then cast tinyint to boolean
+                    expr = new CastExpr(Type.BOOLEAN, new CastExpr(Type.TINYINT, expr));
+                } else {
+                    expr = castToSlot(destSlotDesc, expr);
+                }
                 params.putToExpr_of_dest_slot(destSlotDesc.getId().asInt(), expr.treeToThrift());
             }
             params.setDest_sid_to_src_sid_without_trans(destSidToSrcSidWithoutTrans);
@@ -260,7 +271,7 @@ public class SparkLoadJob extends BulkLoadJob {
         jobType = EtlJobType.SPARK;
     }
 
-    public SparkLoadJob(long dbId, String label, EtlClusterDesc etlClusterDesc, String originStmt)
+    public SparkLoadJob(long dbId, String label, EtlClusterDesc etlClusterDesc, OriginStatement originStmt)
             throws MetaNotFoundException {
         super(dbId, label, originStmt);
         this.etlClusterDesc = etlClusterDesc;
@@ -317,8 +328,9 @@ public class SparkLoadJob extends BulkLoadJob {
     public void beginTxn()
             throws LabelAlreadyUsedException, BeginTransactionException, AnalysisException, DuplicatedRequestException {
        transactionId = Catalog.getCurrentGlobalTransactionMgr()
-               .beginTransaction(dbId, label, null, "FE: " + FrontendOptions.getLocalHostAddress(),
-                                 LoadJobSourceType.FRONTEND, id, timeoutSecond);
+                .beginTransaction(dbId, Lists.newArrayList(fileGroupAggInfo.getAllTableIds()), label, null,
+                                  new TxnCoordinator(TxnSourceType.FE, FrontendOptions.getLocalHostAddress()),
+                                  LoadJobSourceType.FRONTEND, id, timeoutSecond);
     }
 
     @Override

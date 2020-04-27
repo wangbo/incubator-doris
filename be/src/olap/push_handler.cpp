@@ -967,6 +967,7 @@ OLAPStatus PushBrokerReader::init(const TabletSharedPtr tablet,
     _scanner.reset(scan); 
     Status status = _scanner->open();
     if (UNLIKELY(!status.ok())) {
+        LOG(WARNING) << "Failed to open scanner, msg: " << status.get_error_msg();
         return OLAP_ERR_PUSH_INIT_ERROR;
     }
 
@@ -975,7 +976,7 @@ OLAPStatus PushBrokerReader::init(const TabletSharedPtr tablet,
     _tuple_desc = _runtime_state->desc_tbl().get_tuple_descriptor(_tuple_id);
     if (_tuple_desc == nullptr) {
         std::stringstream ss;
-        LOG(WARNING) << "Failed to get tuple descriptor, _tuple_id=" << _tuple_id;
+        LOG(WARNING) << "Failed to get tuple descriptor, _tuple_id: " << _tuple_id;
         return OLAP_ERR_PUSH_INIT_ERROR;
     }
 

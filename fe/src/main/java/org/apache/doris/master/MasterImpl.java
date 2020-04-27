@@ -48,6 +48,7 @@ import org.apache.doris.task.ClearAlterTask;
 import org.apache.doris.task.CloneTask;
 import org.apache.doris.task.CreateReplicaTask;
 import org.apache.doris.task.CreateRollupTask;
+import org.apache.doris.load.DeleteJob;
 import org.apache.doris.task.DirMoveTask;
 import org.apache.doris.task.DownloadTask;
 import org.apache.doris.task.PublishVersionTask;
@@ -86,7 +87,7 @@ public class MasterImpl {
         reportHandler.start();
     }
     
-    public TMasterResult finishTask(TFinishTaskRequest request) throws TException {
+    public TMasterResult finishTask(TFinishTaskRequest request) {
         TMasterResult result = new TMasterResult();
         TStatus tStatus = new TStatus(TStatusCode.OK);
         result.setStatus(tStatus);
@@ -105,7 +106,7 @@ public class MasterImpl {
         Backend backend = Catalog.getCurrentSystemInfo().getBackendWithBePort(host, bePort);
         if (backend == null) {
             tStatus.setStatus_code(TStatusCode.CANCELLED);
-            List<String> errorMsgs = new ArrayList<String>();
+            List<String> errorMsgs = new ArrayList<>();
             errorMsgs.add("backend not exist.");
             tStatus.setError_msgs(errorMsgs);
             LOG.warn("backend does not found. host: {}, be port: {}. task: {}", host, bePort, request.toString());
@@ -146,7 +147,7 @@ public class MasterImpl {
         }
  
         try {
-            List<TTabletInfo> finishTabletInfos = null;
+            List<TTabletInfo> finishTabletInfos;
             switch (taskType) {
                 case CREATE:
                     Preconditions.checkState(request.isSetReport_version());
@@ -289,6 +290,7 @@ public class MasterImpl {
         long dbId = pushTask.getDbId();
         long backendId = pushTask.getBackendId();
         long signature = task.getSignature();
+        long transactionId = ((PushTask) task).getTransactionId();
         Database db = Catalog.getInstance().getDb(dbId);
         if (db == null) {
             AgentTaskQueue.removeTask(backendId, TTaskType.REALTIME_PUSH, signature);
@@ -346,23 +348,8 @@ public class MasterImpl {
                                                                        task.getDbId());
             // handle load job
             // TODO yiguolei: why delete should check request version and task version?
-            long loadJobId = pushTask.getLoadJobId();
-            if (pushTask.getPushType() == TPushType.LOAD_V2) {
-                org.apache.doris.load.loadv2.LoadJob job = Catalog.getCurrentCatalog().getLoadManager().getLoadJob(loadJobId);
-                if (job == null) {
-                    throw new MetaNotFoundException("cannot find load job, job[" + loadJobId + "]");
-                }
-                for (TTabletInfo tTabletInfo : finishTabletInfos) {
-                    checkReplica(olapTable, partition, backendId, pushIndexId, pushTabletId,
-                                 tTabletInfo, pushState);
-                    Replica replica = findRelatedReplica(olapTable, partition,
-                                                         backendId, tTabletInfo);
-                    // if the replica is under schema change, could not find the replica with aim schema hash
-                    if (replica != null) {
-                        ((SparkLoadJob) job).addFinishedReplica(replica.getId(), pushTabletId, backendId);
-                    }
-                }
-            } else {
+            if (pushTask.getPushType() == TPushType.LOAD || pushTask.getPushType() == TPushType.LOAD_DELETE) {
+                long loadJobId = pushTask.getLoadJobId();
                 LoadJob job = Catalog.getInstance().getLoadInstance().getLoadJob(loadJobId);
                 if (job == null) {
                     throw new MetaNotFoundException("cannot find load job, job[" + loadJobId + "]");
@@ -377,6 +364,35 @@ public class MasterImpl {
                         job.addFinishedReplica(replica);
                     }
                 }
+            } else if (pushTask.getPushType() == TPushType.DELETE) {
+                DeleteJob deleteJob = Catalog.getInstance().getDeleteHandler().getDeleteJob(transactionId);
+                if (deleteJob == null) {
+                    throw new MetaNotFoundException("cannot find delete job, job[" + transactionId + "]");
+                }
+                for (TTabletInfo tTabletInfo : finishTabletInfos) {
+                    Replica replica = findRelatedReplica(olapTable, partition,
+                            backendId, tTabletInfo);
+                    if (replica != null) {
+                        deleteJob.addFinishedReplica(pushTabletId, replica);
+                        pushTask.countDownLatch(backendId, pushTabletId);
+                    }
+                }
+            } else if (pushTask.getPushType() == TPushType.LOAD_V2) {
+                long loadJobId = pushTask.getLoadJobId();
+                org.apache.doris.load.loadv2.LoadJob job = Catalog.getCurrentCatalog().getLoadManager().getLoadJob(loadJobId);
+                if (job == null) {
+                    throw new MetaNotFoundException("cannot find load job, job[" + loadJobId + "]");
+                }
+                for (TTabletInfo tTabletInfo : finishTabletInfos) {
+                    checkReplica(olapTable, partition, backendId, pushIndexId, pushTabletId,
+                                 tTabletInfo, pushState);
+                    Replica replica = findRelatedReplica(olapTable, partition,
+                                                         backendId, tTabletInfo);
+                    // if the replica is under schema change, could not find the replica with aim schema hash
+                    if (replica != null) {
+                        ((SparkLoadJob) job).addFinishedReplica(replica.getId(), pushTabletId, backendId);
+                    }
+                }  
             }
             
             AgentTaskQueue.removeTask(backendId, TTaskType.REALTIME_PUSH, signature);

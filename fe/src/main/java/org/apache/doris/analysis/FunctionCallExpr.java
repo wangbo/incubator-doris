@@ -249,6 +249,23 @@ public class FunctionCallExpr extends Expr {
         return false;
     }
 
+    public boolean isCountDistinctBitmapOrHLL() {
+        if (!fnParams.isDistinct()) {
+            return false;
+        }
+
+        if (!fnName.getFunction().equalsIgnoreCase("count")) {
+            return false;
+        }
+
+        if (children.size() != 1) {
+            return false;
+        }
+
+        Type type = getChild(0).getType();
+        return type.isBitmapType() || type.isHllType();
+    }
+
     @Override
     protected void toThrift(TExprNode msg) {
         // TODO: we never serialize this to thrift if it's an aggregate function
@@ -541,7 +558,8 @@ public class FunctionCallExpr extends Expr {
             // find user defined functions
             if (fn == null) {
                 if (!analyzer.isUDFAllowed()) {
-                    throw new AnalysisException("Does not support non-builtin functions: " + fnName);
+                    throw new AnalysisException(
+                            "Does not support non-builtin functions, or function does not exist: " + this.toSqlImpl());
                 }
 
                 String dbName = fnName.analyzeDb(analyzer);
@@ -562,7 +580,7 @@ public class FunctionCallExpr extends Expr {
         }
 
         if (fn == null) {
-            LOG.warn("fn {} not exists", fnName.getFunction());
+            LOG.warn("fn {} not exists", this.toSqlImpl());
             throw new AnalysisException(getFunctionNotFoundError(collectChildReturnTypes()));
         }
 

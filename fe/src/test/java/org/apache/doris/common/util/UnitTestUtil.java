@@ -108,15 +108,15 @@ public class UnitTestUtil {
 
         // table
         PartitionInfo partitionInfo = new SinglePartitionInfo();
-        partitionInfo.setDataProperty(partitionId, DataProperty.DEFAULT_HDD_DATA_PROPERTY);
+        partitionInfo.setDataProperty(partitionId, DataProperty.DEFAULT_DATA_PROPERTY);
         partitionInfo.setReplicationNum(partitionId, (short) 3);
         partitionInfo.setIsInMemory(partitionId, false);
         OlapTable table = new OlapTable(tableId, TABLE_NAME, columns,
                                         KeysType.AGG_KEYS, partitionInfo, distributionInfo);
         Deencapsulation.setField(table, "baseIndexId", indexId);
         table.addPartition(partition);
-        table.setIndexSchemaInfo(indexId, TABLE_NAME, columns, 0, SCHEMA_HASH, (short) 1);
-        table.setStorageTypeToIndex(indexId, TStorageType.COLUMN);
+        table.setIndexMeta(indexId, TABLE_NAME, columns, 0, SCHEMA_HASH, (short) 1, TStorageType.COLUMN,
+                KeysType.AGG_KEYS);
 
         // db
         Database db = new Database(dbId, DB_NAME);

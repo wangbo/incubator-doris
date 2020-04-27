@@ -21,11 +21,10 @@ import com.google.common.collect.Sets;
 import org.apache.commons.lang3.tuple.ImmutableTriple;
 import org.apache.commons.lang3.tuple.Triple;
 import org.apache.doris.catalog.Catalog;
-import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.Database;
-import org.apache.doris.catalog.KeysType;
 import org.apache.doris.catalog.MaterializedIndex;
 import org.apache.doris.catalog.MaterializedIndex.IndexState;
+import org.apache.doris.catalog.MaterializedIndexMeta;
 import org.apache.doris.catalog.OlapTable;
 import org.apache.doris.catalog.Partition;
 import org.apache.doris.catalog.Replica;
@@ -95,10 +94,8 @@ public class ReportHandler extends Daemon {
 
     private BlockingQueue<ReportTask> reportQueue = Queues.newLinkedBlockingQueue();
 
-    private GaugeMetric<Long> gaugeQueueSize;
-
     public ReportHandler() {
-        gaugeQueueSize = (GaugeMetric<Long>) new GaugeMetric<Long>(
+        GaugeMetric<Long> gaugeQueueSize = new GaugeMetric<Long>(
                 "report_queue_size", "report queue size") {
             @Override
             public Long getValue() {
@@ -566,18 +563,15 @@ public class ReportHandler extends Daemon {
                                     LOG.warn("tablet {} has only one replica {} on backend {}"
                                             + "and it is lost. create an empty replica to recover it",
                                             tabletId, replica.getId(), backendId);
-                                    short shortKeyColumnCount = olapTable.getShortKeyColumnCountByIndexId(indexId);
-                                    int schemaHash = olapTable.getSchemaHashByIndexId(indexId);
-                                    KeysType keysType = olapTable.getKeysType();
-                                    List<Column> columns = olapTable.getSchemaByIndexId(indexId);
+                                    MaterializedIndexMeta indexMeta = olapTable.getIndexMetaByIndexId(indexId);
                                     Set<String> bfColumns = olapTable.getCopiedBfColumns();
                                     double bfFpp = olapTable.getBfFpp();
                                     CreateReplicaTask createReplicaTask = new CreateReplicaTask(backendId, dbId,
-                                            tableId, partitionId, indexId, tabletId, shortKeyColumnCount,
-                                            schemaHash, partition.getVisibleVersion(),
-                                            partition.getVisibleVersionHash(), keysType,
+                                            tableId, partitionId, indexId, tabletId, indexMeta.getShortKeyColumnCount(),
+                                            indexMeta.getSchemaHash(), partition.getVisibleVersion(),
+                                            partition.getVisibleVersionHash(), indexMeta.getKeysType(),
                                             TStorageType.COLUMN,
-                                            TStorageMedium.HDD, columns, bfColumns, bfFpp, null,
+                                            TStorageMedium.HDD, indexMeta.getSchema(), bfColumns, bfFpp, null,
                                             olapTable.getCopiedIndexes(),
                                             olapTable.isInMemory());
                                     createReplicaBatchTask.addTask(createReplicaTask);

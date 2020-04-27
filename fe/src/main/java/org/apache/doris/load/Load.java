@@ -35,6 +35,7 @@ import org.apache.doris.analysis.LabelName;
 import org.apache.doris.analysis.LiteralExpr;
 import org.apache.doris.analysis.LoadStmt;
 import org.apache.doris.analysis.NullLiteral;
+import org.apache.doris.analysis.PartitionNames;
 import org.apache.doris.analysis.Predicate;
 import org.apache.doris.analysis.SlotDescriptor;
 import org.apache.doris.analysis.SlotRef;
@@ -98,8 +99,10 @@ import org.apache.doris.thrift.TPriority;
 import org.apache.doris.transaction.PartitionCommitInfo;
 import org.apache.doris.transaction.TableCommitInfo;
 import org.apache.doris.transaction.TransactionState;
-import org.apache.doris.transaction.TransactionState.LoadJobSourceType;
 import org.apache.doris.transaction.TransactionStatus;
+import org.apache.doris.transaction.TransactionState.LoadJobSourceType;
+import org.apache.doris.transaction.TransactionState.TxnSourceType;
+import org.apache.doris.transaction.TransactionState.TxnCoordinator;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
@@ -309,8 +312,8 @@ public class Load {
             formatType = params.get(LoadStmt.KEY_IN_PARAM_FORMAT_TYPE);
         }
 
-        DataDescription dataDescription = new DataDescription(tableName, partitionNames, filePaths,
-                columnNames, columnSeparator, formatType, false, null);
+        DataDescription dataDescription = new DataDescription(tableName, new PartitionNames(false, partitionNames),
+                filePaths, columnNames, columnSeparator, formatType, false, null);
         dataDescription.setLineDelimiter(lineDelimiter);
         dataDescription.setBeAddr(beAddr);
         // parse hll param pair
@@ -380,7 +383,7 @@ public class Load {
         // for original job, check quota
         // for delete job, not check
         if (!job.isSyncDeleteJob()) {
-            db.checkQuota();
+            db.checkDataSizeQuota();
         }
 
         // check if table is in restore process
@@ -633,7 +636,6 @@ public class Load {
 
             // check partition
             if (dataDescription.getPartitionNames() != null &&
-                    !dataDescription.getPartitionNames().isEmpty() &&
                     ((OlapTable) table).getPartitionInfo().getType() == PartitionType.UNPARTITIONED) {
                 ErrorReport.reportDdlException(ErrorCode.ERR_PARTITION_CLAUSE_NO_ALLOWED);
             }
@@ -802,19 +804,19 @@ public class Load {
 
             // partitions of this source
             OlapTable olapTable = (OlapTable) table;
-            List<String> partitionNames = dataDescription.getPartitionNames();
-            if (partitionNames == null || partitionNames.isEmpty()) {
-                partitionNames = new ArrayList<String>();
+            PartitionNames partitionNames = dataDescription.getPartitionNames();
+            if (partitionNames == null) {
                 for (Partition partition : olapTable.getPartitions()) {
-                    partitionNames.add(partition.getName());
+                    sourcePartitionIds.add(partition.getId());
                 }
-            }
-            for (String partitionName : partitionNames) {
-                Partition partition = olapTable.getPartition(partitionName);
-                if (partition == null) {
-                    throw new DdlException("Partition [" + partitionName + "] does not exist");
+            } else {
+                for (String partitionName : partitionNames.getPartitionNames()) {
+                    Partition partition = olapTable.getPartition(partitionName, partitionNames.isTemp());
+                    if (partition == null) {
+                        throw new DdlException("Partition [" + partitionName + "] does not exist");
+                    }
+                    sourcePartitionIds.add(partition.getId());
                 }
-                sourcePartitionIds.add(partition.getId());
             }
         } finally {
             db.readUnlock();
@@ -860,14 +862,67 @@ public class Load {
         }
     }
 
+    /**
+     * When doing schema change, there may have some 'shadow' columns, with prefix '__doris_shadow_' in
+     * their names. These columns are invisible to user, but we need to generate data for these columns.
+     * So we add column mappings for these column.
+     * eg1:
+     * base schema is (A, B, C), and B is under schema change, so there will be a shadow column: '__doris_shadow_B'
+     * So the final column mapping should looks like: (A, B, C, __doris_shadow_B = substitute(B));
+     */
+    public static List<ImportColumnDesc> getSchemaChangeShadowColumnDesc(Table tbl, Map<String, Expr> columnExprMap) {
+        List<ImportColumnDesc> shadowColumnDescs = Lists.newArrayList();
+        for (Column column : tbl.getFullSchema()) {
+            if (!column.isNameWithPrefix(SchemaChangeHandler.SHADOW_NAME_PRFIX)) {
+                continue;
+            }
+
+            String originCol = column.getNameWithoutPrefix(SchemaChangeHandler.SHADOW_NAME_PRFIX);
+            if (columnExprMap.containsKey(originCol)) {
+                Expr mappingExpr = columnExprMap.get(originCol);
+                if (mappingExpr != null) {
+                    /*
+                     * eg:
+                     * (A, C) SET (B = func(xx))
+                     * ->
+                     * (A, C) SET (B = func(xx), __doris_shadow_B = func(xx))
+                     */
+                    ImportColumnDesc importColumnDesc = new ImportColumnDesc(column.getName(), mappingExpr);
+                    shadowColumnDescs.add(importColumnDesc);
+                } else {
+                    /*
+                     * eg:
+                     * (A, B, C)
+                     * ->
+                     * (A, B, C) SET (__doris_shadow_B = B)
+                     */
+                    ImportColumnDesc importColumnDesc = new ImportColumnDesc(column.getName(),
+                                                                             new SlotRef(null, originCol));
+                    shadowColumnDescs.add(importColumnDesc);
+                }
+            } else {
+                /*
+                 * There is a case that if user does not specify the related origin column, eg:
+                 * COLUMNS (A, C), and B is not specified, but B is being modified so there is a shadow column '__doris_shadow_B'.
+                 * We can not just add a mapping function "__doris_shadow_B = substitute(B)", because Doris can not find column B.
+                 * In this case, __doris_shadow_B can use its default value, so no need to add it to column mapping
+                 */
+                // do nothing
+            }
+        }
+        return shadowColumnDescs;
+    }
+
     /*
-     * This function will do followings:
-     * 1. fill the column exprs if user does not specify any column or column mapping.
-     * 2. For not specified columns, check if they have default value.
-     * 3. Add any shadow columns if have.
-     * 4. validate hadoop functions
-     * 5. init slot descs and expr map for load plan
-     * 
+     * used for spark load job
+     * not init slot desc and analyze exprs
+     */
+    public static void initColumns(Table tbl, List<ImportColumnDesc> columnExprs,
+                                   Map<String, Pair<String, List<String>>> columnToHadoopFunction) throws UserException {
+        initColumns(tbl, columnExprs, columnToHadoopFunction, null, null, null, null, null, false);
+    }
+
+    /*
      * This function should be used for broker load v2 and stream load.
      * And it must be called in same db lock when planing.
      */
@@ -875,20 +930,54 @@ public class Load {
             Map<String, Pair<String, List<String>>> columnToHadoopFunction,
             Map<String, Expr> exprsByName, Analyzer analyzer, TupleDescriptor srcTupleDesc,
             Map<String, SlotDescriptor> slotDescByName, TBrokerScanRangeParams params) throws UserException {
+        initColumns(tbl, columnExprs, columnToHadoopFunction, exprsByName, analyzer,
+                    srcTupleDesc, slotDescByName, params, true);
+    }
+
+    /*
+     * This function will do followings:
+     * 1. fill the column exprs if user does not specify any column or column mapping.
+     * 2. For not specified columns, check if they have default value.
+     * 3. Add any shadow columns if have.
+     * 4. validate hadoop functions
+     * 5. init slot descs and expr map for load plan
+     */
+    public static void initColumns(Table tbl, List<ImportColumnDesc> columnExprs,
+            Map<String, Pair<String, List<String>>> columnToHadoopFunction,
+            Map<String, Expr> exprsByName, Analyzer analyzer, TupleDescriptor srcTupleDesc,
+            Map<String, SlotDescriptor> slotDescByName, TBrokerScanRangeParams params,
+            boolean needInitSlotAndAnalyzeExprs) throws UserException {
+        // check mapping column exist in schema
+        // !! all column mappings are in columnExprs !!
+        for (ImportColumnDesc importColumnDesc : columnExprs) {
+            if (importColumnDesc.isColumn()) {
+                continue;
+            }
+
+            String mappingColumnName = importColumnDesc.getColumnName();
+            if (tbl.getColumn(mappingColumnName) == null) {
+                throw new DdlException("Mapping column is not in table. column: " + mappingColumnName);
+            }
+        }
+
+        // We make a copy of the columnExprs so that our subsequent changes
+        // to the columnExprs will not affect the original columnExprs.
+        List<ImportColumnDesc> copiedColumnExprs = Lists.newArrayList(columnExprs);
+
         // If user does not specify the file field names, generate it by using base schema of table.
         // So that the following process can be unified
-        boolean specifyFileFieldNames = columnExprs.stream().anyMatch(p -> p.isColumn());
+        boolean specifyFileFieldNames = copiedColumnExprs.stream().anyMatch(p -> p.isColumn());
         if (!specifyFileFieldNames) {
             List<Column> columns = tbl.getBaseSchema();
             for (Column column : columns) {
                 ImportColumnDesc columnDesc = new ImportColumnDesc(column.getName());
                 LOG.debug("add base column {} to stream load task", column.getName());
-                columnExprs.add(columnDesc);
+                copiedColumnExprs.add(columnDesc);
             }
         }
         // generate a map for checking easily
         Map<String, Expr> columnExprMap = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
-        for (ImportColumnDesc importColumnDesc : columnExprs) {
+        for (ImportColumnDesc importColumnDesc : copiedColumnExprs) {
             columnExprMap.put(importColumnDesc.getColumnName(), importColumnDesc.getExpr());
         }
 
@@ -904,55 +993,13 @@ public class Load {
             throw new DdlException("Column has no default value. column: " + columnName);
         }
 
-        // When doing schema change, there may have some 'shadow' columns, with prefix '__doris_shadow_' in
-        // their names. These columns are invisible to user, but we need to generate data for these columns.
-        // So we add column mappings for these column.
-        // eg1:
-        // base schema is (A, B, C), and B is under schema change, so there will be a shadow column: '__doris_shadow_B'
-        // So the final column mapping should looks like: (A, B, C, __doris_shadow_B = substitute(B));
-        for (Column column : tbl.getFullSchema()) {
-            if (!column.isNameWithPrefix(SchemaChangeHandler.SHADOW_NAME_PRFIX)) {
-                continue;
-            }
-
-            String originCol = column.getNameWithoutPrefix(SchemaChangeHandler.SHADOW_NAME_PRFIX);
-            if (columnExprMap.containsKey(originCol)) {
-                Expr mappingExpr = columnExprMap.get(originCol);
-                if (mappingExpr != null) {
-                    /*
-                     * eg:
-                     * (A, C) SET (B = func(xx)) 
-                     * ->
-                     * (A, C) SET (B = func(xx), __doris_shadow_B = func(xx))
-                     */
-                    ImportColumnDesc importColumnDesc = new ImportColumnDesc(column.getName(), mappingExpr);
-                    columnExprs.add(importColumnDesc);
-                } else {
-                    /*
-                     * eg:
-                     * (A, B, C)
-                     * ->
-                     * (A, B, C) SET (__doris_shadow_B = B)
-                     */
-                    ImportColumnDesc importColumnDesc = new ImportColumnDesc(column.getName(),
-                            new SlotRef(null, originCol));
-                    columnExprs.add(importColumnDesc);
-                }
-            } else {
-                /*
-                 * There is a case that if user does not specify the related origin column, eg:
-                 * COLUMNS (A, C), and B is not specified, but B is being modified so there is a shadow column '__doris_shadow_B'.
-                 * We can not just add a mapping function "__doris_shadow_B = substitute(B)", because Doris can not find column B.
-                 * In this case, __doris_shadow_B can use its default value, so no need to add it to column mapping
-                 */
-                // do nothing
-            }
-        }
+        // get shadow column desc when table schema change
+        copiedColumnExprs.addAll(getSchemaChangeShadowColumnDesc(tbl, columnExprMap));
 
         // validate hadoop functions
         if (columnToHadoopFunction != null) {
             Map<String, String> columnNameMap = Maps.newTreeMap(String.CASE_INSENSITIVE_ORDER);
-            for (ImportColumnDesc importColumnDesc : columnExprs) {
+            for (ImportColumnDesc importColumnDesc : copiedColumnExprs) {
                 if (importColumnDesc.isColumn()) {
                     columnNameMap.put(importColumnDesc.getColumnName(), importColumnDesc.getColumnName());
                 }
@@ -960,10 +1007,6 @@ public class Load {
             for (Entry<String, Pair<String, List<String>>> entry : columnToHadoopFunction.entrySet()) {
                 String mappingColumnName = entry.getKey();
                 Column mappingColumn = tbl.getColumn(mappingColumnName);
-                if (mappingColumn == null) {
-                    throw new DdlException("Mapping column is not in table. column: " + mappingColumnName);
-                }
-
                 Pair<String, List<String>> function = entry.getValue();
                 try {
                     DataDescription.validateMappingFunction(function.first, function.second, columnNameMap,
@@ -974,8 +1017,12 @@ public class Load {
             }
         }
 
+        if (!needInitSlotAndAnalyzeExprs) {
+            return;
+        }
+
         // init slot desc add expr map, also transform hadoop functions
-        for (ImportColumnDesc importColumnDesc : columnExprs) {
+        for (ImportColumnDesc importColumnDesc : copiedColumnExprs) {
             // make column name case match with real column name
             String columnName = importColumnDesc.getColumnName();
             String realColName = tbl.getColumn(columnName) == null ? columnName
@@ -3082,7 +3129,7 @@ public class Load {
         PartitionState state = partition.getState();
         if (state != PartitionState.NORMAL) {
             // ErrorReport.reportDdlException(ErrorCode.ERR_BAD_PARTITION_STATE, partition.getName(), state.name());
-            throw new DdlException("Partition[" + partition.getName() + "]' state is not NORNAL: " + state.name());
+            throw new DdlException("Partition[" + partition.getName() + "]' state is not NORMAL: " + state.name());
         }
         // do not need check whether partition has loading job
 
@@ -3313,8 +3360,10 @@ public class Load {
             }
             loadDeleteJob.setIdToTabletLoadInfo(idToTabletLoadInfo);
             loadDeleteJob.setState(JobState.LOADING);
-            long transactionId = Catalog.getCurrentGlobalTransactionMgr().beginTransaction(db.getId(), jobLabel,
-                    "FE: " + FrontendOptions.getLocalHostAddress(), LoadJobSourceType.FRONTEND,
+            long transactionId = Catalog.getCurrentGlobalTransactionMgr().beginTransaction(db.getId(),
+                    Lists.newArrayList(table.getId()), jobLabel,
+                    new TxnCoordinator(TxnSourceType.FE, FrontendOptions.getLocalHostAddress()),
+                    LoadJobSourceType.FRONTEND,
                     Config.stream_load_default_timeout_second);
             loadDeleteJob.setTransactionId(transactionId);
             // the delete job will be persist in editLog

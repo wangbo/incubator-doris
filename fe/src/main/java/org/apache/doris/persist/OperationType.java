@@ -60,6 +60,7 @@ public class OperationType {
     public static final short OP_MODIFY_DISTRIBUTION_TYPE = 122;
     public static final short OP_BATCH_ADD_ROLLUP = 123;
     public static final short OP_BATCH_DROP_ROLLUP = 124;
+    public static final short OP_REMOVE_ALTER_JOB_V2 = 125;
 
     // 30~39 130~139 230~239 ...
     // load job for only hadoop load
@@ -73,11 +74,13 @@ public class OperationType {
     public static final short OP_EXPORT_UPDATE_STATE = 37;
 
     public static final short OP_FINISH_SYNC_DELETE = 40;
+    public static final short OP_FINISH_DELETE = 41;
     public static final short OP_ADD_REPLICA = 42;
     public static final short OP_DELETE_REPLICA = 43;
     public static final short OP_FINISH_ASYNC_DELETE = 44;
     public static final short OP_UPDATE_REPLICA = 45;
     public static final short OP_BACKEND_TABLETS_INFO = 46;
+    public static final short OP_SET_REPLICA_STATUS = 47;
 
     public static final short OP_ADD_BACKEND = 50;
     public static final short OP_DROP_BACKEND = 51;
@@ -169,4 +172,9 @@ public class OperationType {
     public static final short OP_MODIFY_REPLICATION_NUM = 266;
     // set table in memory
     public static final short OP_MODIFY_IN_MEMORY = 267;
+
+    // plugin 270~275
+    public static final short OP_INSTALL_PLUGIN = 270;
+
+    public static final short OP_UNINSTALL_PLUGIN = 271;
 }

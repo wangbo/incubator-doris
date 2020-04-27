@@ -59,6 +59,10 @@ Status EsHttpScanNode::init(const TPlanNode& tnode, RuntimeState* state) {
     if (tnode.es_scan_node.__isset.docvalue_context) {
         _docvalue_context = tnode.es_scan_node.docvalue_context;
     }
+
+    if (tnode.es_scan_node.__isset.fields_context) {
+        _fields_context = tnode.es_scan_node.fields_context;
+    }
     return Status::OK();
 }
 
@@ -92,7 +96,8 @@ Status EsHttpScanNode::build_conjuncts_list() {
     Status status = Status::OK();
     for (int i = 0; i < _conjunct_ctxs.size(); ++i) {
         EsPredicate* predicate = _pool->add(
-                    new EsPredicate(_conjunct_ctxs[i], _tuple_desc));
+                    new EsPredicate(_conjunct_ctxs[i], _tuple_desc, _pool));
+        predicate->set_field_context(_fields_context);
         status = predicate->build_disjuncts_list();
         if (status.ok()) {
             _predicates.push_back(predicate);

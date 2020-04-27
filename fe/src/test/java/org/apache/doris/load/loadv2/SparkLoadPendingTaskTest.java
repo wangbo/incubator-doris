@@ -229,11 +229,11 @@ public class SparkLoadPendingTaskTest {
         PartitionKeyDesc partitionKeyDesc1 = new PartitionKeyDesc(Lists.newArrayList(new PartitionValue("10")));
         SingleRangePartitionDesc partitionDesc1 = new SingleRangePartitionDesc(false, "p1", partitionKeyDesc1, null);
         partitionDesc1.analyze(1, null);
-        partitionInfo.handleNewSinglePartitionDesc(partitionDesc1, partition1Id);
+        partitionInfo.handleNewSinglePartitionDesc(partitionDesc1, partition1Id, false);
         PartitionKeyDesc partitionKeyDesc2 = new PartitionKeyDesc(Lists.newArrayList(new PartitionValue("20")));
         SingleRangePartitionDesc partitionDesc2 = new SingleRangePartitionDesc(false, "p2", partitionKeyDesc2, null);
         partitionDesc2.analyze(1, null);
-        partitionInfo.handleNewSinglePartitionDesc(partitionDesc2, partition2Id);
+        partitionInfo.handleNewSinglePartitionDesc(partitionDesc2, partition2Id, false);
 
         // file group
         Map<BrokerFileGroupAggInfo.FileGroupAggKey, List<BrokerFileGroup>> aggKeyToFileGroups = Maps.newHashMap();

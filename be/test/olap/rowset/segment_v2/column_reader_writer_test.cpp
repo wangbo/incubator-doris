@@ -25,12 +25,13 @@
 
 #include "common/logging.h"
 #include "env/env.h"
+#include "olap/column_block.h"
+#include "olap/fs/fs_util.h"
 #include "olap/olap_common.h"
 #include "olap/types.h"
-#include "olap/column_block.h"
-#include "util/file_utils.h"
 #include "runtime/mem_tracker.h"
 #include "runtime/mem_pool.h"
+#include "util/file_utils.h"
 
 using std::string;
 
@@ -74,9 +75,10 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
     // write data
     string fname = TEST_DIR + "/" + test_name;
     {
-        std::unique_ptr<WritableFile> wfile;
-        auto st = Env::Default()->new_writable_file(fname, &wfile);
-        ASSERT_TRUE(st.ok());
+        std::unique_ptr<fs::WritableBlock> wblock;
+        fs::CreateBlockOptions opts({ fname });
+        Status st = fs::fs_util::block_mgr_for_ut()->create_block(opts, &wblock);
+        ASSERT_TRUE(st.ok()) << st.get_error_msg();
 
         ColumnWriterOptions writer_opts;
         writer_opts.meta = &meta;
@@ -100,7 +102,7 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
             column = create_char_key(1);
         }
         std::unique_ptr<Field> field(FieldFactory::create(column));
-        ColumnWriter writer(writer_opts, std::move(field), wfile.get());
+        ColumnWriter writer(writer_opts, std::move(field), wblock.get());
         st = writer.init();
         ASSERT_TRUE(st.ok()) << st.to_string();
 
@@ -109,18 +111,13 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
             ASSERT_TRUE(st.ok());
         }
 
-        st = writer.finish();
-        ASSERT_TRUE(st.ok());
-
-        st = writer.write_data();
-        ASSERT_TRUE(st.ok());
-        st = writer.write_ordinal_index();
-        ASSERT_TRUE(st.ok());
-        st = writer.write_zone_map();
-        ASSERT_TRUE(st.ok());
+        ASSERT_TRUE(writer.finish().ok());
+        ASSERT_TRUE(writer.write_data().ok());
+        ASSERT_TRUE(writer.write_ordinal_index().ok());
+        ASSERT_TRUE(writer.write_zone_map().ok());
 
         // close the file
-        wfile.reset();
+        ASSERT_TRUE(wblock->close().ok());
     }
     // read and check
     {
@@ -133,13 +130,15 @@ void test_nullable_data(uint8_t* src_data, uint8_t* src_is_null, int num_rows, s
         ColumnIterator* iter = nullptr;
         st = reader->new_iterator(&iter);
         ASSERT_TRUE(st.ok());
-        std::unique_ptr<RandomAccessFile> rfile;
-        st = Env::Default()->new_random_access_file(fname, &rfile);
+        std::unique_ptr<fs::ReadableBlock> rblock;
+        fs::BlockManager* block_manager = fs::fs_util::block_mgr_for_ut();
+        block_manager->open_block(fname, &rblock);
+        
         ASSERT_TRUE(st.ok());
         ColumnIteratorOptions iter_opts;
         OlapReaderStatistics stats;
         iter_opts.stats = &stats;
-        iter_opts.file = rfile.get();
+        iter_opts.rblock = rblock.get();
         st = iter->init(iter_opts);
         ASSERT_TRUE(st.ok());
         // sequence read
@@ -314,6 +313,20 @@ TEST_F(ColumnReaderWriterTest, test_nullable) {
     test_nullable_data<OLAP_FIELD_TYPE_BIGINT, BIT_SHUFFLE>(val, is_null, num_uint8_rows / 8, "null_bigint_bs");
     test_nullable_data<OLAP_FIELD_TYPE_LARGEINT, BIT_SHUFFLE>(val, is_null, num_uint8_rows / 16, "null_largeint_bs");
 
+    // test for the case where most values are not null
+    uint8_t* is_null_sparse = new uint8_t[num_uint8_rows];
+    for (int i = 0; i < num_uint8_rows; ++i) {
+        bool v = false;
+        // in order to make some data pages not null, set the first half of values not null.
+        // for the second half, only 1/1024 of values are null
+        if (i >= (num_uint8_rows / 2)) {
+            v = (i % 1024) == 10;
+        }
+        BitmapChange(is_null_sparse, i, v);
+    }
+    test_nullable_data<OLAP_FIELD_TYPE_TINYINT, BIT_SHUFFLE>(val, is_null_sparse, num_uint8_rows, "sparse_null_tiny_bs");
+
+
     float* float_vals = new float[num_uint8_rows];
     for (int i = 0; i < num_uint8_rows; ++i) {
         float_vals[i] = i;
@@ -331,6 +344,7 @@ TEST_F(ColumnReaderWriterTest, test_nullable) {
     // test_nullable_data<OLAP_FIELD_TYPE_DOUBLE, BIT_SHUFFLE>(val, is_null, num_uint8_rows / 8, "null_double_bs");
     delete[] val;
     delete[] is_null;
+    delete[] is_null_sparse;
     delete[] float_vals;
     delete[] double_vals;
 }
