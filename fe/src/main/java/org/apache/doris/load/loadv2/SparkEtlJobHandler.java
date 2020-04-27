@@ -42,6 +42,10 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.ApplicationNotFoundException;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.util.ConverterUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.launcher.SparkAppHandle;
@@ -57,6 +61,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 
 public class SparkEtlJobHandler {
     private static final Logger LOG = LogManager.getLogger(SparkEtlJobHandler.class);
@@ -172,6 +177,80 @@ public class SparkEtlJobHandler {
         // success
         attachment.setAppId(appId);
         attachment.setHandle(handle);
+    }
+
+    public EtlStatus getEtlJobStatusByHttp (SparkAppHandle handle, String appId, long loadJobId, SparkEtlCluster etlCluster,
+                                            String etlOutputPath, BrokerDesc brokerDesc) {
+        EtlStatus status = new EtlStatus();
+
+        if (etlCluster.isYarnMaster()) {
+            // state from yarn
+            Preconditions.checkState(appId != null && !appId.isEmpty());
+            try {
+                CloseableHttpClient httpclient = HttpClients.createDefault();
+                HttpGet httpget = new HttpGet("http://rz-data-hdp-rm01.rz.sankuai.com:8088/ws/v1/cluster/apps/" + appId);
+                HttpResponse httpresponse = httpclient.execute(httpget);
+                Scanner sc = new Scanner(httpresponse.getEntity().getContent());
+
+                boolean isSucc = false;
+                boolean isFailed = false;
+                String ret = "";
+                while(sc.hasNext()) {
+                    String line = sc.nextLine();
+                    if (line.contains("\"finalStatus\":\"SUCCEEDED\"")) {
+                        isSucc = true;
+                    } else if (line.contains("\"finalStatus\":\"FAILED\"")) {
+                        isFailed = true;
+                    }
+                    ret = line;
+                }
+                LOG.info(ret);
+                if (isSucc) {
+                    status.setState(TEtlState.FINISHED);
+                    status.setProgress(100);
+                } else if (isFailed) {
+                    status.setState(TEtlState.CANCELLED);
+                    status.setProgress(100);
+                }else {
+                    status.setState(TEtlState.RUNNING);
+                    status.setProgress(0);
+                }
+                status.setTrackingUrl(appId);
+            } catch (Exception e) {
+                LOG.error(e);
+            }
+        } else {
+            // state from handle
+            if (handle == null) {
+                status.setFailMsg("spark app handle is null");
+                status.setState(TEtlState.CANCELLED);
+                return status;
+            }
+
+            State state = handle.getState();
+            status.setState(fromSparkState(state));
+            if (status.getState() == TEtlState.CANCELLED) {
+                status.setFailMsg("spark app state: " + state.toString());
+            }
+            LOG.info("spark app id: {}, load job id: {}, app state: {}", appId, loadJobId, state);
+        }
+
+        if (status.getState() == TEtlState.FINISHED || status.getState() == TEtlState.CANCELLED) {
+            // get dpp result
+            String dppResultFilePath = EtlJobConfig.getDppResultFilePath(etlOutputPath);
+            try {
+                String dppResultStr = BrokerUtil.readBrokerFile(dppResultFilePath, brokerDesc);
+                DppResult dppResult = new Gson().fromJson(dppResultStr, DppResult.class);
+                status.setDppResult(dppResult);
+                if (status.getState() == TEtlState.CANCELLED) {
+                    status.setFailMsg(dppResult.failedReason);
+                }
+            } catch (UserException | JsonSyntaxException e) {
+                LOG.warn("read broker file failed, path: {}", dppResultFilePath, e);
+            }
+        }
+
+        return status;
     }
 
     public EtlStatus getEtlJobStatus(SparkAppHandle handle, String appId, long loadJobId, SparkEtlCluster etlCluster,
