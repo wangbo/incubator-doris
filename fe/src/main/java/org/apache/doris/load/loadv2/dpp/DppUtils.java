@@ -17,7 +17,6 @@
 
 package org.apache.doris.load.loadv2.dpp;
 
-import io.fabric8.openshift.api.model.User;
 import org.apache.doris.common.UserException;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig;
 
@@ -31,7 +30,6 @@ import org.apache.spark.sql.Row;
 import com.google.common.collect.Lists;
 
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
