@@ -17,6 +17,7 @@
 
 package org.apache.doris.load.loadv2;
 
+import com.google.common.base.Strings;
 import org.apache.doris.analysis.Analyzer;
 import org.apache.doris.analysis.BrokerDesc;
 import org.apache.doris.analysis.CastExpr;
@@ -82,6 +83,7 @@ import org.apache.doris.thrift.TUniqueId;
 import org.apache.doris.transaction.BeginTransactionException;
 import org.apache.doris.transaction.TabletCommitInfo;
 import org.apache.doris.transaction.TabletQuorumFailedException;
+import org.apache.doris.transaction.TransactionState;
 import org.apache.doris.transaction.TransactionState.LoadJobSourceType;
 import org.apache.doris.transaction.TransactionState.TxnCoordinator;
 import org.apache.doris.transaction.TransactionState.TxnSourceType;
@@ -143,7 +145,7 @@ public class SparkLoadJob extends BulkLoadJob {
     private Map<Long, Set<Long>> tableToLoadPartitions = Maps.newHashMap();
     private Map<Long, PushBrokerScannerParams> indexToPushBrokerReaderParams = Maps.newHashMap();
     private Map<Long, Integer> indexToSchemaHash = Maps.newHashMap();
-    private Map<Long, Set<Long>> tabletToSentReplicas = Maps.newHashMap();
+    private Map<Long, Map<Long, PushTask>> tabletToSentReplicaPushTask = Maps.newHashMap();
     private Set<Long> finishedReplicas = Sets.newHashSet();
     private Set<Long> quorumTablets = Sets.newHashSet();
     private Set<Long> fullTablets = Sets.newHashSet();
@@ -586,8 +588,8 @@ public class SparkLoadJob extends BulkLoadJob {
                                 for (Replica replica : tablet.getReplicas()) {
                                     long replicaId = replica.getId();
                                     tabletAllReplicas.add(replicaId);
-                                    if (!tabletToSentReplicas.containsKey(tabletId)
-                                            || !tabletToSentReplicas.get(tabletId).contains(replica.getId())) {
+                                    if (!tabletToSentReplicaPushTask.containsKey(tabletId)
+                                            || !tabletToSentReplicaPushTask.get(tabletId).containsKey(replicaId)) {
                                         long backendId = replica.getBackendId();
                                         long taskSignature = Catalog.getCurrentGlobalTransactionMgr()
                                                 .getTransactionIDGenerator().getNextTransactionId();
@@ -623,11 +625,10 @@ public class SparkLoadJob extends BulkLoadJob {
                                                                          tBrokerScanRange, params.tDescriptorTable);
                                         if (AgentTaskQueue.addTask(pushTask)) {
                                             batchTask.addTask(pushTask);
-
-                                            if (!tabletToSentReplicas.containsKey(tabletId)) {
-                                                tabletToSentReplicas.put(tabletId, Sets.newHashSet());
+                                            if (!tabletToSentReplicaPushTask.containsKey(tabletId)) {
+                                                tabletToSentReplicaPushTask.put(tabletId, Maps.newHashMap());
                                             }
-                                            tabletToSentReplicas.get(tabletId).add(replicaId);
+                                            tabletToSentReplicaPushTask.get(tabletId).put(replicaId, pushTask);
                                         }
                                     }
 
@@ -679,6 +680,13 @@ public class SparkLoadJob extends BulkLoadJob {
         try {
             if (finishedReplicas.add(replicaId)) {
                 commitInfos.add(new TabletCommitInfo(tabletId, backendId));
+                // set replica push task null
+                Map<Long, PushTask> sentReplicaPushTask = tabletToSentReplicaPushTask.get(tabletId);
+                if (sentReplicaPushTask != null) {
+                    if (sentReplicaPushTask.containsKey(replicaId)) {
+                        sentReplicaPushTask.put(replicaId, null);
+                    }
+                }
             }
         } finally {
             writeUnlock();
@@ -742,6 +750,81 @@ public class SparkLoadJob extends BulkLoadJob {
         } finally {
             db.writeUnlock();
         }
+    }
+
+    /**
+     * load job already cancelled or finished, clear job below:
+     * 1. kill etl job and delete etl files
+     * 2. clear push tasks and infos that not persist
+     */
+    private void clearJob() {
+        Preconditions.checkState(state == JobState.FINISHED || state == JobState.CANCELLED);
+
+        LOG.debug("kill etl job and delete etl files. id: {}, state: {}", id, state);
+        SparkEtlJobHandler handler = new SparkEtlJobHandler();
+        if (state == JobState.CANCELLED) {
+            if ((!Strings.isNullOrEmpty(appId) && etlCluster.isYarnMaster()) || sparkAppHandle != null) {
+                try {
+                    handler.killEtlJob(sparkAppHandle, appId, id, etlCluster);
+                } catch (Exception e) {
+                    LOG.warn("kill etl job fail. id: {}, state: {}", id, state, e);
+                }
+            }
+        }
+        if (!Strings.isNullOrEmpty(etlOutputPath)) {
+            try {
+                // delete label dir, remove the last taskId dir
+                String outputPath = etlOutputPath.substring(0, etlOutputPath.lastIndexOf("/"));
+                handler.deleteEtlOutputPath(outputPath, brokerDesc);
+            } catch (Exception e) {
+                LOG.warn("delete etl files fail. id: {}, state: {}", id, state, e);
+            }
+        }
+
+        LOG.debug("clear push tasks and infos that not persist. id: {}, state: {}", id, state);
+        writeLock();
+        try {
+            // clear push task first
+            for (Map<Long, PushTask> sentReplicaPushTask : tabletToSentReplicaPushTask.values()) {
+                for (PushTask pushTask : sentReplicaPushTask.values()) {
+                    if (pushTask == null) {
+                        continue;
+                    }
+                    AgentTaskQueue.removeTask(pushTask.getBackendId(), pushTask.getTaskType(), pushTask.getSignature());
+                }
+            }
+            // clear job infos that not persist
+            hiveTableName = "";
+            sparkAppHandle = null;
+            etlClusterDesc = null;
+            tableToLoadPartitions.clear();
+            indexToPushBrokerReaderParams.clear();
+            indexToSchemaHash.clear();
+            tabletToSentReplicaPushTask.clear();
+            finishedReplicas.clear();
+            quorumTablets.clear();
+            fullTablets.clear();
+        } finally {
+            writeUnlock();
+        }
+    }
+
+    @Override
+    public void afterVisible(TransactionState txnState, boolean txnOperated) {
+        super.afterVisible(txnState, txnOperated);
+        clearJob();
+    }
+
+    @Override
+    public void cancelJobWithoutCheck(FailMsg failMsg, boolean abortTxn, boolean needLog) {
+        super.cancelJobWithoutCheck(failMsg, abortTxn, needLog);
+        clearJob();
+    }
+
+    @Override
+    public void cancelJob(FailMsg failMsg) throws DdlException {
+        super.cancelJob(failMsg);
+        clearJob();
     }
 
     @Override

@@ -59,6 +59,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Range;
@@ -519,6 +520,12 @@ public class SparkLoadPendingTask extends LoadTask {
                 && !fn.getFnName().getFunction().equalsIgnoreCase("bitmap_hash")
                 && !fn.getFnName().getFunction().equalsIgnoreCase("bitmap_dict")) {
             throw new LoadException(msg);
+        }
+
+        String hiveTableName = ((SparkLoadJob) callback).getHiveTableName();
+        if (fn.getFnName().getFunction().equalsIgnoreCase("bitmap_dict")
+                && Strings.isNullOrEmpty(hiveTableName)) {
+            throw new LoadException("Bitmap global dict should load data from hive table");
         }
     }
 }

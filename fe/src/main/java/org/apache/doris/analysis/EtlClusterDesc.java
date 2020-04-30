@@ -31,14 +31,17 @@ import java.util.Map;
 // Etl cluster descriptor
 //
 // Spark example:
-// WITH CLUSTER "spark0"
+// WITH CLUSTER "cluster0"
 // (
-//     "hdfs_etl_path"="hdfs://127.0.0.1:10000/tmp/doris",
 //     "master"="yarn",
-//     "spark_args"="--jars=xxx.jar,yyy.jar;--files=/tmp/aaa,/tmp/bbb",
-//     "broker"="broker0",
-//     "broker.user"="xxx",
-//     "broker.password"="yyy"
+//     "deploy_mode" = "cluster",
+//     "spark_args" = "--jars=xxx.jar,yyy.jar;--files=/tmp/aaa,/tmp/bbb",
+//     "spark_configs" = "spark.driver.memory=1g;spark.executor.memory=1g",
+//     "yarn_configs" = "yarn.resourcemanager.address=host:port;fs.defaultFS=hdfs://host:port",
+//     "hdfs_etl_path" = "hdfs://127.0.0.1:10000/tmp/doris",
+//     "broker" = "broker0",
+//     "broker.username" = "xxx",
+//     "broker.password" = "yyy"
 // )
 public class EtlClusterDesc extends DataProcessorDesc {
     public static final String BROKER_PROPERTY_KEY_PREFIX = "broker.";

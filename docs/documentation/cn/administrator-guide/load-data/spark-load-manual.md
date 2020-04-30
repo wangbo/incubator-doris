@@ -1,3 +1,10 @@
+---                                                                                 
+{
+    "title": "Spark Load",
+    "language": "zh-CN"
+}
+---  
+
 <!-- 
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -36,8 +43,8 @@ Spark load 是一种异步导入方式，用户需要通过 MySQL 协议创建 S
 
 1. Frontend（FE）：Doris 系统的元数据和调度节点。在导入流程中主要负责导入任务的调度工作。
 2. Backend（BE）：Doris 系统的计算和存储节点。在导入流程中主要负责数据写入及存储。
-3. Spark ETL：在导入流程中主要负责数据的 ETL 工作，包括全局字典构建、分区、排序、聚合等。
-
+3. Spark ETL：在导入流程中主要负责数据的 ETL 工作，包括全局字典构建（BITMAP类型）、分区、排序、聚合等。
+4. Broker：Broker 为一个独立的无状态进程。封装了文件系统接口，提供 Doris 读取远端存储系统中文件的能力。
 
 
 ## 基本原理
@@ -50,14 +57,13 @@ Spark load 任务的执行主要分为以下5个阶段。
 
 1. FE 调度提交 ETL 任务到 Spark 集群执行。
 2. Spark 集群执行 ETL 完成对导入数据的预处理。包括全局字典构建（BITMAP类型）、分区、排序、聚合等。
-
-3. ETL 任务完成后，FE 获取预处理过的每个 tablet 的数据路径，并调度相关的 BE 执行 Push 任务。
+3. ETL 任务完成后，FE 获取预处理过的每个分片的数据路径，并调度相关的 BE 执行 Push 任务。
 4. BE 通过 Broker 读取数据，转化为 Doris 底层存储格式。
 5. FE 调度生效版本，完成导入任务。
 
 ```
                  +
-                 | 0. User create spark load
+                 | 0. User create spark load job
             +----v----+
             |   FE    |---------------------------------+
             +----+----+                                 |
@@ -103,20 +109,21 @@ Spark load 任务的执行主要分为以下5个阶段。
 语法：
 
 ```sql
-// 添加 ETL 集群
+-- 添加 ETL 集群
 ALTER SYSTEM ADD LOAD CLUSTER cluster_name
 PROPERTIES("key1" = "value1", ...)
 
-// 删除 ETL 集群
+-- 删除 ETL 集群
 ALTER SYSTEM DROP LOAD CLUSTER cluster_name
 
-// 查看 ETL 集群
+-- 查看 ETL 集群
 SHOW LOAD CLUSTERS
+SHOW PROC "/load_etl_clusters"
 ```
 
 `cluster_name` 为 Doris 中配置的 Spark 集群的名字。
 
-PROPERTIES是 ETL 集群相关参数，如下：
+PROPERTIES 是 ETL 集群相关参数，如下：
 
 - `type`：集群类型，必填，目前仅支持 spark。
 
@@ -124,7 +131,7 @@ PROPERTIES是 ETL 集群相关参数，如下：
   - `master`：必填，目前支持yarn，spark://host:port。
   - `deploy_mode`： 可选，默认为 cluster。支持 cluster，client 两种。
   - `hdfs_etl_path`：ETL 使用的 HDFS 目录。必填。例如：hdfs://host:port/tmp/doris。
-  - `broker`：broker 名字。必填。需要使用`ALTER SYTEM ADD BROKER` 命令提前完成配置。
+  - `broker`：broker 名字。必填。需要使用`ALTER SYSTEM ADD BROKER` 命令提前完成配置。
   - `yarn_configs`： HDFS YARN 参数，master 为 yarn 时必填。需要指定 yarn.resourcemanager.address 和 fs.defaultFS。不同 configs 之间使用`;`拼接。
   - `spark_args`： Spark 任务提交时指定的参数，可选。具体可参考 spark-submit 命令，每个 arg  必须以`--`开头，不同 args 之间使用`;`拼接。例如--files=/file1,/file2;--jars=/a.jar,/b.jar。
   - `spark_configs`： Spark 参数，可选。具体参数可参考http://spark.apache.org/docs/latest/configuration.html。不同 configs 之间使用`;`拼接。
@@ -132,19 +139,20 @@ PROPERTIES是 ETL 集群相关参数，如下：
 示例：
 
 ```sql
+-- yarn cluster 模式 
 ALTER SYSTEM ADD LOAD CLUSTER "cluster0"
 PROPERTIES
 (
 "type" = "spark", 
 "master" = "yarn",
-"hdfs_etl_path" = "hdfs://1.1.0.1:801/tmp/doris",
+"hdfs_etl_path" = "hdfs://1.1.1.1:801/tmp/doris",
 "broker" = "broker0",
 "yarn_configs" = "yarn.resourcemanager.address=1.1.1.1:800;fs.defaultFS=hdfs://1.1.1.1:801",
 "spark_args" = "--files=/file1,/file2;--jars=/a.jar,/b.jar",
 "spark_configs" = "spark.driver.memory=1g;spark.executor.memory=1g"
 );
 
-// 如果 broker 需要用户名密码等额外参数
+-- spark standalone client 模式
 ALTER SYSTEM ADD LOAD CLUSTER "cluster1"
 PROPERTIES
 (
@@ -152,9 +160,7 @@ PROPERTIES
  "master" = "spark://1.1.1.1:802",
  "deploy_mode" = "client",
  "hdfs_etl_path" = "hdfs://1.1.1.1:801/tmp/doris",
- "broker" = "broker1",
- "broker.username" = "user1",
- "broker.password" = "password1"
+ "broker" = "broker1"
 );
 ```
 
@@ -171,7 +177,7 @@ LOAD LABEL load_label
     [PROPERTIES (key1=value1, ... )]
 
 * load_label:
-		db_name.label_name
+	db_name.label_name
 
 * data_desc:
     DATA INFILE ('file_path', ...)
@@ -226,11 +232,11 @@ PROPERTIES
 
 #### 数据描述类参数
 
-支持的数据源取决于Spark支持的数据源。其他规则与 `Broker Load` 一致。
+目前支持的数据源有CSV和hive table。其他规则与 `Broker Load` 一致。
 
 #### 导入作业参数
 
-导入作业参数主要指的是 Spark load 创建导入语句中的属于 ```opt_properties```部分的参数。导入作业参数是作用于整个导入作业的。规则与 `Broker Load` 一致。（timeout待测）
+导入作业参数主要指的是 Spark load 创建导入语句中的属于 ```opt_properties```部分的参数。导入作业参数是作用于整个导入作业的。规则与 `Broker Load` 一致。
 
 #### Cluster 参数
 
@@ -243,8 +249,9 @@ ETL cluster需要提前配置到 Doris系统中才能使用 Spark load。
 ```sql
 WITH CLUSTER 'cluster0'
 (
-    "broker.username"="user1",
-    "broker.password"="password1"
+    "spark_configs" = "spark.driver.memory=1g;spark.executor.memory=1g",
+    "broker.username" = "user1",
+    "broker.password" = "password1"
 )
 ```
 
@@ -280,7 +287,7 @@ LoadFinishTime: 2019-07-27 11:50:16
 
 + State
 
-    导入任务当前所处的阶段。任务提交之后状态为 PENDING，提交 Spark ETL 之后状态变为 ETL，ETL 完成之后 FE 调度 BE 执行 push 操作状态为 LOADING，push 完成并且版本生效后状态变为 FINISHED。
+    导入任务当前所处的阶段。任务提交之后状态为 PENDING，提交 Spark ETL 之后状态变为 ETL，ETL 完成之后 FE 调度 BE 执行 push 操作状态变为 LOADING，push 完成并且版本生效后状态变为 FINISHED。
     
     导入任务的最终阶段有两个：CANCELLED 和 FINISHED，当 Load job 处于这两个阶段时导入完成。其中 CANCELLED 为导入失败，FINISHED 为导入成功。
     

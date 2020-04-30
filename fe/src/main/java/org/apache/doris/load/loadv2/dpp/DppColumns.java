@@ -26,28 +26,23 @@ import java.util.Date;
 import java.util.Objects;
 import java.util.Comparator;
 
+// DppColumns is used to store the
 class DppColumns implements Comparable<DppColumns>, Serializable {
-    public List<Object> columns;
-    public List<Class> schema;
+    public List<Object> columns = new ArrayList<Object>();;
 
-    public DppColumns(List<Object> keys, List<Class> schema){
+    public DppColumns(List<Object> keys){
         this.columns = keys;
-        this.schema = schema;
     }
 
     public DppColumns(DppColumns key, List<Integer> indexes){
-        columns = new ArrayList<Object>();
-        schema = new ArrayList<Class>();
         for (int i = 0; i < indexes.size(); ++i) {
             columns.add(key.columns.get(indexes.get(i)));
-            schema.add(key.schema.get(indexes.get(i)));
         }
     }
 
     @Override
     public int compareTo(DppColumns other) {
         Preconditions.checkState(columns.size() == other.columns.size());
-        Preconditions.checkState(schema.size() == other.schema.size());
 
         int cmp = 0;
         for (int i = 0; i < columns.size(); i++) {

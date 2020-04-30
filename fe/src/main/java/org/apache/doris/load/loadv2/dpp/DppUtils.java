@@ -17,6 +17,7 @@
 
 package org.apache.doris.load.loadv2.dpp;
 
+import io.fabric8.openshift.api.model.User;
 import org.apache.doris.common.UserException;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig;
 
@@ -41,7 +42,7 @@ import java.util.zip.CRC32;
 
 public class DppUtils {
     public static final String BUCKET_ID = "__bucketId__";
-    public static Class dataTypeToClass(DataType dataType) {
+    public static Class getClassFromDataType(DataType dataType) {
         if (dataType == null) {
             return null;
         }
@@ -70,7 +71,7 @@ public class DppUtils {
         return null;
     }
 
-    public static Class getClassFromColumn(EtlJobConfig.EtlColumn column) {
+    public static Class getClassFromColumn(EtlJobConfig.EtlColumn column) throws UserException {
         switch (column.columnType) {
             case "BOOLEAN":
                 return Boolean.class;
@@ -83,7 +84,7 @@ public class DppUtils {
             case "BIGINT":
                 return Long.class;
             case "LARGEINT":
-                return BigInteger.class;
+                throw new UserException("LARGEINT is not supported now");
             case "FLOAT":
                 return Float.class;
             case "DOUBLE":
@@ -170,6 +171,14 @@ public class DppUtils {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
+        } else if (type.equals(DataTypes.BooleanType)) {
+            Boolean b = (Boolean)o;
+            String str = b ? "1" : "0";
+            try {
+                buffer = ByteBuffer.wrap(str.getBytes("UTF-8"));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         }
         return buffer;
     }
@@ -191,10 +200,8 @@ public class DppUtils {
             fields.add(bucketIdField);
         }
         for (EtlJobConfig.EtlColumn column : columns) {
-            String columnName = column.columnName;
-            String columnType = column.columnType;
             DataType structColumnType = getDataTypeFromColumn(column);
-            StructField field = DataTypes.createStructField(columnName, structColumnType, column.isAllowNull);
+            StructField field = DataTypes.createStructField(column.columnName, structColumnType, column.isAllowNull);
             fields.add(field);
         }
         StructType dstSchema = DataTypes.createStructType(fields);

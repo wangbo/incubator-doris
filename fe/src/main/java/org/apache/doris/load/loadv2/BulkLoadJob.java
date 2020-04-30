@@ -102,7 +102,7 @@ public abstract class BulkLoadJob extends LoadJob {
     public static BulkLoadJob fromLoadStmt(LoadStmt stmt, OriginStatement originStmt) throws DdlException {
         // get db id
         String dbName = stmt.getLabel().getDbName();
-        Database db = Catalog.getCurrentCatalog().getDb(stmt.getLabel().getDbName());
+        Database db = Catalog.getCurrentCatalog().getDb(dbName);
         if (db == null) {
             throw new DdlException("Database[" + dbName + "] does not exist");
         }

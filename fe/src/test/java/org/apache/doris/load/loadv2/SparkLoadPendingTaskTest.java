@@ -17,10 +17,8 @@
 
 package org.apache.doris.load.loadv2;
 
-import com.google.common.collect.Sets;
 import org.apache.doris.analysis.BrokerDesc;
 import org.apache.doris.analysis.DataDescription;
-import org.apache.doris.analysis.EtlClusterDesc;
 import org.apache.doris.analysis.PartitionKeyDesc;
 import org.apache.doris.analysis.PartitionValue;
 import org.apache.doris.analysis.SingleRangePartitionDesc;
@@ -45,9 +43,16 @@ import org.apache.doris.common.LoadException;
 import org.apache.doris.common.jmockit.Deencapsulation;
 import org.apache.doris.load.BrokerFileGroup;
 import org.apache.doris.load.BrokerFileGroupAggInfo;
-import org.apache.spark.launcher.SparkAppHandle;
+import org.apache.doris.load.loadv2.etl.EtlJobConfig;
+import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlFileGroup;
+import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlIndex;
+import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlPartition;
+import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlPartitionInfo;
+import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlTable;
 
-import com.google.gson.Gson;
+import org.junit.Assert;
+import org.junit.Test;
+
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import mockit.Expectations;
@@ -55,12 +60,9 @@ import mockit.Injectable;
 import mockit.Mock;
 import mockit.MockUp;
 import mockit.Mocked;
-import org.junit.Assert;
-import org.junit.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class SparkLoadPendingTaskTest {
 
@@ -70,8 +72,7 @@ public class SparkLoadPendingTaskTest {
                                 @Injectable BrokerDesc brokerDesc,
                                 @Mocked Catalog catalog,
                                 @Injectable Database database,
-                                @Injectable OlapTable table,
-                                @Injectable SparkAppHandle handle) throws LoadException {
+                                @Injectable OlapTable table) throws LoadException {
         long dbId = 0L;
         long tableId = 1L;
 
@@ -126,20 +127,22 @@ public class SparkLoadPendingTaskTest {
             }
         };
 
+        String appId = "app-20200412192444-0088";
         new MockUp<SparkEtlJobHandler>() {
             @Mock
-            public SparkAppHandle submitEtlJob(long loadJobId, String loadLabel, String sparkMaster,
-                                               Map<String, String> sparkConfigs, String jobJsonConfig) {
-                return handle;
+            public void submitEtlJob(long loadJobId, String loadLabel, SparkEtlCluster etlCluster,
+                                     BrokerDesc brokerDesc, EtlJobConfig etlJobConfig,
+                                     SparkPendingTaskAttachment attachment) throws LoadException {
+                attachment.setAppId(appId);
             }
         };
 
         SparkLoadPendingTask task = new SparkLoadPendingTask(sparkLoadJob, aggKeyToFileGroups, etlCluster, brokerDesc);
         task.init();
         SparkPendingTaskAttachment attachment = Deencapsulation.getField(task, "attachment");
-        Assert.assertTrue(attachment.getHandle() == null);
+        Assert.assertEquals(null, attachment.getAppId());
         task.executeTask();
-        Assert.assertTrue(attachment.getHandle() != null);
+        Assert.assertEquals(appId, attachment.getAppId());
     }
 
     @Test(expected = LoadException.class)
@@ -277,48 +280,47 @@ public class SparkLoadPendingTaskTest {
         };
 
         SparkLoadPendingTask task = new SparkLoadPendingTask(sparkLoadJob, aggKeyToFileGroups, etlCluster, brokerDesc);
+        EtlJobConfig etlJobConfig = Deencapsulation.getField(task, "etlJobConfig");
+        Assert.assertEquals(null, etlJobConfig);
         task.init();
-        String jsonConfig = Deencapsulation.invoke(task, "configToJson");
-        Gson gson = new Gson();
-        Map<String, Object> configMap = gson.fromJson(jsonConfig, Map.class);
-        Map<String, Object> tables = (Map<String, Object>) configMap.get("tables");
+        etlJobConfig = Deencapsulation.getField(task, "etlJobConfig");
+        Assert.assertTrue(etlJobConfig != null);
 
         // check table id
-        Assert.assertEquals(1, tables.size());
-        Assert.assertTrue(tables.containsKey(String.valueOf(tableId)));
+        Map<Long, EtlTable> idToEtlTable = etlJobConfig.tables;
+        Assert.assertEquals(1, idToEtlTable.size());
+        Assert.assertTrue(idToEtlTable.containsKey(tableId));
 
-        Map<String, Object> tableMap = (Map<String, Object>) tables.get(String.valueOf(tableId));
         // check indexes
-        List<Map<String, Object>> indexes = (List<Map<String, Object>>) tableMap.get("indexes");
-        Assert.assertEquals(2, indexes.size());
-        Set<Long> indexIds = Sets.newHashSet(index1Id, index2Id);
-        Assert.assertTrue(indexIds.contains(new Double((double)indexes.get(0).get("index_id")).longValue()));
-        Assert.assertTrue(indexIds.contains(new Double((double)indexes.get(1).get("index_id")).longValue()));
+        EtlTable etlTable = idToEtlTable.get(tableId);
+        List<EtlIndex> etlIndexes = etlTable.indexes;
+        Assert.assertEquals(2, etlIndexes.size());
+        Assert.assertEquals(index1Id, etlIndexes.get(0).indexId);
+        Assert.assertEquals(index2Id, etlIndexes.get(1).indexId);
 
         // check base index columns
-        for (Map<String, Object> indexMap : indexes) {
-            if (new Double((double) indexMap.get("index_id")).longValue() == index1Id) {
-                Assert.assertTrue((Boolean) indexMap.get("is_base_index"));
-
-                List<Map<String, Object>> columnMaps = (List<Map<String, Object>>) indexMap.get("columns");
-                Assert.assertEquals(3, columnMaps.size());
-                for (int i = 0; i < columns.size(); i++) {
-                    Assert.assertTrue(columns.get(i).getName().endsWith((String) columnMaps.get(i).get("column_name")));
-                }
-            }
+        EtlIndex baseIndex = etlIndexes.get(0);
+        Assert.assertTrue(baseIndex.isBaseIndex);
+        Assert.assertEquals(3, baseIndex.columns.size());
+        for (int i = 0; i < columns.size(); i++) {
+            Assert.assertEquals(columns.get(i).getName(), baseIndex.columns.get(i).columnName);
         }
+        Assert.assertEquals("AGGREGATE", baseIndex.indexType);
 
         // check partitions
-        Map<String, Object> partitionInfoMap = (Map<String, Object>) tableMap.get("partition_info");
-        Assert.assertEquals("RANGE", partitionInfoMap.get("partition_type"));
-        List<String> partitionColumns = (List<String>) partitionInfoMap.get("partition_column_refs");
+        EtlPartitionInfo etlPartitionInfo = etlTable.partitionInfo;
+        Assert.assertEquals("RANGE", etlPartitionInfo.partitionType);
+        List<String> partitionColumns = etlPartitionInfo.partitionColumnRefs;
         Assert.assertEquals(1, partitionColumns.size());
         Assert.assertEquals(columns.get(partitionColumnIndex).getName(), partitionColumns.get(0));
-        List<Map<String, Object>> partitionMaps = (List<Map<String, Object>>) partitionInfoMap.get("partitions");
-        Assert.assertEquals(2, partitionMaps.size());
+        List<String> distributionColumns = etlPartitionInfo.distributionColumnRefs;
+        Assert.assertEquals(1, distributionColumns.size());
+        Assert.assertEquals(columns.get(distributionColumnIndex).getName(), distributionColumns.get(0));
+        List<EtlPartition> etlPartitions = etlPartitionInfo.partitions;
+        Assert.assertEquals(2, etlPartitions.size());
 
         // check file group
-        List<Object> fileGroups = (List<Object>) tableMap.get("file_groups");
-        Assert.assertEquals(1, fileGroups.size());
+        List<EtlFileGroup> etlFileGroups = etlTable.fileGroups;
+        Assert.assertEquals(1, etlFileGroups.size());
     }
 }

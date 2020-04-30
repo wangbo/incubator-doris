@@ -17,6 +17,9 @@
 
 package org.apache.doris.analysis;
 
+import org.apache.doris.catalog.Catalog;
+import org.apache.doris.catalog.EtlClusterMgr;
+import org.apache.doris.catalog.SparkEtlCluster;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.load.EtlJobType;
@@ -69,15 +72,24 @@ public class LoadStmtTest {
     }
 
     @Test
-    public void testNormal(@Injectable DataDescription desc) throws UserException, AnalysisException {
+    public void testNormal(@Injectable DataDescription desc, @Mocked Catalog catalog,
+                           @Injectable EtlClusterMgr etlClusterMgr) throws UserException, AnalysisException {
+        String clusterName = "cluster0";
         List<DataDescription> dataDescriptionList = Lists.newArrayList();
         dataDescriptionList.add(desc);
+        SparkEtlCluster etlCluster = new SparkEtlCluster(clusterName);
 
         new Expectations(){
             {
                 desc.toSql();
                 minTimes = 0;
                 result = "XXX";
+                catalog.getEtlClusterMgr();
+                result = etlClusterMgr;
+                etlClusterMgr.getEtlCluster(clusterName);
+                result = etlCluster;
+                etlClusterMgr.containsEtlCluster(clusterName);
+                result = true;
             }
         };
 
@@ -93,10 +105,10 @@ public class LoadStmtTest {
 
         // test EtlClusterDesc
         stmt = new LoadStmt(new LabelName("testDb", "testLabel"), dataDescriptionList,
-                            new EtlClusterDesc("spark.cluster0", null), null, null);
+                            new EtlClusterDesc(clusterName, null), null, null);
         stmt.analyze(analyzer);
         Assert.assertEquals(EtlJobType.SPARK, stmt.getDataProcessorDesc().getEtlJobType());
-        Assert.assertEquals("LOAD LABEL `testCluster:testDb`.`testLabel`\n(XXX)\nWITH CLUSTER 'spark.cluster0' ()",
+        Assert.assertEquals("LOAD LABEL `testCluster:testDb`.`testLabel`\n(XXX)\nWITH CLUSTER 'cluster0' ()",
                             stmt.toString());
     }
 
