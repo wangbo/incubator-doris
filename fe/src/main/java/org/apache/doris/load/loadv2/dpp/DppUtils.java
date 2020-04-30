@@ -185,8 +185,12 @@ public class DppUtils {
         CRC32 hashValue = new CRC32();
         for (String distColumn : distributeColumns) {
             Object columnObject = row.get(row.fieldIndex(distColumn));
-            ByteBuffer buffer = getHashValue(columnObject, dstTableSchema.apply(distColumn).dataType());
-            hashValue.update(buffer.array(), 0, buffer.limit());
+            try {
+                ByteBuffer buffer = getHashValue(columnObject, dstTableSchema.apply(distColumn).dataType());
+                hashValue.update(buffer.array(), 0, buffer.limit());
+            } catch (Exception e) {
+                throw new RuntimeException("get " + distColumn + " hash failed", e);
+            }
         }
         return hashValue.getValue();
     }
