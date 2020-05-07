@@ -159,6 +159,9 @@ public class SparkEtlJob {
                     sourceHiveFilter, dorisHiveDB, distinctKeyTableName,
                     globalDictTableName, dorisIntermediateHiveTable, 10, veryHighCardinalityColumn, 10, false, spark);
             buildGlobalDict.createHiveIntermediateTable();
+            if (tableToBitmapDictColumns.isEmpty()) {
+                return;
+            }
             buildGlobalDict.extractDistinctColumn();
             buildGlobalDict.buildGlobalDict();
             buildGlobalDict.encodeDorisIntermediateHiveTable();
@@ -185,11 +188,11 @@ public class SparkEtlJob {
     }
 
     private void processData() throws Exception {
-        if (!tableToBitmapDictColumns.isEmpty()) {
+//        if (!tableToBitmapDictColumns.isEmpty()) {
             processDataFromHiveTable();
-        } else {
-            processDpp();
-        }
+//        } else {
+//            processDpp();
+//        }
     }
 
     private void run() throws Exception {
