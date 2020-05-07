@@ -37,6 +37,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -117,7 +118,7 @@ public class SparkEtlJob {
     }
 
     private void buildGlobalDictAndEncodeSourceTable(EtlTable table, long tableId) {
-        List<String> distinctColumnList = Lists.newArrayList(tableToBitmapDictColumns.get(tableId));
+        List<String> distinctColumnList = Lists.newArrayList(tableToBitmapDictColumns.get(tableId) == null ? new HashSet<String>() : tableToBitmapDictColumns.get(tableId));
         List<String> dorisOlapTableColumnList = Lists.newArrayList();
         List<String> mapSideJoinColumns = Lists.newArrayList();
         List<EtlColumn> baseSchema = null;
