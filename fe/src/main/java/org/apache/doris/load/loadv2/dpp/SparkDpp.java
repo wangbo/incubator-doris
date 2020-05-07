@@ -205,6 +205,7 @@ public final class SparkDpp implements java.io.Serializable {
                 Arrays.asList(outputSchema.fields()).stream()
                         .filter(field -> !field.name().equalsIgnoreCase(DppUtils.BUCKET_ID))
                         .collect(Collectors.toList()));
+        ExpressionEncoder encoder = RowEncoder.apply(dstSchema);
         dataframe.foreachPartition(new ForeachPartitionFunction<Row>() {
             @Override
             public void call(Iterator<Row> t) throws Exception {
@@ -256,7 +257,6 @@ public final class SparkDpp implements java.io.Serializable {
                         }
                         lastBucketKey = curBucketKey;
                     }
-                    ExpressionEncoder encoder = RowEncoder.apply(dstSchema);
                     InternalRow internalRow = encoder.toRow(rowWithoutBucketKey);
                     parquetWriter.write(internalRow);
                 }
