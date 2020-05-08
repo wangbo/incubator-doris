@@ -214,8 +214,23 @@ public final class SparkDpp implements java.io.Serializable {
                 FileSystem fs = FileSystem.get(URI.create(etlJobConfig.outputPath), conf);
                 String lastBucketKey = null;
                 ParquetWriter<InternalRow> parquetWriter = null;
+
+                long currentTS = System.currentTimeMillis();
+
+                long getNextTime = 0;
+                long getNextTimeTS = currentTS;
+
+                long convertToRowTime = 0;
+                long convertToRowTS = 0;
+
+                long writeParquetTime = 0;
+                long writeParquetTS = 0;
+
+
                 while (t.hasNext()) {
                     Row row = t.next();
+                    getNextTime = getNextTime + (System.currentTimeMillis() - getNextTimeTS);
+
                     if (row.length() <= 1) {
                         LOG.warn("invalid row:" + row);
                         continue;
@@ -257,9 +272,23 @@ public final class SparkDpp implements java.io.Serializable {
                         }
                         lastBucketKey = curBucketKey;
                     }
+
+                    convertToRowTS = System.currentTimeMillis();
                     InternalRow internalRow = encoder.toRow(rowWithoutBucketKey);
+                    currentTS = System.currentTimeMillis();
+                    convertToRowTime = convertToRowTime + (currentTS - convertToRowTS);
+
+                    writeParquetTS = currentTS;
                     parquetWriter.write(internalRow);
+                    currentTS = System.currentTimeMillis();
+                    writeParquetTime = writeParquetTime + (currentTS - writeParquetTS);
+
+                    getNextTimeTS = currentTS;
                 }
+
+                System.out.println("getNextTimeCost:" + (getNextTime / 1000));
+                System.out.println("convertToRow:" + (convertToRowTime / 1000));
+                System.out.println("writeParquetCost:" + (writeParquetTime / 1000));
                 if (parquetWriter != null) {
                     parquetWriter.close();
                 }
