@@ -154,7 +154,7 @@ public class SparkEtlJob {
 
         try {
             List<String> veryHighCardinalityColumn = new ArrayList<>();
-            veryHighCardinalityColumn.add("union_id");
+//            veryHighCardinalityColumn.add("union_id");
             GlobalDictBuilder buildGlobalDict = new GlobalDictBuilder(distinctColumnList, dorisOlapTableColumnList,
                     mapSideJoinColumns, sourceHiveDBTableName,
                     sourceHiveFilter, dorisHiveDB, distinctKeyTableName,
