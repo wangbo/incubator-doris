@@ -95,8 +95,11 @@ public class SparkEtlJobHandler {
         String jobConfigHdfsPath = configsHdfsDir + CONFIG_FILE_NAME;
         try {
             BrokerUtil.writeBrokerFile(APP_RESOURCE_LOCAL_PATH, appResourceHdfsPath, brokerDesc);
+            String preValue = etlJobConfig.outputPath;
+            etlJobConfig.outputPath = etlJobConfig.outputPath.replace("hdfs://dfsrouter.vip.sankuai.com:8888","");
             byte[] configData = configToJson(etlJobConfig).getBytes("UTF-8");
             BrokerUtil.writeBrokerFile(configData, jobConfigHdfsPath, brokerDesc);
+            etlJobConfig.outputPath = preValue;
         } catch (UserException | UnsupportedEncodingException e) {
             throw new LoadException(e.getMessage());
         }
