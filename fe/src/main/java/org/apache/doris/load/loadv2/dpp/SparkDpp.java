@@ -852,7 +852,7 @@ public final class SparkDpp implements java.io.Serializable {
     public void doDpp() throws Exception {
         // write dpp result to output
         DppResult dppResult = process();
-        String outputPath = etlJobConfig.getOutputPath();
+        String outputPath = etlJobConfig.getOutputPath().replace("hdfs://dfsrouter.vip.sankuai.com:8888","");
         String resultFilePath = outputPath + "/" + DPP_RESULT_FILE;
         Configuration conf = new Configuration();
         URI uri = new URI(outputPath);
