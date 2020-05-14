@@ -102,7 +102,7 @@ public class DppUtils {
         }
     }
 
-    public static DataType getDataTypeFromColumn(EtlJobConfig.EtlColumn column) throws UserException {
+    public static DataType getDataTypeFromColumn(EtlJobConfig.EtlColumn column, boolean regardBitmapAsBinary) throws UserException {
         DataType dataType = DataTypes.StringType;
         switch (column.columnType) {
             case "BOOLEAN":
@@ -136,9 +136,11 @@ public class DppUtils {
             case "CHAR":
             case "VARCHAR":
             case "HLL":
-            case "BITMAP":
             case "OBJECT":
                 dataType = DataTypes.StringType;
+                break;
+            case "BITMAP":
+                dataType = regardBitmapAsBinary ? DataTypes.BinaryType : DataTypes.StringType;
                 break;
             case "DECIMALV2":
                 dataType = DecimalType.apply(column.precision, column.scale);
@@ -195,14 +197,14 @@ public class DppUtils {
         return hashValue.getValue();
     }
 
-    public static StructType createDstTableSchema(List<EtlJobConfig.EtlColumn> columns, boolean addBucketIdColumn) throws UserException {
+    public static StructType createDstTableSchema(List<EtlJobConfig.EtlColumn> columns, boolean addBucketIdColumn, boolean regardBitmapAsBinary) throws UserException {
         List<StructField> fields = new ArrayList<>();
         if (addBucketIdColumn) {
             StructField bucketIdField = DataTypes.createStructField(BUCKET_ID, DataTypes.StringType, true);
             fields.add(bucketIdField);
         }
         for (EtlJobConfig.EtlColumn column : columns) {
-            DataType structColumnType = getDataTypeFromColumn(column);
+            DataType structColumnType = getDataTypeFromColumn(column, regardBitmapAsBinary);
             StructField field = DataTypes.createStructField(column.columnName, structColumnType, column.isAllowNull);
             fields.add(field);
         }

@@ -29,7 +29,9 @@ import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.spark.Partitioner;
 import org.apache.spark.api.java.function.ForeachPartitionFunction;
+import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
+import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder;
 import org.apache.spark.sql.catalyst.encoders.RowEncoder;
@@ -48,6 +50,7 @@ import org.apache.spark.util.LongAccumulator;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 
+import org.roaringbitmap.RoaringBitmap;
 import scala.Tuple2;
 import scala.collection.Seq;
 
@@ -72,6 +75,10 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import scala.collection.JavaConverters;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+
+import static org.apache.doris.load.loadv2.dpp.BitmapUnionUDAF.serializeBitmap;
+
+//import static org.apache.doris.load.loadv2.dpp.BitmapUnionUDAF.serializeBitmap;
 
 // This class is a Spark-based data preprocessing program,
 // which will make use of the distributed compute framework of spark to
@@ -100,6 +107,8 @@ public final class SparkDpp implements java.io.Serializable {
     // accumulator to collect invalid rows
     private StringAccumulator invalidRows = new StringAccumulator();
 
+    private int reduceNum = 0;
+
     public SparkDpp(SparkSession spark, EtlJobConfig etlJobConfig) {
         this.spark = spark;
         this.etlJobConfig = etlJobConfig;
@@ -118,6 +127,87 @@ public final class SparkDpp implements java.io.Serializable {
         fileNumberAcc = spark.sparkContext().longAccumulator("fileNumberAcc");
         fileSizeAcc = spark.sparkContext().longAccumulator("fileSizeAcc");
         spark.sparkContext().register(invalidRows, "InvalidRowsAccumulator");
+    }
+
+    class EncodeBaseCuboid implements PairFunction<Row, Object[], Object[]> {
+
+        @Override
+        public Tuple2<Object[], Object[]> call(Row row) throws Exception {
+            int len = row.length();
+            if (len != 4) {
+                throw new RuntimeException("unexpected row length");
+            }
+            List<Object> key = new ArrayList();
+            for (int i = 0; i < len - 1; i++) {
+                key.add(row.get(i));
+            }
+            List<Object> value = new ArrayList<>();
+            RoaringBitmap bitmap = new RoaringBitmap();
+            Object aggValue = row.get(len - 1);
+            bitmap.add(aggValue == null ? 0 : Integer.valueOf(aggValue.toString()));
+            value.add(bitmap);
+
+            return new Tuple2<>(key.toArray(), value.toArray());
+        }
+    }
+
+    class RDDPairReduceFunction implements Function2<Object[], Object[], Object[]> {
+
+        @Override
+        public Object[] call(Object[] v1, Object[] v2) throws Exception {
+            RoaringBitmap value1 = (RoaringBitmap) v1[0];
+            RoaringBitmap value2 = (RoaringBitmap) v2[0];
+
+            RoaringBitmap merged = new RoaringBitmap();
+            if (value1 != null) {
+                merged.or(value1);
+            }
+            if (value2 != null) {
+                merged.or(value2);
+            }
+            // TODO: 2020/5/14
+//            System.out.println("caculate cal:" + merged.getCardinality());
+            return new Object[]{merged};
+        }
+    }
+
+//    public static byte[] serializeBitmap(BitmapValue bitmapValue) {
+//        try {
+//            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+//            DataOutputStream outputStream = new DataOutputStream(bos);
+//            bitmapValue.serialize(outputStream);
+//            return bos.toByteArray();
+//        } catch (IOException ioException) {
+//            ioException.printStackTrace();
+//            throw new RuntimeException(ioException);
+//        }
+//    }
+
+    private Dataset<Row> processDataUsingRDD(Dataset<Row> dataframe, EtlJobConfig.EtlIndex indexMeta) throws UserException {
+        // convert to key value
+        JavaPairRDD<Object[], Object[]> baseRDD = dataframe.toJavaRDD().mapToPair(new EncodeBaseCuboid());
+        // reduce by key
+        JavaPairRDD<Object[], Object[]> resultRDD = baseRDD.reduceByKey(new RDDPairReduceFunction(), 1);
+        // convert to data frame and serialize bitmap
+        JavaRDD<Row> resultRdd = resultRDD.map(record -> {
+            Object[] keys = record._1;
+            Object[] values = record._2;
+//            System.out.println("print bitmap when cal:" + ((RoaringBitmap) values[0]).toString());
+            return RowFactory.create((String)keys[0], (int)keys[1], (String)keys[2], (byte[])serializeBitmap((RoaringBitmap) values[0]));
+//            return RowFactory.create(keys[0],keys[1],keys[2],keys[3],keys[4],keys[5],keys[6],keys[7],keys[8], (byte[])serializeBitmap((RoaringBitmap) values[0]));
+        });
+
+//        System.out.println("count here1:" + resultRdd.count());
+
+        // repartition
+        StructType tableSchemaWithBucketId = DppUtils.createDstTableSchema(indexMeta.columns, true, true);
+        dataframe = spark.createDataFrame(resultRdd, tableSchemaWithBucketId);
+
+//        System.out.println("count here2:" + dataframe.count());
+
+        // use bucket number as the parallel number
+        dataframe = dataframe.repartition(reduceNum, new Column(DppUtils.BUCKET_ID));
+        return dataframe;
     }
 
     private Dataset<Row> processDataframeAgg(Dataset<Row> dataframe, EtlJobConfig.EtlIndex indexMeta) {
@@ -206,6 +296,7 @@ public final class SparkDpp implements java.io.Serializable {
                         .filter(field -> !field.name().equalsIgnoreCase(DppUtils.BUCKET_ID))
                         .collect(Collectors.toList()));
         ExpressionEncoder encoder = RowEncoder.apply(dstSchema);
+        dataframe.printSchema();
         dataframe.foreachPartition(new ForeachPartitionFunction<Row>() {
             @Override
             public void call(Iterator<Row> t) throws Exception {
@@ -226,10 +317,11 @@ public final class SparkDpp implements java.io.Serializable {
                 long writeParquetTime = 0;
                 long writeParquetTS = 0;
 
-
+                int count = 0;
                 while (t.hasNext()) {
                     Row row = t.next();
                     getNextTime = getNextTime + (System.currentTimeMillis() - getNextTimeTS);
+                    System.out.println(row.get(0) + ":" + row.get(1));
 
                     if (row.length() <= 1) {
                         LOG.warn("invalid row:" + row);
@@ -284,8 +376,9 @@ public final class SparkDpp implements java.io.Serializable {
                     writeParquetTime = writeParquetTime + (currentTS - writeParquetTS);
 
                     getNextTimeTS = currentTS;
+                    count++;
                 }
-
+                System.out.println("total rows:" + count);
                 System.out.println("getNextTimeCost:" + (getNextTime / 1000));
                 System.out.println("convertToRow:" + (convertToRowTime / 1000));
                 System.out.println("writeParquetCost:" + (writeParquetTime / 1000));
@@ -348,7 +441,8 @@ public final class SparkDpp implements java.io.Serializable {
             curDataFrame = parentDataframe.select(columnSeq);
             if (curNode.indexMeta.indexType.equals("AGGREGATE")) {
                 // do aggregation
-                curDataFrame = processDataframeAgg(curDataFrame, curNode.indexMeta);
+//                curDataFrame = processDataframeAgg(curDataFrame, curNode.indexMeta);
+                curDataFrame = processDataUsingRDD(curDataFrame, curNode.indexMeta);
             }
             Seq<Column> keyColumnSeq = JavaConverters.asScalaIteratorConverter(keyColumns.iterator()).asScala().toSeq();
             // should use sortWithinPartitions, not sort
@@ -443,13 +537,17 @@ public final class SparkDpp implements java.io.Serializable {
                                              }
         );
 
-        StructType tableSchemaWithBucketId = DppUtils.createDstTableSchema(baseIndex.columns, true);
+        StructType tableSchemaWithBucketId = DppUtils.createDstTableSchema(baseIndex.columns, true, false);
         dataframe = spark.createDataFrame(resultRdd, tableSchemaWithBucketId);
+        // TODO: 2020/5/14 remove
+//        dataframe.show();
         // use bucket number as the parallel number
-        int reduceNum = 0;
+        int reduceNumTmp = 0;
         for (EtlJobConfig.EtlPartition partition : partitionInfo.partitions) {
-            reduceNum += partition.bucketNum;
+            reduceNumTmp += partition.bucketNum;
         }
+        reduceNum = reduceNumTmp;
+        System.out.println("reduce num:" + reduceNum);
         dataframe = dataframe.repartition(reduceNum, new Column(DppUtils.BUCKET_ID));
         return dataframe;
     }
@@ -783,7 +881,7 @@ public final class SparkDpp implements java.io.Serializable {
                     }
                 }
                 List<DorisRangePartitioner.PartitionRangeKey> partitionRangeKeys = createPartitionRangeKeys(partitionInfo, partitionKeySchema);
-                StructType dstTableSchema = DppUtils.createDstTableSchema(baseIndex.columns, false);
+                StructType dstTableSchema = DppUtils.createDstTableSchema(baseIndex.columns, false, false);
                 RollupTreeBuilder rollupTreeParser = new MinimumCoverageRollupTreeBuilder();
                 RollupTreeNode rootNode = rollupTreeParser.build(etlTable);
                 LOG.info("Start to process rollup tree:" + rootNode);
@@ -798,6 +896,7 @@ public final class SparkDpp implements java.io.Serializable {
                         String taskId = etlJobConfig.outputPath.substring(etlJobConfig.outputPath.lastIndexOf("/") + 1);
                         String dorisIntermediateHiveTable = String.format(EtlJobConfig.DORIS_INTERMEDIATE_HIVE_TABLE_NAME,
                                                                           tableId, taskId);
+//                        dorisIntermediateHiveTable = "kylin2x_test.doris_intermediate_hive_table_160479_165758";
                         fileGroupDataframe = loadDataFromHiveTable(spark, dorisIntermediateHiveTable, baseIndex, fileGroup, dstTableSchema);
                     }
                     if (fileGroupDataframe == null) {

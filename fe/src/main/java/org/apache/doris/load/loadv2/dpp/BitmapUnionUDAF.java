@@ -74,7 +74,7 @@ public class BitmapUnionUDAF extends UserDefinedAggregateFunction {
         buffer.update(0, serializeBitmap(roaringBitmap));
     }
 
-    public byte[] serializeBitmap(RoaringBitmap roaringBitmap) {
+    public static byte[] serializeBitmap(RoaringBitmap roaringBitmap) {
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             DataOutputStream outputStream = new DataOutputStream(bos);
