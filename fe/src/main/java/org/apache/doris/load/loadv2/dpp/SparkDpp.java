@@ -134,7 +134,7 @@ public final class SparkDpp implements java.io.Serializable {
         @Override
         public Tuple2<Object[], Object[]> call(Row row) throws Exception {
             int len = row.length();
-            if (len != 4) {
+            if (len != 10) {
                 throw new RuntimeException("unexpected row length");
             }
             List<Object> key = new ArrayList();
@@ -187,14 +187,14 @@ public final class SparkDpp implements java.io.Serializable {
         // convert to key value
         JavaPairRDD<Object[], Object[]> baseRDD = dataframe.toJavaRDD().mapToPair(new EncodeBaseCuboid());
         // reduce by key
-        JavaPairRDD<Object[], Object[]> resultRDD = baseRDD.reduceByKey(new RDDPairReduceFunction(), 1);
+        JavaPairRDD<Object[], Object[]> resultRDD = baseRDD.reduceByKey(new RDDPairReduceFunction(), 200);
         // convert to data frame and serialize bitmap
         JavaRDD<Row> resultRdd = resultRDD.map(record -> {
             Object[] keys = record._1;
             Object[] values = record._2;
 //            System.out.println("print bitmap when cal:" + ((RoaringBitmap) values[0]).toString());
-            return RowFactory.create((String)keys[0], (int)keys[1], (String)keys[2], (byte[])serializeBitmap((RoaringBitmap) values[0]));
-//            return RowFactory.create(keys[0],keys[1],keys[2],keys[3],keys[4],keys[5],keys[6],keys[7],keys[8], (byte[])serializeBitmap((RoaringBitmap) values[0]));
+//            return RowFactory.create((String)keys[0], (int)keys[1], (String)keys[2], (byte[])serializeBitmap((RoaringBitmap) values[0]));
+            return RowFactory.create(keys[0],keys[1],keys[2],keys[3],keys[4],keys[5],keys[6],keys[7],keys[8], (byte[])serializeBitmap((RoaringBitmap) values[0]));
         });
 
 //        System.out.println("count here1:" + resultRdd.count());
@@ -321,7 +321,7 @@ public final class SparkDpp implements java.io.Serializable {
                 while (t.hasNext()) {
                     Row row = t.next();
                     getNextTime = getNextTime + (System.currentTimeMillis() - getNextTimeTS);
-                    System.out.println(row.get(0) + ":" + row.get(1));
+//                    System.out.println(row.get(0) + ":" + row.get(1));
 
                     if (row.length() <= 1) {
                         LOG.warn("invalid row:" + row);
