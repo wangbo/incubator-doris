@@ -897,7 +897,7 @@ public final class SparkDpp implements java.io.Serializable {
                         String taskId = etlJobConfig.outputPath.substring(etlJobConfig.outputPath.lastIndexOf("/") + 1);
                         String dorisIntermediateHiveTable = String.format(EtlJobConfig.DORIS_INTERMEDIATE_HIVE_TABLE_NAME,
                                                                           tableId, taskId);
-                        dorisIntermediateHiveTable = "kylin2x_test.doris_intermediate_hive_table_198071_198146";
+//                        dorisIntermediateHiveTable = "kylin2x_test.doris_intermediate_hive_table_198071_198146";
                         fileGroupDataframe = loadDataFromHiveTable(spark, dorisIntermediateHiveTable, baseIndex, fileGroup, dstTableSchema);
                     }
                     if (fileGroupDataframe == null) {

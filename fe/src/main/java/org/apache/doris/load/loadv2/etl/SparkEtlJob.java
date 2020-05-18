@@ -154,6 +154,7 @@ public class SparkEtlJob {
 
         try {
             List<String> veryHighCardinalityColumn = new ArrayList<>();
+            mapSideJoinColumns.add("p_submit_order_uv");
             GlobalDictBuilder buildGlobalDict = new GlobalDictBuilder(distinctColumnList, dorisOlapTableColumnList,
                     mapSideJoinColumns, sourceHiveDBTableName,
                     sourceHiveFilter, dorisHiveDB, distinctKeyTableName,
@@ -181,7 +182,7 @@ public class SparkEtlJob {
         }
 
         // build global dict and and encode source hive table
-//        buildGlobalDictAndEncodeSourceTable(table, tableId);
+        buildGlobalDictAndEncodeSourceTable(table, tableId);
 
         // data partition sort and aggregation
         processDpp();
