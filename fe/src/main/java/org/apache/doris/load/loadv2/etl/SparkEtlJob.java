@@ -181,7 +181,7 @@ public class SparkEtlJob {
         }
 
         // build global dict and and encode source hive table
-        buildGlobalDictAndEncodeSourceTable(table, tableId);
+//        buildGlobalDictAndEncodeSourceTable(table, tableId);
 
         // data partition sort and aggregation
         processDpp();
