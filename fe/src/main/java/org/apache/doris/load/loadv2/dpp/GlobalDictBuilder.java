@@ -224,10 +224,14 @@ public class GlobalDictBuilder {
     // encode dorisIntermediateHiveTable's distinct column
     public void encodeDorisIntermediateHiveTable() {
         if (isEncodeHiveTableInOneSql) {
-            spark.sql(getEncodeDorisIntermediateHiveTableInOneJoinSql());
+            String sql = getEncodeDorisIntermediateHiveTableInOneJoinSql();
+            System.out.println("encode doris table sql2:" + sql);
+            spark.sql(sql);
         } else {
             for (String distinctColumn : distinctColumnList) {
-                spark.sql(getEncodeDorisIntermediateHiveTableSql(distinctColumn));
+                String sql = getEncodeDorisIntermediateHiveTableSql(distinctColumn);
+                System.out.println("encode doris table sql:" + sql);
+                spark.sql(sql);
             }
         }
     }
