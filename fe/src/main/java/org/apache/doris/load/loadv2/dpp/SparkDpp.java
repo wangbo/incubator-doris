@@ -98,6 +98,7 @@ public final class SparkDpp implements java.io.Serializable {
     private LongAccumulator scannedRowsAcc = null;
     private LongAccumulator fileNumberAcc = null;
     private LongAccumulator fileSizeAcc = null;
+    private int reduceNum = 0;
     // accumulator to collect invalid rows
     private StringAccumulator invalidRows = new StringAccumulator();
 
@@ -115,6 +116,50 @@ public final class SparkDpp implements java.io.Serializable {
         fileNumberAcc = spark.sparkContext().longAccumulator("fileNumberAcc");
         fileSizeAcc = spark.sparkContext().longAccumulator("fileSizeAcc");
         spark.sparkContext().register(invalidRows, "InvalidRowsAccumulator");
+    }
+
+    private Dataset<Row> processRDDAgg(Dataset<Row> dataframe, EtlJobConfig.EtlIndex currentIndexMeta) throws UserException {
+        // 1 make metadata for map/reduce
+        int keyLen = 0;
+        for (EtlJobConfig.EtlColumn etlColumn : currentIndexMeta.columns) {
+            keyLen = etlColumn.isKey ? keyLen + 1 : keyLen;
+        }
+
+        SparkRDDAggregator[] sparkRDDAggregators = new SparkRDDAggregator[currentIndexMeta.columns.size() - keyLen];
+
+        for (int i = 0 ; i < currentIndexMeta.columns.size(); i++) {
+            if (!currentIndexMeta.columns.get(i).isKey) {
+                sparkRDDAggregators[i - keyLen] = SparkRDDAggregator.buildAggregator(currentIndexMeta.columns.get(i));
+            }
+        }
+
+        // 2 convert dataframe to rdd
+        JavaPairRDD<Object[], Object[]> currentRollupRDD = dataframe.toJavaRDD().mapToPair(
+                new EncodeMapFunction(sparkRDDAggregators, keyLen + 1));
+
+        // 3 do aggregate
+        // TODO(wb) set the reduce concurrency by statistic instead of hard code 200
+        JavaPairRDD<Object[], Object[]> reduceResultRDD = currentRollupRDD.reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), 200);
+
+        // convert to data frame and serialize bitmap
+        JavaRDD<Row> finalRDD = reduceResultRDD.map(record -> {
+            Object[] keys = record._1;
+            Object[] values = record._2;
+            int size = keys.length + values.length;
+            Object[] result = new Object[size];
+
+            for (int i = 0; i < size; i++) {
+                result[i] = i < keys.length ? keys[i] : sparkRDDAggregators[i - keys.length].serialize(values[i - keys.length]);
+            }
+
+            return RowFactory.create(result);
+        });
+
+        // 4 convert to dataframe
+        StructType tableSchemaWithBucketId = DppUtils.createDstTableSchema(currentIndexMeta.columns, true, true);
+        dataframe = spark.createDataFrame(finalRDD, tableSchemaWithBucketId);
+        return dataframe;
+
     }
 
     private Dataset<Row> processDataframeAgg(Dataset<Row> dataframe, EtlJobConfig.EtlIndex indexMeta) {
@@ -316,8 +361,9 @@ public final class SparkDpp implements java.io.Serializable {
             curDataFrame = parentDataframe.select(columnSeq);
             if (curNode.indexMeta.indexType.equals("AGGREGATE")) {
                 // do aggregation
-                curDataFrame = processDataframeAgg(curDataFrame, curNode.indexMeta);
+                curDataFrame = processRDDAgg(curDataFrame, curNode.indexMeta);
             }
+            curDataFrame = curDataFrame.repartition(reduceNum, new Column(DppUtils.BUCKET_ID));
             Seq<Column> keyColumnSeq = JavaConverters.asScalaIteratorConverter(keyColumns.iterator()).asScala().toSeq();
             // should use sortWithinPartitions, not sort
             // because sort will modify the partition number which will lead to bug
@@ -411,14 +457,15 @@ public final class SparkDpp implements java.io.Serializable {
                                              }
         );
 
-        StructType tableSchemaWithBucketId = DppUtils.createDstTableSchema(baseIndex.columns, true);
+        StructType tableSchemaWithBucketId = DppUtils.createDstTableSchema(baseIndex.columns, true, false);
         dataframe = spark.createDataFrame(resultRdd, tableSchemaWithBucketId);
         // use bucket number as the parallel number
         int reduceNum = 0;
         for (EtlJobConfig.EtlPartition partition : partitionInfo.partitions) {
             reduceNum += partition.bucketNum;
         }
-        dataframe = dataframe.repartition(reduceNum, new Column(DppUtils.BUCKET_ID));
+
+        this.reduceNum = reduceNum;
         return dataframe;
     }
 
@@ -751,7 +798,7 @@ public final class SparkDpp implements java.io.Serializable {
                     }
                 }
                 List<DorisRangePartitioner.PartitionRangeKey> partitionRangeKeys = createPartitionRangeKeys(partitionInfo, partitionKeySchema);
-                StructType dstTableSchema = DppUtils.createDstTableSchema(baseIndex.columns, false);
+                StructType dstTableSchema = DppUtils.createDstTableSchema(baseIndex.columns, false, false);
                 RollupTreeBuilder rollupTreeParser = new MinimumCoverageRollupTreeBuilder();
                 RollupTreeNode rootNode = rollupTreeParser.build(etlTable);
                 LOG.info("Start to process rollup tree:" + rootNode);
@@ -820,7 +867,7 @@ public final class SparkDpp implements java.io.Serializable {
     public void doDpp() throws Exception {
         // write dpp result to output
         DppResult dppResult = process();
-        String outputPath = etlJobConfig.getOutputPath();
+        String outputPath = etlJobConfig.getOutputPath().replace("hdfs://dfsrouter.vip.sankuai.com:8888","");
         String resultFilePath = outputPath + "/" + DPP_RESULT_FILE;
         Configuration conf = new Configuration();
         URI uri = new URI(outputPath);

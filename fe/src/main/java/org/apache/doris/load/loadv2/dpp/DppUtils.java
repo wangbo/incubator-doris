@@ -102,7 +102,7 @@ public class DppUtils {
         }
     }
 
-    public static DataType getDataTypeFromColumn(EtlJobConfig.EtlColumn column) throws UserException {
+    public static DataType getDataTypeFromColumn(EtlJobConfig.EtlColumn column, boolean regardBitmapAsBinary) {
         DataType dataType = DataTypes.StringType;
         switch (column.columnType) {
             case "BOOLEAN":
@@ -136,15 +136,17 @@ public class DppUtils {
             case "CHAR":
             case "VARCHAR":
             case "HLL":
-            case "BITMAP":
             case "OBJECT":
                 dataType = DataTypes.StringType;
+                break;
+            case "BITMAP":
+                dataType = regardBitmapAsBinary ? DataTypes.BinaryType : DataTypes.StringType;
                 break;
             case "DECIMALV2":
                 dataType = DecimalType.apply(column.precision, column.scale);
                 break;
             default:
-                throw new UserException("Reason: invalid column type:" + column);
+                throw new RuntimeException("Reason: invalid column type:" + column);
         }
         return dataType;
     }
@@ -191,14 +193,14 @@ public class DppUtils {
         return hashValue.getValue();
     }
 
-    public static StructType createDstTableSchema(List<EtlJobConfig.EtlColumn> columns, boolean addBucketIdColumn) throws UserException {
+    public static StructType createDstTableSchema(List<EtlJobConfig.EtlColumn> columns, boolean addBucketIdColumn, boolean regardBitmapAsBinary) {
         List<StructField> fields = new ArrayList<>();
         if (addBucketIdColumn) {
             StructField bucketIdField = DataTypes.createStructField(BUCKET_ID, DataTypes.StringType, true);
             fields.add(bucketIdField);
         }
         for (EtlJobConfig.EtlColumn column : columns) {
-            DataType structColumnType = getDataTypeFromColumn(column);
+            DataType structColumnType = getDataTypeFromColumn(column, regardBitmapAsBinary);
             StructField field = DataTypes.createStructField(column.columnName, structColumnType, column.isAllowNull);
             fields.add(field);
         }
