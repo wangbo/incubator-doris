@@ -72,7 +72,6 @@ class EncodeMapFunction implements PairFunction<Row, Object[], Object[]> {
         Object[] values = new Object[valueAggregators.length];
 
         for (int i = 0; i < row.size(); i++) {
-            System.out.println(row.toString());
             if (i < keyLen) {
                 keys[i] = row.get(i);
             } else {
