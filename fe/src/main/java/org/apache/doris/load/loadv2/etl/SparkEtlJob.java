@@ -137,8 +137,7 @@ public class SparkEtlJob {
 
         EtlFileGroup fileGroup = table.fileGroups.get(0);
         String sourceHiveDBTableName = fileGroup.hiveTableName;
-//        String dorisHiveDB = sourceHiveDBTableName.split("\\.")[0];
-        String dorisHiveDB = "kylin2x_test";
+        String dorisHiveDB = sourceHiveDBTableName.split("\\.")[0];
         String sourceHiveFilter = fileGroup.where;
 
         String taskId = etlJobConfig.outputPath.substring(etlJobConfig.outputPath.lastIndexOf("/") + 1);
@@ -159,7 +158,6 @@ public class SparkEtlJob {
 
         try {
             List<String> veryHighCardinalityColumn = new ArrayList<>();
-            veryHighCardinalityColumn.add("uuid");
             GlobalDictBuilder buildGlobalDict = new GlobalDictBuilder(distinctColumnList, dorisOlapTableColumnList,
                     mapSideJoinColumns, sourceHiveDBTableName,
                     sourceHiveFilter, dorisHiveDB, distinctKeyTableName,

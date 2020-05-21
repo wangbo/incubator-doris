@@ -128,101 +128,101 @@ public class DppUtilsTest {
 
     }
 
-//    @Test
-//    public void testGetDataTypeFromColumn() {
-//        DppUtils dppUtils = new DppUtils();
-//
-//        try {
-//            EtlJobConfig.EtlColumn column = new EtlJobConfig.EtlColumn();
-//            column.columnType = "VARCHAR";
-//            DataType stringResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.StringType, stringResult);
-//
-//            column.columnType = "CHAR";
-//            DataType charResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.StringType, charResult);
-//
-//            column.columnType = "HLL";
-//            DataType hllResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.StringType, hllResult);
-//
-//            column.columnType = "OBJECT";
-//            DataType objectResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.StringType, objectResult);
-//
-//            column.columnType = "BOOLEAN";
-//            DataType booleanResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.BooleanType, booleanResult);
-//
-//            column.columnType = "TINYINT";
-//            DataType tinyResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.ShortType, tinyResult);
-//
-//            column.columnType = "SMALLINT";
-//            DataType smallResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.ShortType, smallResult);
-//
-//            column.columnType = "INT";
-//            DataType integerResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.IntegerType, integerResult);
-//
-//            column.columnType = "BIGINT";
-//            DataType longResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.LongType, longResult);
-//
-//            column.columnType = "DATETIME";
-//            DataType datetimeResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.LongType, datetimeResult);
-//
-//            column.columnType = "FLOAT";
-//            DataType floatResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.FloatType, floatResult);
-//
-//            column.columnType = "DOUBLE";
-//            DataType doubleResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.DoubleType, doubleResult);
-//
-//            column.columnType = "DATE";
-//            DataType dateResult = dppUtils.getDataTypeFromColumn(column);
-//            Assert.assertEquals(DataTypes.DateType, dateResult);
-//        } catch (Exception e) {
-//            Assert.assertTrue(false);
-//    }
-//    }
+    @Test
+    public void testGetDataTypeFromColumn() {
+        DppUtils dppUtils = new DppUtils();
 
-//    @Test
-//    public void testCreateDstTableSchema() {
-//        DppUtils dppUtils = new DppUtils();
-//
-//        EtlJobConfig.EtlColumn column1 = new EtlJobConfig.EtlColumn(
-//                "column1", "INT",
-//                true, true,
-//                "NONE", "0",
-//                0, 0, 0);
-//        EtlJobConfig.EtlColumn column2 = new EtlJobConfig.EtlColumn(
-//                "column2", "SMALLINT",
-//                true, true,
-//                "NONE", "0",
-//                0, 0, 0);
-//        List<EtlJobConfig.EtlColumn> columns = new ArrayList<>();
-//        columns.add(column1);
-//        columns.add(column2);
-//
-//        try {
-//            StructType schema = dppUtils.createDstTableSchema(columns, false);
-//            Assert.assertEquals(2, schema.fieldNames().length);
-//            Assert.assertEquals("column1", schema.fieldNames()[0]);
-//            Assert.assertEquals("column2", schema.fieldNames()[1]);
-//
-//            StructType schema2 = dppUtils.createDstTableSchema(columns, true);
-//            Assert.assertEquals(3, schema2.fieldNames().length);
-//            Assert.assertEquals("__bucketId__", schema2.fieldNames()[0]);
-//            Assert.assertEquals("column1", schema2.fieldNames()[1]);
-//            Assert.assertEquals("column2", schema2.fieldNames()[2]);
-//        } catch (Exception e) {
-//            Assert.assertTrue(false);
-//        }
-//    }
+        try {
+            EtlJobConfig.EtlColumn column = new EtlJobConfig.EtlColumn();
+            column.columnType = "VARCHAR";
+            DataType stringResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.StringType, stringResult);
+
+            column.columnType = "CHAR";
+            DataType charResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.StringType, charResult);
+
+            column.columnType = "HLL";
+            DataType hllResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.StringType, hllResult);
+
+            column.columnType = "OBJECT";
+            DataType objectResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.StringType, objectResult);
+
+            column.columnType = "BOOLEAN";
+            DataType booleanResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.BooleanType, booleanResult);
+
+            column.columnType = "TINYINT";
+            DataType tinyResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.ShortType, tinyResult);
+
+            column.columnType = "SMALLINT";
+            DataType smallResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.ShortType, smallResult);
+
+            column.columnType = "INT";
+            DataType integerResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.IntegerType, integerResult);
+
+            column.columnType = "BIGINT";
+            DataType longResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.LongType, longResult);
+
+            column.columnType = "DATETIME";
+            DataType datetimeResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.LongType, datetimeResult);
+
+            column.columnType = "FLOAT";
+            DataType floatResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.FloatType, floatResult);
+
+            column.columnType = "DOUBLE";
+            DataType doubleResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.DoubleType, doubleResult);
+
+            column.columnType = "DATE";
+            DataType dateResult = dppUtils.getDataTypeFromColumn(column, false);
+            Assert.assertEquals(DataTypes.DateType, dateResult);
+        } catch (Exception e) {
+            Assert.assertTrue(false);
+    }
+    }
+
+    @Test
+    public void testCreateDstTableSchema() {
+        DppUtils dppUtils = new DppUtils();
+
+        EtlJobConfig.EtlColumn column1 = new EtlJobConfig.EtlColumn(
+                "column1", "INT",
+                true, true,
+                "NONE", "0",
+                0, 0, 0);
+        EtlJobConfig.EtlColumn column2 = new EtlJobConfig.EtlColumn(
+                "column2", "SMALLINT",
+                true, true,
+                "NONE", "0",
+                0, 0, 0);
+        List<EtlJobConfig.EtlColumn> columns = new ArrayList<>();
+        columns.add(column1);
+        columns.add(column2);
+
+        try {
+            StructType schema = dppUtils.createDstTableSchema(columns, false, false);
+            Assert.assertEquals(2, schema.fieldNames().length);
+            Assert.assertEquals("column1", schema.fieldNames()[0]);
+            Assert.assertEquals("column2", schema.fieldNames()[1]);
+
+            StructType schema2 = dppUtils.createDstTableSchema(columns, true, false);
+            Assert.assertEquals(3, schema2.fieldNames().length);
+            Assert.assertEquals("__bucketId__", schema2.fieldNames()[0]);
+            Assert.assertEquals("column1", schema2.fieldNames()[1]);
+            Assert.assertEquals("column2", schema2.fieldNames()[2]);
+        } catch (Exception e) {
+            Assert.assertTrue(false);
+        }
+    }
 
     @Test
     public void testParseColumnsFromPath() {

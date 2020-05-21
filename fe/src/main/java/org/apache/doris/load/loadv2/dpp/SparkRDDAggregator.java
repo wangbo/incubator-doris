@@ -48,6 +48,7 @@ public abstract class SparkRDDAggregator<T> implements Serializable {
             case "hll_union" :
                 return new HllUnionAggregator();
             // TODO: make more type aggregator
+            // replace ,sum,max,min
             default:
                 throw new RuntimeException(String.format("unsupported aggregate type %s", aggType));
         }
