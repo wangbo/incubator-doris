@@ -446,7 +446,7 @@ public final class SparkDpp implements java.io.Serializable {
                         return result.iterator();
                     }
                 });
-
+        // TODO: using rdd instead of dataframe here to ```write to hdfs```
         JavaRDD<Row> resultRdd = pairRDD.map(record -> {
                                                  String bucketKey = record._1;
                                                  List<Object> row = new ArrayList<>();
