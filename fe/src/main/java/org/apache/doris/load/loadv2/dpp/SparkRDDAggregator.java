@@ -25,7 +25,9 @@ import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.sql.Row;
 import scala.Tuple2;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
@@ -133,9 +135,17 @@ class BitmapUnionAggregator extends SparkRDDAggregator<BitmapValue> {
 
     @Override
     BitmapValue buildValue(Object value) {
-        BitmapValue bitmapValue = new BitmapValue();
-        bitmapValue.add(value == null ? 0 : Long.valueOf(value.toString()));
-        return bitmapValue;
+        try {
+            BitmapValue bitmapValue = new BitmapValue();
+            if (value instanceof byte[]) {
+                bitmapValue.deserialize(new DataInputStream(new ByteArrayInputStream((byte[]) value)));
+            } else {
+                bitmapValue.add(value == null ? 0 : Long.valueOf(value.toString()));
+            }
+            return bitmapValue;
+        } catch (Exception e) {
+            throw new RuntimeException("build bitmap value failed", e);
+        }
     }
 }
 
@@ -168,9 +178,17 @@ class HllUnionAggregator extends SparkRDDAggregator<Hll> {
 
     @Override
     Hll buildValue(Object value) {
-        Hll hll = new Hll();
-        hll.updateWithHash(value == null ? 0 : value);
-        return hll;
+        try {
+            Hll hll = new Hll();
+            if (value instanceof byte[]) {
+                hll.deserialize(new DataInputStream(new ByteArrayInputStream((byte[]) value)));
+            } else {
+                hll.updateWithHash(value == null ? 0 : value);
+            }
+            return hll;
+        } catch (Exception e) {
+            throw new RuntimeException("build hll value failed", e);
+        }
     }
 
 }
