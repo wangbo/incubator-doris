@@ -67,8 +67,8 @@ public class BitmapValue implements Serializable{
             case SINGLE_VALUE:
                 if (this.singleValue != value) {
                     bitmap = new Roaring64Map();
-                    bitmap.add(value);
-                    bitmap.add(singleValue);
+                    bitmap.addLong(value);
+                    bitmap.addLong(singleValue);
                     bitmapType = BITMAP_VALUE;
                 }
                 break;
@@ -115,11 +115,11 @@ public class BitmapValue implements Serializable{
             case SINGLE_VALUE:
                 // is 32-bit enough
                 if (isLongValue32bitEnough(singleValue)) {
-                    output.write(SINGLE32);
-                    output.writeInt((int)singleValue);
+                    output.writeByte(SINGLE32);
+                    output.writeInt(Integer.reverseBytes((int)singleValue));
                 } else {
                     output.writeByte(SINGLE64);
-                    output.writeLong(singleValue);
+                    output.writeLong(Long.reverseBytes(singleValue));
                 }
                 break;
             case BITMAP_VALUE:
@@ -135,11 +135,11 @@ public class BitmapValue implements Serializable{
             case EMPTY:
                 break;
             case SINGLE32:
-                singleValue = Util.toUnsignedLong(input.readInt());
+                singleValue = Util.toUnsignedLong(Integer.reverseBytes(input.readInt()));
                 this.bitmapType = SINGLE_VALUE;
                 break;
             case SINGLE64:
-                singleValue = input.readLong();
+                singleValue = Long.reverseBytes(input.readLong());
                 this.bitmapType = SINGLE_VALUE;
                 break;
             case BITMAP32:
@@ -208,12 +208,14 @@ public class BitmapValue implements Serializable{
             case BITMAP_VALUE:
                 switch (this.bitmapType) {
                     case EMPTY:
-                        this.bitmap = other.bitmap;
+                        this.bitmap = new Roaring64Map();
+                        this.bitmap.or(other.bitmap);
                         this.bitmapType = BITMAP_VALUE;
                         break;
                     case SINGLE_VALUE:
-                        this.bitmap = other.bitmap;
-                        this.bitmap.add(this.singleValue);
+                        this.bitmap = new Roaring64Map();
+                        this.bitmap.addLong(this.singleValue);
+                        this.bitmap.or(other.bitmap);
                         this.bitmapType = BITMAP_VALUE;
                         break;
                     case BITMAP_VALUE:

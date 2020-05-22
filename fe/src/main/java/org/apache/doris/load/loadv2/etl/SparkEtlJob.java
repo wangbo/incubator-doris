@@ -17,6 +17,7 @@
 
 package org.apache.doris.load.loadv2.etl;
 
+import com.esotericsoftware.kryo.Kryo;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.doris.load.loadv2.dpp.GlobalDictBuilder;
@@ -27,22 +28,18 @@ import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlFileGroup;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlIndex;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlTable;
 
+import org.apache.spark.SparkConf;
+import org.apache.spark.serializer.KryoRegistrator;
 import org.apache.spark.sql.Dataset;
-//import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
-//import org.apache.spark.sql.catalog.Column;
 import org.apache.spark.sql.functions;
 
 import com.google.common.collect.Lists;
-//import org.slf4j.Logger;
-//import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-//import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-//import java.util.stream.Collectors;
 /**
  * SparkEtlJob is responsible for global dict building, data partition, data sort and data aggregation.
  * 1. init job config
@@ -65,8 +62,29 @@ public class SparkEtlJob {
         this.tableToBitmapDictColumns = Maps.newHashMap();
     }
 
+    public class DorisKryoRegistrator implements KryoRegistrator {
+
+        public DorisKryoRegistrator() {}
+
+        @Override
+        public void registerClasses(Kryo kryo) {
+            kryo.register(org.apache.doris.load.loadv2.Roaring64Map.class);
+        }
+    }
+
     private void initSparkEnvironment() {
-        spark = SparkSession.builder().enableHiveSupport().getOrCreate();
+
+        SparkConf conf = new SparkConf();
+        //serialization conf
+        conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
+        conf.set("spark.kryo.registrator", "org.apache.doris.load.loadv2.dpp.DorisKryoRegistrator");
+        conf.set("spark.kryo.registrationRequired", "false");
+
+        spark = SparkSession.builder().enableHiveSupport().config(conf).getOrCreate();
+//        SparkContext sparkContext = spark.sparkContext();
+//        sparkContext.conf().set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
+//        sparkContext.conf().set("spark.kryo.registrator", "org.apache.doris.load.loadv2.etl.SparkEtlJob$DorisKryoRegistrator");
+
     }
 
     private void initConfig() {
@@ -188,7 +206,7 @@ public class SparkEtlJob {
                 break;
             }
             // build global dict and encode source hive table
-            buildGlobalDictAndEncodeSourceTable(table, tableId);
+//            buildGlobalDictAndEncodeSourceTable(table, tableId);
         }
 
         // data partition sort and aggregation

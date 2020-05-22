@@ -1316,16 +1316,16 @@ public class Roaring64Map {
             return;
         }
         if (is32BitsEnough()) {
-            out.write(BITMAP32);
+            out.writeByte(BITMAP32);
             highToBitmap.get(0).serialize(out);
             return;
         }
 
-        out.write(BITMAP64);
+        out.writeByte(BITMAP64);
         encodeVarint64(highToBitmap.size(), out);
 
         for (Map.Entry<Integer, BitmapDataProvider> entry : highToBitmap.entrySet()) {
-            out.writeInt(entry.getKey().intValue());
+            out.writeInt(Integer.reverseBytes(entry.getKey().intValue()));
             entry.getValue().serialize(out);
         }
     }
@@ -1352,7 +1352,7 @@ public class Roaring64Map {
         }
 
         for (int i = 0; i < nbHighs; i++) {
-            int high = in.readInt();
+            int high = Integer.reverseBytes(in.readInt());
             RoaringBitmap provider = new RoaringBitmap();
             provider.deserialize(in);
 

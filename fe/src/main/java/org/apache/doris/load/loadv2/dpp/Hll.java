@@ -55,9 +55,8 @@ public class Hll {
     private byte[] registers;
 
     public Hll() {
+        type = HLL_DATA_EMPTY;
         this.hashSet = new HashSet<>();
-        this.type = HLL_DATA_EMPTY;
-        this.registers = new byte[HLL_REGISTERS_COUNT];
     }
 
     private void convertExplicitToRegister() {
@@ -146,7 +145,7 @@ public class Hll {
                 this.type = other.type;
                 switch (other.type) {
                     case HLL_DATA_EXPLICIT:
-                        this.hashSet = other.hashSet;
+                        this.hashSet.addAll(other.hashSet);
                         break;
                     case HLL_DATA_SPARSE:
                     case HLL_DATA_FULL:
@@ -199,7 +198,7 @@ public class Hll {
                 output.writeByte(type);
                 output.writeByte(hashSet.size());
                 for (long value : hashSet) {
-                    output.writeLong(value);
+                    output.writeLong(Long.reverseBytes(value));
                 }
                 break;
             case HLL_DATA_SPARSE:
@@ -217,10 +216,10 @@ public class Hll {
                     }
                 } else {
                     output.writeByte(HLL_DATA_SPARSE);
-                    output.writeInt(nonZeroRegisterNum);
+                    output.writeInt(Integer.reverseBytes(nonZeroRegisterNum));
                     for (int i = 0; i < HLL_REGISTERS_COUNT; i++) {
                         if (registers[i] != 0) {
-                            output.writeShort(i);
+                            output.writeShort(Short.reverseBytes((short)i));
                             output.writeByte(registers[i]);
                         }
                     }
@@ -243,20 +242,21 @@ public class Hll {
             case HLL_DATA_EXPLICIT:
                 int hashSetSize = input.readUnsignedByte();
                 for (int i = 0; i < hashSetSize; i++) {
-                    update(input.readLong());
+                    update(Long.reverseBytes(input.readLong()));
                 }
                 assert this.type == HLL_DATA_EXPLICIT;
                 break;
             case HLL_DATA_SPARSE:
-                int sparseDataSize = input.readInt();
+                int sparseDataSize = Integer.reverseBytes(input.readInt());
                 this.registers = new byte[HLL_REGISTERS_COUNT];
                 for (int i = 0; i < sparseDataSize; i++) {
-                    int idx = input.readShort();
+                    int idx = Short.reverseBytes(input.readShort());
                     byte value = input.readByte();
                     registers[idx] = value;
                 }
                 break;
             case HLL_DATA_FULL:
+                this.registers = new byte[HLL_REGISTERS_COUNT];
                 for (int i = 0; i < HLL_REGISTERS_COUNT; i++) {
                     registers[i] = input.readByte();
                 }
@@ -269,8 +269,6 @@ public class Hll {
     }
 
     // use strictfp to force java follow IEEE 754 to deal float point strictly
-    // This method can not keep consistent with C++ implement completely
-    // Though C++ follow IEEE 754 to deal with float-point , but OS architecture,compile option may affect the real calculation.
     public strictfp long estimateCardinality() {
         if (type == HLL_DATA_EMPTY) {
             return 0;

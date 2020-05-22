@@ -18,8 +18,10 @@
 package org.apache.doris.load.loadv2.dpp;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.doris.common.UserException;
 import org.apache.doris.load.loadv2.BitmapValue;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig;
+import org.apache.spark.Partitioner;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.sql.Row;
@@ -31,56 +33,154 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+
+// contains all class about spark aggregate
 
 public abstract class SparkRDDAggregator<T> implements Serializable {
 
-    abstract T aggregate(T v1, T v2);
-
-    abstract byte[] serialize(Object value);
-
-    T buildValue(Object value) {
+    T init(Object value) {
         return (T) value;
     }
 
-    public static SparkRDDAggregator buildAggregator(EtlJobConfig.EtlColumn column) {
+    abstract T update(T v1, T v2);
+
+    Object finalize(Object value) {
+        return value;
+    };
+
+    // TODO(wb) support more datatype:decimal,date,datetime
+    public static SparkRDDAggregator buildAggregator(EtlJobConfig.EtlColumn column) throws UserException {
         String aggType = StringUtils.lowerCase(column.aggregationType);
+        String columnType = StringUtils.lowerCase(column.columnType);
         switch (aggType) {
             case "bitmap_union" :
                 return new BitmapUnionAggregator();
             case "hll_union" :
                 return new HllUnionAggregator();
-            // TODO: make more type aggregator
-            // replace ,sum,max,min
+            case "max":
+                switch (columnType) {
+                    case "tinyint":
+                    case "smallint":
+                    case "int":
+                    case "bigint":
+                        return new IntegerMaxAggregator();
+                    case "float":
+                        return new FloatMaxAggregator();
+                    case "double":
+                        return new DoubleMaxAggregator();
+                    case "char":
+                    case "varchar":
+                        return new StringMaxAggregator();
+                    case "largeint":
+                        return new LargeIntMaxAggregator();
+                    default:
+                        throw new UserException(String.format("unsupported max aggregator for column type:%s", columnType));
+                }
+            case "min":
+                switch (columnType) {
+                    case "tinyint":
+                    case "smallint":
+                    case "int":
+                    case "bigint":
+                        return new IntegerMinAggregator();
+                    case "float":
+                        return new FloatMinAggregator();
+                    case "double":
+                        return new DoubleMinAggregator();
+                    case "char":
+                    case "varchar":
+                        return new StringMinAggregator();
+                    case "largeint":
+                        return new LargeIntMinAggregator();
+                    default:
+                        throw new UserException(String.format("unsupported min aggregator for column type:%s", columnType));
+                }
+            case "sum":
+                switch (columnType) {
+                    case "tinyint":
+                    case "smallint":
+                    case "int":
+                    case "bigint":
+                        return new IntegerSumAggregator();
+                    case "float":
+                        return new FloatSumAggregator();
+                    case "double":
+                        return new DoubleSumAggregator();
+                    case "largeint":
+                        return new LargeIntSumAggregator();
+                    default:
+                        throw new UserException(String.format("unsupported sum aggregator for column type:%s", columnType));
+                }
+            case "replace_if_not_null":
+                return new ReplaceAggregator();
+            case "replace":
+                return new ReplaceIfNotNullAggregator();
             default:
-                throw new RuntimeException(String.format("unsupported aggregate type %s", aggType));
+                throw new UserException(String.format("unsupported aggregate type %s", aggType));
         }
     }
 
 }
 
-class EncodeMapFunction implements PairFunction<Row, Object[], Object[]> {
+class EncodeDuplicateTableFunction extends EncodeAggregateTableFunction {
+
+    private int valueLen;
+
+    public EncodeDuplicateTableFunction(int keyLen, int valueLen) {
+        super(keyLen);
+        this.valueLen = valueLen;
+    }
+
+    @Override
+    public Tuple2<List<Object>, Object[]> call(Row row) throws Exception {
+        List<Object> keys = new ArrayList(keyLen);
+        Object[] values = new Object[valueLen];
+
+        for (int i = 0; i < keyLen; i++) {
+            keys.add(row.get(i));
+        }
+
+        for (int i = keyLen; i < row.length(); i++) {
+            values[i - keyLen] = row.get(i);
+        }
+
+        return new Tuple2<>(keys, values);
+    }
+}
+
+class EncodeAggregateTableFunction implements PairFunction<Row, List<Object>, Object[]> {
 
     private SparkRDDAggregator[] valueAggregators;
     // include bucket id
-    private int keyLen;
+    protected int keyLen;
 
-    public EncodeMapFunction(SparkRDDAggregator[] valueAggregators, int keyLen) {
+    public EncodeAggregateTableFunction(int keyLen) {
+        this.keyLen = keyLen;
+    }
+
+    public EncodeAggregateTableFunction(SparkRDDAggregator[] valueAggregators, int keyLen) {
         this.valueAggregators = valueAggregators;
         this.keyLen = keyLen;
     }
 
+    // TODO(wb): use a custom class as key to instead of List to save space
     @Override
-    public Tuple2<Object[], Object[]> call(Row row) throws Exception {
-        Object[] keys = new Object[keyLen];
+    public Tuple2<List<Object>, Object[]> call(Row row) throws Exception {
+        List<Object> keys = new ArrayList(keyLen);
         Object[] values = new Object[valueAggregators.length];
 
-        for (int i = 0; i < row.size(); i++) {
-            if (i < keyLen) {
-                keys[i] = row.get(i);
-            } else {
-                int valueIdx = i - keyLen;
-                values[valueIdx] = valueAggregators[valueIdx].buildValue(row.get(i));
-            }
+        for (int i = 0; i < keyLen; i++) {
+            keys.add(row.get(i));
+        }
+
+        for (int i = keyLen; i < row.size(); i++) {
+            int valueIdx = i - keyLen;
+            values[valueIdx] = valueAggregators[valueIdx].init(row.get(i));
         }
         return new Tuple2<>(keys, values);
     }
@@ -98,18 +198,47 @@ class AggregateReduceFunction implements Function2<Object[], Object[], Object[]>
     public Object[] call(Object[] v1, Object[] v2) throws Exception {
         Object[] result = new Object[valueAggregators.length];
         for (int i = 0; i < v1.length; i++) {
-            result[i] = valueAggregators[i].aggregate(v1[i], v2[i]);
+            result[i] = valueAggregators[i].update(v1[i], v2[i]);
         }
         return result;
     }
 }
 
+class ReplaceAggregator extends SparkRDDAggregator<Object> {
 
+    @Override
+    Object update(Object dst, Object src) {
+        return src;
+    }
+}
+
+class ReplaceIfNotNullAggregator extends SparkRDDAggregator<Object> {
+
+    @Override
+    Object update(Object dst, Object src) {
+        return src == null ? dst : src;
+    }
+}
 
 class BitmapUnionAggregator extends SparkRDDAggregator<BitmapValue> {
 
     @Override
-    BitmapValue aggregate(BitmapValue v1, BitmapValue v2) {
+    BitmapValue init(Object value) {
+        try {
+            BitmapValue bitmapValue = new BitmapValue();
+            if (value instanceof byte[]) {
+                bitmapValue.deserialize(new DataInputStream(new ByteArrayInputStream((byte[]) value)));
+            } else {
+                bitmapValue.add(value == null ? 0l : Long.valueOf(value.toString()));
+            }
+            return bitmapValue;
+        } catch (Exception e) {
+            throw new RuntimeException("build bitmap value failed", e);
+        }
+    }
+
+    @Override
+    BitmapValue update(BitmapValue v1, BitmapValue v2) {
         BitmapValue newBitmapValue = new BitmapValue();
         if (v1 != null) {
             newBitmapValue.or(v1);
@@ -121,7 +250,7 @@ class BitmapUnionAggregator extends SparkRDDAggregator<BitmapValue> {
     }
 
     @Override
-    byte[] serialize(Object value) {
+    byte[] finalize(Object value) {
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             DataOutputStream outputStream = new DataOutputStream(bos);
@@ -133,51 +262,12 @@ class BitmapUnionAggregator extends SparkRDDAggregator<BitmapValue> {
         }
     }
 
-    @Override
-    BitmapValue buildValue(Object value) {
-        try {
-            BitmapValue bitmapValue = new BitmapValue();
-            if (value instanceof byte[]) {
-                bitmapValue.deserialize(new DataInputStream(new ByteArrayInputStream((byte[]) value)));
-            } else {
-                bitmapValue.add(value == null ? 0 : Long.valueOf(value.toString()));
-            }
-            return bitmapValue;
-        } catch (Exception e) {
-            throw new RuntimeException("build bitmap value failed", e);
-        }
-    }
 }
 
 class HllUnionAggregator extends SparkRDDAggregator<Hll> {
 
     @Override
-    byte[] serialize(Object value) {
-        try {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            DataOutputStream outputStream = new DataOutputStream(bos);
-            ((Hll)value).serialize(outputStream);
-            return bos.toByteArray();
-        } catch (IOException ioException) {
-            ioException.printStackTrace();
-            throw new RuntimeException(ioException);
-        }
-    }
-
-    @Override
-    Hll aggregate(Hll v1, Hll v2) {
-        Hll newHll = new Hll();
-        if (v1 != null) {
-            newHll.merge(v1);
-        }
-        if (v2 != null) {
-            newHll.merge(v2);
-        }
-        return newHll;
-    }
-
-    @Override
-    Hll buildValue(Object value) {
+    Hll init(Object value) {
         try {
             Hll hll = new Hll();
             if (value instanceof byte[]) {
@@ -191,4 +281,306 @@ class HllUnionAggregator extends SparkRDDAggregator<Hll> {
         }
     }
 
+    @Override
+    Hll update(Hll v1, Hll v2) {
+        Hll newHll = new Hll();
+        if (v1 != null) {
+            newHll.merge(v1);
+        }
+        if (v2 != null) {
+            newHll.merge(v2);
+        }
+        return newHll;
+    }
+
+    @Override
+    byte[] finalize(Object value) {
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            DataOutputStream outputStream = new DataOutputStream(bos);
+            ((Hll)value).serialize(outputStream);
+            return bos.toByteArray();
+        } catch (IOException ioException) {
+            ioException.printStackTrace();
+            throw new RuntimeException(ioException);
+        }
+    }
+
+}
+
+// TODO(wb) maybe we can use <java generics> to make code more abstract if its performance is similar with handwritten code which needs a test
+class LargeIntMaxAggregator extends SparkRDDAggregator<BigInteger> {
+
+    BigInteger init(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return new BigInteger(value.toString());
+    }
+
+    @Override
+    BigInteger update(BigInteger dst, BigInteger src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        return dst.compareTo(src) > 0 ? dst : src;
+    }
+}
+
+class LargeIntMinAggregator extends LargeIntMaxAggregator {
+
+    @Override
+    BigInteger update(BigInteger dst, BigInteger src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        return dst.compareTo(src) < 0 ? dst : src;
+    }
+}
+
+class LargeIntSumAggregator extends LargeIntMaxAggregator {
+
+    @Override
+    BigInteger update(BigInteger dst, BigInteger src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        return dst.add(src);
+    }
+}
+
+class IntegerMaxAggregator extends SparkRDDAggregator {
+
+    @Override
+    Object update(Object dst, Object src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        if (dst instanceof Short) {
+            return Short.compare((Short)dst, (Short)src) < 0 ? dst : src;
+        } else if (dst instanceof Integer) {
+            return Integer.compare((Integer)dst, (Integer)src) < 0 ? dst : src;
+        } else {
+            return Long.compareUnsigned((Long)dst, (Long)src) < 0 ? dst : src;
+        }
+    }
+}
+
+class IntegerMinAggregator extends SparkRDDAggregator {
+
+    @Override
+    Object update(Object dst, Object src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        if (dst instanceof Short) {
+            return Short.compare((Short)dst, (Short)src) > 0 ? dst : src;
+        } else if (dst instanceof Integer) {
+            return Integer.compare((Integer)dst, (Integer)src) > 0 ? dst : src;
+        } else {
+            return Long.compareUnsigned((Long)dst, (Long)src) > 0 ? dst : src;
+        }
+    }
+}
+
+class IntegerSumAggregator extends SparkRDDAggregator {
+
+    @Override
+    Object update(Object dst, Object src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        if (dst instanceof Short) {
+            return (Short)dst + (Short)src;
+        } else if (dst instanceof Integer) {
+            return (Integer)dst + (Integer)src;
+        } else {
+            return (Long)dst + (Long)src;
+        }
+    }
+}
+
+class DoubleMaxAggregator extends SparkRDDAggregator<Double> {
+
+
+    @Override
+    Double update(Double dst, Double src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        return dst.compareTo(src) > 0 ? dst : src;
+    }
+}
+
+class DoubleMinAggregator extends SparkRDDAggregator<Double> {
+
+
+    @Override
+    Double update(Double dst, Double src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        return dst.compareTo(src) < 0 ? dst : src;
+    }
+}
+
+class DoubleSumAggregator extends SparkRDDAggregator<Double> {
+
+
+    @Override
+    Double update(Double dst, Double src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        return dst + src;
+    }
+}
+
+class FloatMaxAggregator extends SparkRDDAggregator<Float> {
+
+
+    @Override
+    Float update(Float dst, Float src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        return dst.compareTo(src) > 0 ? dst : src;
+    }
+}
+
+class FloatMinAggregator extends SparkRDDAggregator<Float> {
+
+
+    @Override
+    Float update(Float dst, Float src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        return dst.compareTo(src) < 0 ? dst : src;
+    }
+}
+
+class FloatSumAggregator extends SparkRDDAggregator<Float> {
+
+    @Override
+    Float update(Float dst, Float src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        return dst + src;
+    }
+}
+
+class StringMaxAggregator extends SparkRDDAggregator<String> {
+
+    @Override
+    String update(String dst, String src) {
+        if (StringUtils.isEmpty(src)) {
+            return dst;
+        }
+        if (StringUtils.isEmpty(dst)) {
+            return src;
+        }
+        return dst.compareTo(src) > 0 ? dst : src;
+    }
+}
+
+class StringMinAggregator extends SparkRDDAggregator<String> {
+
+    @Override
+    String update(String dst, String src) {
+        if (StringUtils.isEmpty(src)) {
+            return dst;
+        }
+        if (StringUtils.isEmpty(dst)) {
+            return src;
+        }
+        return dst.compareTo(src) < 0 ? dst : src;
+    }
+}
+
+
+class BucketComparator implements Comparator<List<Object>>, Serializable {
+
+    @Override
+    public int compare(List<Object> keyArray1, List<Object> keyArray2) {
+        int cmp = 0;
+
+        for (int i = 0; i < keyArray1.size(); i++) {
+            Object key1 = keyArray1.get(i);
+            Object key2 = keyArray2.get(i);
+            if (key1 == key2) {
+                continue;
+            }
+            if (key1 == null || key2 == null) {
+                return key1 == null ? -1 : 1;
+            }
+            if (key1 instanceof Comparable && key2 instanceof Comparable) {
+                cmp = ((Comparable) key1).compareTo(key2);
+            } else {
+                throw new RuntimeException(String.format("uncomparable column type %s", key1.getClass().toString()));
+            }
+            if (cmp != 0) {
+                return cmp;
+            }
+        }
+
+        return cmp;
+    }
+}
+
+class BucketPartitioner extends Partitioner {
+
+    private Map<String, Integer> bucketKeyMap;
+
+    public BucketPartitioner(Map<String, Integer> bucketKeyMap) {
+        this.bucketKeyMap = bucketKeyMap;
+    }
+
+    @Override
+    public int numPartitions() {
+        return bucketKeyMap.size();
+    }
+
+    @Override
+    public int getPartition(Object key) {
+        List<Object> rddKey = (List<Object>) key;
+        return bucketKeyMap.get(String.valueOf(rddKey.get(0)));
+    }
 }

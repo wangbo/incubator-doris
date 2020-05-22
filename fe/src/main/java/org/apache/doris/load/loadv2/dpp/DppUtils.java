@@ -102,7 +102,7 @@ public class DppUtils {
         }
     }
 
-    public static DataType getDataTypeFromColumn(EtlJobConfig.EtlColumn column, boolean regardBitmapAsBinary) {
+    public static DataType getDataTypeFromColumn(EtlJobConfig.EtlColumn column, boolean regardDistinctColumnAsBinary) {
         DataType dataType = DataTypes.StringType;
         switch (column.columnType) {
             case "BOOLEAN":
@@ -135,12 +135,12 @@ public class DppUtils {
                 break;
             case "CHAR":
             case "VARCHAR":
-            case "HLL":
             case "OBJECT":
                 dataType = DataTypes.StringType;
                 break;
+            case "HLL":
             case "BITMAP":
-                dataType = regardBitmapAsBinary ? DataTypes.BinaryType : DataTypes.StringType;
+                dataType = regardDistinctColumnAsBinary ? DataTypes.BinaryType : DataTypes.StringType;
                 break;
             case "DECIMALV2":
                 dataType = DecimalType.apply(column.precision, column.scale);
@@ -193,14 +193,14 @@ public class DppUtils {
         return hashValue.getValue();
     }
 
-    public static StructType createDstTableSchema(List<EtlJobConfig.EtlColumn> columns, boolean addBucketIdColumn, boolean regardBitmapAsBinary) {
+    public static StructType createDstTableSchema(List<EtlJobConfig.EtlColumn> columns, boolean addBucketIdColumn, boolean regardDistinctColumnAsBinary) {
         List<StructField> fields = new ArrayList<>();
         if (addBucketIdColumn) {
             StructField bucketIdField = DataTypes.createStructField(BUCKET_ID, DataTypes.StringType, true);
             fields.add(bucketIdField);
         }
         for (EtlJobConfig.EtlColumn column : columns) {
-            DataType structColumnType = getDataTypeFromColumn(column, regardBitmapAsBinary);
+            DataType structColumnType = getDataTypeFromColumn(column, regardDistinctColumnAsBinary);
             StructField field = DataTypes.createStructField(column.columnName, structColumnType, column.isAllowNull);
             fields.add(field);
         }
