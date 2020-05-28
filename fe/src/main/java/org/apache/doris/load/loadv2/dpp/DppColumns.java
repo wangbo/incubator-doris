@@ -20,9 +20,9 @@ package org.apache.doris.load.loadv2.dpp;
 import com.google.common.base.Preconditions;
 
 import java.io.Serializable;
+import java.sql.Date;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.Objects;
 import java.util.Comparator;
 
@@ -72,7 +72,12 @@ class DppColumns implements Comparable<DppColumns>, Serializable {
             } else if (columns.get(i) instanceof Date) {
                 cmp = ((Date)(columns.get(i))).compareTo((Date) (other.columns.get(i)));
             } else {
-                cmp = ((String)(columns.get(i))).compareTo((String) (other.columns.get(i)));
+                try {
+                    cmp = ((String) (columns.get(i))).compareTo((String)(other.columns.get(i)));
+                } catch (ClassCastException e) {
+                    throw new ClassCastException(columns.get(i).getClass() + "=" + columns.get(i).toString() + ","
+                            + other.columns.get(i).getClass() + "=" + other.columns.get(i).toString());
+                }
             }
             if (cmp != 0) {
                 return cmp;

@@ -68,11 +68,9 @@ public abstract class SparkRDDAggregator<T> implements Serializable {
                     case "smallint":
                     case "int":
                     case "bigint":
-                        return new IntegerMaxAggregator();
                     case "float":
-                        return new FloatMaxAggregator();
                     case "double":
-                        return new DoubleMaxAggregator();
+                        return new NumberMaxAggregator();
                     case "char":
                     case "varchar":
                         return new StringMaxAggregator();
@@ -87,11 +85,9 @@ public abstract class SparkRDDAggregator<T> implements Serializable {
                     case "smallint":
                     case "int":
                     case "bigint":
-                        return new IntegerMinAggregator();
                     case "float":
-                        return new FloatMinAggregator();
                     case "double":
-                        return new DoubleMinAggregator();
+                        return new NumberMinAggregator();
                     case "char":
                     case "varchar":
                         return new StringMinAggregator();
@@ -103,10 +99,13 @@ public abstract class SparkRDDAggregator<T> implements Serializable {
             case "sum":
                 switch (columnType) {
                     case "tinyint":
+                        return new ByteSumAggregator();
                     case "smallint":
+                        return new ShortSumAggregator();
                     case "int":
+                        return new IntSumAggregator();
                     case "bigint":
-                        return new IntegerSumAggregator();
+                        return new LongSumAggregator();
                     case "float":
                         return new FloatSumAggregator();
                     case "double":
@@ -117,9 +116,9 @@ public abstract class SparkRDDAggregator<T> implements Serializable {
                         throw new UserException(String.format("unsupported sum aggregator for column type:%s", columnType));
                 }
             case "replace_if_not_null":
-                return new ReplaceAggregator();
-            case "replace":
                 return new ReplaceIfNotNullAggregator();
+            case "replace":
+                return new ReplaceAggregator();
             default:
                 throw new UserException(String.format("unsupported aggregate type %s", aggType));
         }
@@ -168,7 +167,7 @@ class EncodeAggregateTableFunction implements PairFunction<Row, List<Object>, Ob
         this.keyLen = keyLen;
     }
 
-    // TODO(wb): use a custom class as key to instead of List to save space
+    // TODO(wb): use a custom class which overwrite equal and hash code as key to instead of List to save space
     @Override
     public Tuple2<List<Object>, Object[]> call(Row row) throws Exception {
         List<Object> keys = new ArrayList(keyLen);
@@ -358,7 +357,10 @@ class LargeIntSumAggregator extends LargeIntMaxAggregator {
     }
 }
 
-class IntegerMaxAggregator extends SparkRDDAggregator {
+
+// TODO(wb) test type cast cost to decide whether we need to use a certain type aggregator(such as ShortMaxAggregator)
+
+class NumberMaxAggregator extends SparkRDDAggregator {
 
     @Override
     Object update(Object dst, Object src) {
@@ -368,17 +370,12 @@ class IntegerMaxAggregator extends SparkRDDAggregator {
         if (dst == null) {
             return src;
         }
-        if (dst instanceof Short) {
-            return Short.compare((Short)dst, (Short)src) < 0 ? dst : src;
-        } else if (dst instanceof Integer) {
-            return Integer.compare((Integer)dst, (Integer)src) < 0 ? dst : src;
-        } else {
-            return Long.compareUnsigned((Long)dst, (Long)src) < 0 ? dst : src;
-        }
+        return ((Comparable)dst).compareTo(src) > 0 ? dst : src;
     }
 }
 
-class IntegerMinAggregator extends SparkRDDAggregator {
+
+class NumberMinAggregator extends SparkRDDAggregator {
 
     @Override
     Object update(Object dst, Object src) {
@@ -388,71 +385,86 @@ class IntegerMinAggregator extends SparkRDDAggregator {
         if (dst == null) {
             return src;
         }
-        if (dst instanceof Short) {
-            return Short.compare((Short)dst, (Short)src) > 0 ? dst : src;
-        } else if (dst instanceof Integer) {
-            return Integer.compare((Integer)dst, (Integer)src) > 0 ? dst : src;
-        } else {
-            return Long.compareUnsigned((Long)dst, (Long)src) > 0 ? dst : src;
-        }
+        return ((Comparable)dst).compareTo(src) < 0 ? dst : src;
     }
 }
 
-class IntegerSumAggregator extends SparkRDDAggregator {
+class LongSumAggregator extends SparkRDDAggregator<Long> {
 
     @Override
-    Object update(Object dst, Object src) {
+    Long update(Long dst, Long src) {
         if (src == null) {
             return dst;
         }
         if (dst == null) {
             return src;
         }
-        if (dst instanceof Short) {
-            return (Short)dst + (Short)src;
-        } else if (dst instanceof Integer) {
-            return (Integer)dst + (Integer)src;
-        } else {
-            return (Long)dst + (Long)src;
-        }
+        // TODO(wb) check overflow of long type
+        return dst + src;
     }
 }
 
-class DoubleMaxAggregator extends SparkRDDAggregator<Double> {
-
+// TODO(wb) try to avoid branch cost for bound check when do aggregate,some solution as below
+//  1 support store long result of sum even column type is short
+//  2 user specify args to tell Doris sum result won't exceed bound column type
+class ShortSumAggregator extends SparkRDDAggregator<Short> {
 
     @Override
-    Double update(Double dst, Double src) {
+    Short update(Short dst, Short src) {
         if (src == null) {
             return dst;
         }
         if (dst == null) {
             return src;
         }
-        return dst.compareTo(src) > 0 ? dst : src;
+        Integer ret = dst + src;
+        if  (ret > Short.MAX_VALUE || ret < Short.MIN_VALUE) {
+            throw new RuntimeException("short column sum size exceeds Short.MAX_VALUE or Short.MIN_VALUE");
+        }
+        return Short.valueOf(ret.toString());
     }
 }
 
-class DoubleMinAggregator extends SparkRDDAggregator<Double> {
-
+class IntSumAggregator extends SparkRDDAggregator<Integer> {
 
     @Override
-    Double update(Double dst, Double src) {
+    Integer update(Integer dst, Integer src) {
         if (src == null) {
             return dst;
         }
         if (dst == null) {
             return src;
         }
-        return dst.compareTo(src) < 0 ? dst : src;
+        long ret = Long.sum(dst, src);
+        if  (ret > Integer.MAX_VALUE || ret < Integer.MIN_VALUE) {
+            throw new RuntimeException("int column sum size exceeds Integer.MAX_VALUE or Integer.MIN_VALUE");
+        }
+        return (int) ret;
+    }
+}
+
+class ByteSumAggregator extends SparkRDDAggregator<Byte> {
+
+    @Override
+    Byte update(Byte dst, Byte src) {
+        if (src == null) {
+            return dst;
+        }
+        if (dst == null) {
+            return src;
+        }
+        Integer ret = dst + src;
+        if  (ret > Byte.MAX_VALUE || ret < Byte.MIN_VALUE) {
+            throw new RuntimeException("byte column sum size exceeds Byte.MAX_VALUE or Byte.MIN_VALUE");
+        }
+        return Byte.valueOf(ret.toString());
     }
 }
 
 class DoubleSumAggregator extends SparkRDDAggregator<Double> {
 
-
     @Override
-    Double update(Double dst, Double src) {
+    strictfp Double update(Double dst, Double src) {
         if (src == null) {
             return dst;
         }
@@ -463,40 +475,12 @@ class DoubleSumAggregator extends SparkRDDAggregator<Double> {
     }
 }
 
-class FloatMaxAggregator extends SparkRDDAggregator<Float> {
 
-
-    @Override
-    Float update(Float dst, Float src) {
-        if (src == null) {
-            return dst;
-        }
-        if (dst == null) {
-            return src;
-        }
-        return dst.compareTo(src) > 0 ? dst : src;
-    }
-}
-
-class FloatMinAggregator extends SparkRDDAggregator<Float> {
-
-
-    @Override
-    Float update(Float dst, Float src) {
-        if (src == null) {
-            return dst;
-        }
-        if (dst == null) {
-            return src;
-        }
-        return dst.compareTo(src) < 0 ? dst : src;
-    }
-}
-
+// TODO(wb) add bound check for float/double
 class FloatSumAggregator extends SparkRDDAggregator<Float> {
 
     @Override
-    Float update(Float dst, Float src) {
+    strictfp Float update(Float dst, Float src) {
         if (src == null) {
             return dst;
         }
@@ -511,10 +495,10 @@ class StringMaxAggregator extends SparkRDDAggregator<String> {
 
     @Override
     String update(String dst, String src) {
-        if (StringUtils.isEmpty(src)) {
+        if (src == null) {
             return dst;
         }
-        if (StringUtils.isEmpty(dst)) {
+        if (dst == null) {
             return src;
         }
         return dst.compareTo(src) > 0 ? dst : src;
@@ -525,10 +509,10 @@ class StringMinAggregator extends SparkRDDAggregator<String> {
 
     @Override
     String update(String dst, String src) {
-        if (StringUtils.isEmpty(src)) {
+        if (src == null) {
             return dst;
         }
-        if (StringUtils.isEmpty(dst)) {
+        if (dst == null) {
             return src;
         }
         return dst.compareTo(src) < 0 ? dst : src;

@@ -20,6 +20,7 @@ package org.apache.doris.load.loadv2.etl;
 import com.esotericsoftware.kryo.Kryo;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.apache.commons.collections.map.MultiValueMap;
 import org.apache.doris.load.loadv2.dpp.GlobalDictBuilder;
 import org.apache.doris.load.loadv2.dpp.SparkDpp;
 import org.apache.doris.load.loadv2.etl.EtlJobConfig.EtlColumn;
@@ -165,20 +166,92 @@ public class SparkEtlJob {
         String dorisIntermediateHiveTable = String.format(EtlJobConfig.DORIS_INTERMEDIATE_HIVE_TABLE_NAME,
                                                           tableId, taskId);
 
-        System.err.println("****** distinctColumnList: " + distinctColumnList);
-        System.err.println("dorisOlapTableColumnList: " + dorisOlapTableColumnList);
-        System.err.println("mapSideJoinColumns: " + mapSideJoinColumns);
-        System.err.println("sourceHiveDBTableName: " + sourceHiveDBTableName);
-        System.err.println("sourceHiveFilter: " + sourceHiveFilter);
-        System.err.println("dorisHiveDB: " + dorisHiveDB);
-        System.err.println("distinctKeyTableName: " + distinctKeyTableName);
-        System.err.println("globalDictTableName: " + globalDictTableName);
-        System.err.println("****** dorisIntermediateHiveTable: " + dorisIntermediateHiveTable);
+        // TODO remove hard code
+        mapSideJoinColumns.add("base_info_unionid");
+        mapSideJoinColumns.add("total_check_cardno");
+        mapSideJoinColumns.add("landing_page_unionid");
+        mapSideJoinColumns.add("apply_now_unionid");
+        mapSideJoinColumns.add("base_next_unionid");
+        mapSideJoinColumns.add("tl1_pop_unionid");
+        mapSideJoinColumns.add("personal_info_unionid");
+        mapSideJoinColumns.add("job_info_unionid");
+        mapSideJoinColumns.add("apply_submit_unionid");
+        mapSideJoinColumns.add("apply_result_unionid");
+        mapSideJoinColumns.add("td_apply_flowno");
+        mapSideJoinColumns.add("td_apply_check_cardno");
+        mapSideJoinColumns.add("td_check_cardno");
+        mapSideJoinColumns.add("td_actv_cardno");
+        mapSideJoinColumns.add("td_trade_cardno");
+        mapSideJoinColumns.add("td_mk_trade_cardno");
+        mapSideJoinColumns.add("total_trade_cardno");
+        mapSideJoinColumns.add("b14b7_apply_flowno");
+        mapSideJoinColumns.add("b14b7_check_cardno");
+        mapSideJoinColumns.add("total_t30_actv_cardno");
+        mapSideJoinColumns.add("total_t30_actv_cardno");
+        mapSideJoinColumns.add("total_t14_actv_cardno");
+        mapSideJoinColumns.add("total_t7_actv_cardno");
+        mapSideJoinColumns.add("total_mk_trade_cardno");
+        mapSideJoinColumns.add("total_actv_cardno");
+        mapSideJoinColumns.add("apply_flow_no");
+        mapSideJoinColumns.add("click_unionid");
+        mapSideJoinColumns.add("card_no_cipher");
+        mapSideJoinColumns.add("total_t7_check_cardno");
+        mapSideJoinColumns.add("total_apply_flowno");
+        mapSideJoinColumns.add("click_all_unionid");
+
+        MultiValueMap dictColumns = new MultiValueMap();
+        dictColumns.put("union_id", "exposure_all_unionid");
+        dictColumns.put("union_id", "click_all_unionid");
+        dictColumns.put("union_id", "exposure_unionid");
+        dictColumns.put("union_id", "click_unionid");
+        dictColumns.put("union_id", "landing_page_unionid");
+        dictColumns.put("union_id", "apply_now_unionid");
+        dictColumns.put("union_id", "base_info_unionid");
+        dictColumns.put("union_id", "base_next_unionid");
+        dictColumns.put("union_id", "tl1_pop_unionid");
+        dictColumns.put("union_id", "personal_info_unionid");
+        dictColumns.put("union_id", "job_info_unionid");
+        dictColumns.put("union_id", "apply_submit_unionid");
+        dictColumns.put("union_id", "apply_result_unionid");
+        dictColumns.put("card_no_cipher", "td_apply_check_cardno");
+        dictColumns.put("card_no_cipher", "td_check_cardno");
+        dictColumns.put("card_no_cipher", "td_actv_cardno");
+        dictColumns.put("card_no_cipher", "td_trade_cardno");
+        dictColumns.put("card_no_cipher", "td_mk_trade_cardno");
+        dictColumns.put("card_no_cipher", "total_check_cardno");
+        dictColumns.put("card_no_cipher", "total_actv_cardno");
+        dictColumns.put("card_no_cipher", "total_trade_cardno");
+        dictColumns.put("card_no_cipher", "total_mk_trade_cardno");
+        dictColumns.put("card_no_cipher", "total_t7_check_cardno");
+        dictColumns.put("card_no_cipher", "total_t7_actv_cardno");
+        dictColumns.put("card_no_cipher", "total_t14_actv_cardno");
+        dictColumns.put("card_no_cipher", "total_t30_actv_cardno");
+        dictColumns.put("card_no_cipher", "b14b7_check_cardno");
+        dictColumns.put("apply_flow_no", "td_apply_flowno");
+        dictColumns.put("apply_flow_no", "b14b7_apply_flowno");
+        dictColumns.put("apply_flow_no", "total_apply_flowno");
+        dictColumns.put("mt_user_id", null);
+
+        System.out.println("****** distinctColumnList: " + distinctColumnList);
+        System.out.println("dorisOlapTableColumnList: " + dorisOlapTableColumnList);
+        System.out.println("mapSideJoinColumns: " + mapSideJoinColumns);
+        System.out.println("sourceHiveDBTableName: " + sourceHiveDBTableName);
+        System.out.println("sourceHiveFilter: " + sourceHiveFilter);
+        System.out.println("dorisHiveDB: " + dorisHiveDB);
+        System.out.println("distinctKeyTableName: " + distinctKeyTableName);
+        System.out.println("globalDictTableName: " + globalDictTableName);
+        System.out.println("dict reuse:" + dictColumns);
+        System.out.println("****** dorisIntermediateHiveTable: " + dorisIntermediateHiveTable);
 
         try {
             List<String> veryHighCardinalityColumn = new ArrayList<>();
-            veryHighCardinalityColumn.add("uuid");
-            GlobalDictBuilder buildGlobalDict = new GlobalDictBuilder(distinctColumnList, dorisOlapTableColumnList,
+            veryHighCardinalityColumn.add("mt_user_id");
+            veryHighCardinalityColumn.add("union_id");
+            veryHighCardinalityColumn.add("exposure_all_unionid");
+            veryHighCardinalityColumn.add("exposure_unionid");
+            veryHighCardinalityColumn.add("total_apply_flowno");
+            veryHighCardinalityColumn.add("apply_flow_no");
+            GlobalDictBuilder buildGlobalDict = new GlobalDictBuilder(dictColumns, dorisOlapTableColumnList,
                     mapSideJoinColumns, sourceHiveDBTableName,
                     sourceHiveFilter, dorisHiveDB, distinctKeyTableName,
                     globalDictTableName, dorisIntermediateHiveTable, 10, veryHighCardinalityColumn, 5, false, spark);
@@ -206,7 +279,7 @@ public class SparkEtlJob {
                 break;
             }
             // build global dict and encode source hive table
-//            buildGlobalDictAndEncodeSourceTable(table, tableId);
+            buildGlobalDictAndEncodeSourceTable(table, tableId);
         }
 
         // data partition sort and aggregation

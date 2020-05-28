@@ -111,8 +111,6 @@ public final class SparkDpp implements java.io.Serializable {
     }
 
     public void init() {
-        spark.udf().register("bitmap_union_str", new BitmapUnion(DataTypes.StringType));
-        spark.udf().register("bitmap_union_binary", new BitmapUnion(DataTypes.BinaryType));
         abnormalRowAcc = spark.sparkContext().longAccumulator("abnormalRowAcc");
         unselectedRowAcc = spark.sparkContext().longAccumulator("unselectedRowAcc");
         scannedRowsAcc = spark.sparkContext().longAccumulator("scannedRowsAcc");
@@ -122,9 +120,11 @@ public final class SparkDpp implements java.io.Serializable {
     }
 
     private Dataset<Row> processRDDAggAndRepartition(Dataset<Row> dataframe, EtlJobConfig.EtlIndex currentIndexMeta) throws UserException {
-        final boolean isDuplicateTable = !StringUtils.equalsIgnoreCase(currentIndexMeta.indexType, "AGGREGATE");
+        // duplicate table needn't aggregate
+        final boolean isDuplicateTable = !StringUtils.equalsIgnoreCase(currentIndexMeta.indexType, "AGGREGATE")
+                && !StringUtils.equalsIgnoreCase(currentIndexMeta.indexType, "UNIQUE");
 
-        // 1 make metadata for map/reduce
+        // 1 prepare for map/reduce
         int keyLen = 0;
         for (EtlJobConfig.EtlColumn etlColumn : currentIndexMeta.columns) {
             keyLen = etlColumn.isKey ? keyLen + 1 : keyLen;
@@ -143,8 +143,8 @@ public final class SparkDpp implements java.io.Serializable {
                 new EncodeDuplicateTableFunction(keyLen + 1, currentIndexMeta.columns.size() - keyLen)
                 : new EncodeAggregateTableFunction(sparkRDDAggregators, keyLen + 1);
 
-        // 2 convert dataframe to rdd
-        // TODO(wb) use rdd to avoid bitamp/hll serialize
+        // 2 convert dataframe to rdd and  encode key and value
+        // TODO(wb) use rdd to avoid bitamp/hll serialize when calculate rollup
         JavaPairRDD<List<Object>, Object[]> currentRollupRDD = dataframe.toJavaRDD().mapToPair(encodePairFunction);
 
         // 3 do aggregate
@@ -153,7 +153,7 @@ public final class SparkDpp implements java.io.Serializable {
         JavaPairRDD<List<Object>, Object[]> reduceResultRDD = isDuplicateTable ? currentRollupRDD
             : currentRollupRDD.reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), aggregateConcurrency);
 
-        // 4 repartition
+        // 4 repartition and finalize value column
         JavaRDD<Row> finalRDD = reduceResultRDD
                 .repartitionAndSortWithinPartitions(new BucketPartitioner(bucketKeyMap), new BucketComparator())
                 .map(record -> {
@@ -173,39 +173,6 @@ public final class SparkDpp implements java.io.Serializable {
 
             return RowFactory.create(result);
         });
-
-//        // cal hll result
-//        JavaPairRDD<Object, Object> testRDD = finalRDD.mapToPair(new PairFunction<Row, Object, Object>() {
-//            @Override
-//            public Tuple2<Object, Object> call(Row row) throws Exception {
-//                byte[] hllbyte = (byte[]) row.get(row.size() - 1);
-//                Hll hll = HllUnionUDAF.deserializeHll(hllbyte);
-//                return new Tuple2<Object, Object>(1, hll);
-//            }
-//        });
-//        testRDD.reduceByKey(new Function2<Object, Object, Object>(){
-//
-//            @Override
-//            public Object call(Object v1, Object v2) throws Exception {
-//                Hll newHll = new Hll();
-//                if (v1 != null) {
-//                    newHll.merge((Hll)v1);
-//                }
-//                if (v2 != null) {
-//                    newHll.merge((Hll)v2);
-//                }
-//                return newHll;
-//            }
-//        }, 1).repartition(1).foreachPartition(new VoidFunction<Iterator<Tuple2<Object, Object>>>() {
-//            @Override
-//            public void call(Iterator<Tuple2<Object, Object>> tuple2Iterator) throws Exception {
-//                int i = 0;
-//                while (tuple2Iterator.hasNext()) {
-//                    Hll hll = (Hll) tuple2Iterator.next()._2();
-//                    System.out.println(i + "=index," + hll.estimateCardinality());
-//                }
-//            }
-//        });
 
         // 4 convert to dataframe
         StructType tableSchemaWithBucketId = DppUtils.createDstTableSchema(currentIndexMeta.columns, true, true);
@@ -252,7 +219,6 @@ public final class SparkDpp implements java.io.Serializable {
                         Object columnValue = row.get(i);
                         columnObjects.add(columnValue);
                     }
-                    System.out.println();
                     Row rowWithoutBucketKey = RowFactory.create(columnObjects.toArray());
                     // if the bucket key is new, it will belong to a new tablet
                     if (lastBucketKey == null || !curBucketKey.equals(lastBucketKey)) {
@@ -309,6 +275,7 @@ public final class SparkDpp implements java.io.Serializable {
         });
     }
 
+    // TODO(wb) one shuffle to calculate the rollup in the same level
     private void processRollupTree(RollupTreeNode rootNode,
                                    Dataset<Row> rootDataframe,
                                    long tableId, EtlJobConfig.EtlTable tableMeta,
@@ -400,6 +367,7 @@ public final class SparkDpp implements java.io.Serializable {
                 }
             }
         }
+
         // use PairFlatMapFunction instead of PairMapFunction because the there will be
         // 0 or 1 output row for 1 input row
         JavaPairRDD<String, DppColumns> pairRDD = dataframe.javaRDD().flatMapToPair(
@@ -677,6 +645,9 @@ public final class SparkDpp implements java.io.Serializable {
                 return ((Double) srcValue).longValue();
             } else if (dstClass.equals(BigInteger.class)) {
                 return new BigInteger(((Double) srcValue).toString());
+            } else if (dstClass.equals(java.sql.Date.class) || dstClass.equals(java.util.Date.class)) {
+                double srcValueDouble = (double) srcValue;
+                return convertToJavaDate((int) srcValueDouble);
             } else {
                 // dst type is string
                 return srcValue.toString();
@@ -685,6 +656,15 @@ public final class SparkDpp implements java.io.Serializable {
             LOG.warn("unsupport partition key:" + srcValue);
             throw new UserException("unsupport partition key:" + srcValue);
         }
+    }
+
+    private java.sql.Date convertToJavaDate(int originDate) {
+        int day = originDate & 0x1f;
+        originDate >>= 5;
+        int month = originDate & 0x0f;
+        originDate >>= 4;
+        int year = originDate;
+        return java.sql.Date.valueOf(String.format("%04d-%02d-%02d", year, month, day));
     }
 
     private List<DorisRangePartitioner.PartitionRangeKey> createPartitionRangeKeys(
@@ -698,7 +678,6 @@ public final class SparkDpp implements java.io.Serializable {
                 startKeyColumns.add(convertPartitionKey(value, partitionKeySchema.get(i)));
             }
             partitionRangeKey.startKeys = new DppColumns(startKeyColumns);
-            ;
             if (!partition.isMaxPartition) {
                 partitionRangeKey.isMaxPartition = false;
                 List<Object> endKeyColumns = new ArrayList<>();
@@ -817,9 +796,6 @@ public final class SparkDpp implements java.io.Serializable {
                         String taskId = etlJobConfig.outputPath.substring(etlJobConfig.outputPath.lastIndexOf("/") + 1);
                         String dorisIntermediateHiveTable = String.format(EtlJobConfig.DORIS_INTERMEDIATE_HIVE_TABLE_NAME,
                                                                           tableId, taskId);
-                        dorisIntermediateHiveTable = "kylin2x_test.doris_intermediate_hive_table_31105_66130"; // 3kw
-//                        dorisIntermediateHiveTable = "kylin2x_test.doris_intermediate_hive_table_31028_38179";
-//                        dorisIntermediateHiveTable = "kylin2x_test.max_min_sum_int_long_float_double_test_0527";
                         fileGroupDataframe = loadDataFromHiveTable(spark, dorisIntermediateHiveTable, baseIndex, fileGroup, dstTableSchema);
                     }
                     if (fileGroupDataframe == null) {
