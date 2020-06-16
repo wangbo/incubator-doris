@@ -632,6 +632,7 @@ public final class SparkDpp implements java.io.Serializable {
 
     // partition keys will be parsed into double from json
     // so need to convert it to partition columns' type
+    // TODO(wb) change dpp date input to datetime
     private Object convertPartitionKey(Object srcValue, Class dstClass) throws UserException {
         if (dstClass.equals(Float.class) || dstClass.equals(Double.class)) {
             return null;
@@ -646,8 +647,11 @@ public final class SparkDpp implements java.io.Serializable {
             } else if (dstClass.equals(BigInteger.class)) {
                 return new BigInteger(((Double) srcValue).toString());
             } else if (dstClass.equals(java.sql.Date.class) || dstClass.equals(java.util.Date.class)) {
-                double srcValueDouble = (double) srcValue;
+                double srcValueDouble = (double)srcValue;
                 return convertToJavaDate((int) srcValueDouble);
+            } else if (dstClass.equals(java.sql.Timestamp.class)) {
+                double srcValueDouble = (double)srcValue;
+                return convertToJavaDatetime((long)srcValueDouble);
             } else {
                 // dst type is string
                 return srcValue.toString();
@@ -656,6 +660,22 @@ public final class SparkDpp implements java.io.Serializable {
             LOG.warn("unsupport partition key:" + srcValue);
             throw new UserException("unsupport partition key:" + srcValue);
         }
+    }
+
+    private java.sql.Timestamp convertToJavaDatetime(long src) {
+        String dateTimeStr = Long.valueOf(src).toString();
+        if (dateTimeStr.length() != 14) {
+            throw new RuntimeException("invalid input date format for SparkDpp");
+        }
+
+        String year = dateTimeStr.substring(0, 4);
+        String month = dateTimeStr.substring(4, 6);
+        String day = dateTimeStr.substring(6, 8);
+        String hour = dateTimeStr.substring(8, 10);
+        String min = dateTimeStr.substring(10, 12);
+        String sec = dateTimeStr.substring(12, 14);
+
+        return java.sql.Timestamp.valueOf(String.format("%s-%s-%s %s:%s:%s", year, month, day, hour, min, sec));
     }
 
     private java.sql.Date convertToJavaDate(int originDate) {

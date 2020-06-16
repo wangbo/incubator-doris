@@ -79,6 +79,7 @@ public class DppUtils {
             case "INT":
                 return Integer.class;
             case "DATETIME":
+                return java.sql.Timestamp.class;
             case "BIGINT":
                 return Long.class;
             case "LARGEINT":

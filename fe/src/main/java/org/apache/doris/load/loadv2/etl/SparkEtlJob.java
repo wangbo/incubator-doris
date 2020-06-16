@@ -141,7 +141,7 @@ public class SparkEtlJob {
     }
 
     private void buildGlobalDictAndEncodeSourceTable(EtlTable table, long tableId) {
-        List<String> distinctColumnList = Lists.newArrayList(tableToBitmapDictColumns.get(tableId));
+        List<String> distinctColumnList = tableToBitmapDictColumns.get(tableId) == null ? new ArrayList<>() : Lists.newArrayList(tableToBitmapDictColumns.get(tableId));
         List<String> dorisOlapTableColumnList = Lists.newArrayList();
         List<String> mapSideJoinColumns = Lists.newArrayList();
         List<EtlColumn> baseSchema = null;
@@ -269,7 +269,7 @@ public class SparkEtlJob {
 
     private void processData() throws Exception {
         // build global dict if has bitmap dict columns
-        if (!tableToBitmapDictColumns.isEmpty()) {
+//        if (!tableToBitmapDictColumns.isEmpty()) {
             // only one table
             long tableId = -1;
             EtlTable table = null;
@@ -280,7 +280,7 @@ public class SparkEtlJob {
             }
             // build global dict and encode source hive table
             buildGlobalDictAndEncodeSourceTable(table, tableId);
-        }
+//        }
 
         // data partition sort and aggregation
         processDpp();
