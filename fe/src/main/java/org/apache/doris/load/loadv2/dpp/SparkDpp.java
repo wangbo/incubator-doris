@@ -544,7 +544,7 @@ public final class SparkDpp implements java.io.Serializable {
         int columnSize = dataSrcColumns.size();
         List<ColumnParser> parsers = new ArrayList<>();
         for (EtlJobConfig.EtlColumn column : baseIndex.columns) {
-            parsers.add(ColumnParser.create(column.columnType));
+            parsers.add(ColumnParser.create(column));
         }
         // now we first support csv file
         // TODO: support parquet file and orc file
@@ -707,7 +707,7 @@ public final class SparkDpp implements java.io.Serializable {
                 }
                 partitionRangeKey.endKeys = new DppColumns(endKeyColumns);
             } else {
-                partitionRangeKey.isMaxPartition = false;
+                partitionRangeKey.isMaxPartition = true;
             }
             partitionRangeKeys.add(partitionRangeKey);
         }
