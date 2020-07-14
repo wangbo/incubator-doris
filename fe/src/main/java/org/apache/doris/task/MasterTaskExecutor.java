@@ -70,7 +70,7 @@ public class MasterTaskExecutor {
             return runningTasks.size();
         }
     }
-    
+
     private class TaskChecker implements Runnable {
         @Override
         public void run() {
