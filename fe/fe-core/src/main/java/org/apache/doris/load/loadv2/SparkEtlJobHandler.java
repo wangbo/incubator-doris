@@ -17,6 +17,7 @@
 
 package org.apache.doris.load.loadv2;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.doris.analysis.BrokerDesc;
 import org.apache.doris.catalog.SparkResource;
 import org.apache.doris.common.Config;
@@ -40,9 +41,12 @@ import com.google.common.collect.Maps;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 
-import org.apache.hadoop.yarn.api.records.ApplicationReport;
 import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.launcher.SparkLauncher;
@@ -52,6 +56,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 
 /**
  * SparkEtlJobHandler is responsible for
@@ -133,13 +138,18 @@ public class SparkEtlJobHandler {
                 .setMainClass(SparkEtlJob.class.getCanonicalName())
                 .setAppName(String.format(ETL_JOB_NAME, loadLabel))
                 .setSparkHome(sparkHome)
-                .addAppArgs(jobConfigHdfsPath)
+                .addAppArgs(jobConfigHdfsPath.replace("hdfs://dfsrouter.vip.sankuai.com:8888",""))
                 .redirectError();
 
         // spark configs
         for (Map.Entry<String, String> entry : resource.getSparkConfigs().entrySet()) {
+            if (StringUtils.isEmpty(entry.getValue())) {
+                continue;
+            }
             launcher.setConf(entry.getKey(), entry.getValue());
         }
+
+        launcher.addSparkArg("--files", "/opt/meituan/spark-2.2/conf/hive-site.xml");
 
         // start app
         State state = null;
@@ -185,46 +195,44 @@ public class SparkEtlJobHandler {
                                      SparkResource resource, BrokerDesc brokerDesc) throws LoadException {
         EtlStatus status = new EtlStatus();
 
-        Preconditions.checkState(appId != null && !appId.isEmpty());
         if (resource.isYarnMaster()) {
-            // prepare yarn config
-            String configDir = resource.prepareYarnConfig();
-            // yarn client path
-            String yarnClient = resource.getYarnClientPath();
-            // command: yarn --config configDir application -status appId
-            String yarnStatusCmd = String.format(YARN_STATUS_CMD, yarnClient, configDir, appId);
-            LOG.info(yarnStatusCmd);
-            String[] envp = { "LC_ALL=" + Config.locale };
-            CommandResult result = Util.executeCommand(yarnStatusCmd, envp, EXEC_CMD_TIMEOUT_MS);
-            if (result.getReturnCode() != 0) {
-                String stderr = result.getStderr();
-                if (stderr != null) {
-                    // case application not exists
-                    if (stderr.contains("doesn't exist in RM")) {
-                        LOG.warn("spark app not found. spark app id: {}, load job id: {}", appId, loadJobId);
-                        status.setState(TEtlState.CANCELLED);
+            // state from yarn
+            Preconditions.checkState(appId != null && !appId.isEmpty());
+            try {
+                CloseableHttpClient httpclient = HttpClients.createDefault();
+                HttpGet httpget = new HttpGet("http://rz-data-hdp-rm01.rz.sankuai.com:8088/ws/v1/cluster/apps/" + appId);
+                HttpResponse httpresponse = httpclient.execute(httpget);
+                Scanner sc = new Scanner(httpresponse.getEntity().getContent());
+
+                boolean isSucc = false;
+                boolean isFailed = false;
+                String ret = "";
+                while(sc.hasNext()) {
+                    String line = sc.nextLine();
+                    if (line.contains("\"finalStatus\":\"SUCCEEDED\"")) {
+                        isSucc = true;
+                    } else if (line.contains("\"finalStatus\":\"FAILED\"")) {
+                        isFailed = true;
                     }
+                    ret = line;
                 }
-                LOG.warn("yarn application status failed. spark app id: {}, load job id: {}, timeout: {}, msg: {}",
-                            appId, loadJobId, EXEC_CMD_TIMEOUT_MS, stderr);
-                status.setState(TEtlState.CANCELLED);
-                return status;
-            }
-            ApplicationReport report = new YarnApplicationReport(result.getStdout()).getReport();
-            LOG.info("yarn application -status {}. load job id: {}, output: {}, report: {}",
-                    appId, loadJobId, result.getStdout(), report);
-            YarnApplicationState state = report.getYarnApplicationState();
-            FinalApplicationStatus faStatus = report.getFinalApplicationStatus();
-            status.setState(fromYarnState(state, faStatus));
-            if (status.getState() == TEtlState.CANCELLED) {
-                if (state == YarnApplicationState.FINISHED) {
-                    status.setFailMsg("spark app state: " + faStatus.toString());
-                } else {
-                    status.setFailMsg("yarn app state: " + state.toString());
+                LOG.info(ret);
+                if (isSucc) {
+                    status.setState(TEtlState.FINISHED);
+                    status.setProgress(100);
+                } else if (isFailed) {
+                    status.setState(TEtlState.CANCELLED);
+                    status.setProgress(100);
+                }else {
+                    status.setState(TEtlState.RUNNING);
+                    status.setProgress(0);
                 }
+                status.setTrackingUrl(appId);
+            } catch (Exception e) {
+                LOG.error("yarn application status failed. spark app id: {}, load job id: {}", appId, loadJobId, e);
+            } finally {
+//                stopYarnClient(client);
             }
-            status.setTrackingUrl(handle.getUrl() != null? handle.getUrl() : report.getTrackingUrl());
-            status.setProgress((int) (report.getProgress() * 100));
         } else {
             // state from handle
             if (handle == null) {
