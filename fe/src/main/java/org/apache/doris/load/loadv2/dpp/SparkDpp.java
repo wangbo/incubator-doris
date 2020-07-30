@@ -29,7 +29,9 @@ import org.apache.parquet.column.ParquetProperties;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.spark.Partitioner;
+import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.ForeachPartitionFunction;
+import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.sql.catalyst.InternalRow;
@@ -323,8 +325,11 @@ public final class SparkDpp implements java.io.Serializable {
             for (String valueName : curNode.valueColumnNames) {
                 columns.add(new Column(valueName));
             }
-            Seq<Column> columnSeq = JavaConverters.asScalaIteratorConverter(columns.iterator()).asScala().toSeq();
-            curDataFrame = parentDataframe.select(columnSeq);
+
+            List<Integer> columnIndexInParentRollup = getColumnIndexInParentRollup(
+                    curNode.keyColumnNames,curNode.valueColumnNames, curNode.parent.keyColumnNames, curNode.parent.valueColumnNames
+            );
+
             // aggregate and repartition
             curDataFrame = processRDDAggAndRepartition(curDataFrame, curNode.indexMeta);
 
@@ -338,9 +343,32 @@ public final class SparkDpp implements java.io.Serializable {
         }
     }
 
+    private List<Integer> getColumnIndexInParentRollup(List<String> childRollupKeyColumns, List<String> childRollupValueColumns,
+                                                                    List<String> parentRollupKeyColumns, List<String> parentRollupValueColumns) {
+        List<Integer> childColumnIndexInParentRollup = new ArrayList<>();
+        for (int i = 0; i < parentRollupKeyColumns.size(); i++) {
+            String columnName = parentRollupKeyColumns.get(i);
+            if (childRollupKeyColumns.contains(columnName)) {
+                childColumnIndexInParentRollup.add(i);
+            }
+        }
+        for (int i = 0; i < parentRollupValueColumns.size(); i++) {
+            String columnName = parentRollupValueColumns.get(i);
+            if (childRollupValueColumns.contains(columnName)) {
+                childColumnIndexInParentRollup.add(i + childRollupKeyColumns.size());
+            }
+        }
+        if (childColumnIndexInParentRollup.size() != (childRollupValueColumns.size() + childRollupKeyColumns.size())
+                || childColumnIndexInParentRollup.size() > (parentRollupKeyColumns.size() + parentRollupValueColumns.size())) {
+            throw new RuntimeException(String.format("column map index from child to parent has error, src: %s, target %s",
+                    childRollupValueColumns.size() + childRollupKeyColumns.size(), childColumnIndexInParentRollup.size()));
+        }
+        return childColumnIndexInParentRollup;
+    }
+
     // repartition dataframe by partitionid_bucketid
     // so data in the same bucket will be consecutive.
-    private Dataset<Row> repartitionDataframeByBucketId(SparkSession spark, Dataset<Row> dataframe,
+    private JavaRDD<Row> fillTupleWithPartitionColumn(SparkSession spark, Dataset<Row> dataframe,
                                                         EtlJobConfig.EtlPartitionInfo partitionInfo,
                                                         List<Integer> partitionKeyIndex,
                                                         List<Class> partitionKeySchema,
@@ -366,59 +394,49 @@ public final class SparkDpp implements java.io.Serializable {
         }
         // use PairFlatMapFunction instead of PairMapFunction because the there will be
         // 0 or 1 output row for 1 input row
-        JavaPairRDD<String, DppColumns> pairRDD = dataframe.javaRDD().flatMapToPair(
-                new PairFlatMapFunction<Row, String, DppColumns>() {
-                    @Override
-                    public Iterator<Tuple2<String, DppColumns>> call(Row row) {
-                        List<Object> columns = new ArrayList<>();
-                        List<Object> keyColumns = new ArrayList<>();
-                        for (String columnName : keyColumnNames) {
-                            Object columnObject = row.get(row.fieldIndex(columnName));
-                            columns.add(columnObject);
-                            keyColumns.add(columnObject);
-                        }
+        JavaRDD<Row> resultRdd = dataframe.javaRDD().flatMap(new FlatMapFunction<Row, Row>() {
 
-                        for (String columnName : valueColumnNames) {
-                            columns.add(row.get(row.fieldIndex(columnName)));
-                        }
-                        DppColumns dppColumns = new DppColumns(columns);
-                        DppColumns key = new DppColumns(keyColumns);
-                        List<Tuple2<String, DppColumns>> result = new ArrayList<>();
-                        int pid = partitioner.getPartition(key);
-                        if (!validPartitionIndex.contains(pid)) {
-                            LOG.warn("invalid partition for row:" + row + ", pid:" + pid);
-                            abnormalRowAcc.add(1);
-                            LOG.info("abnormalRowAcc:" + abnormalRowAcc);
-                            if (abnormalRowAcc.value() < 5) {
-                                LOG.info("add row to invalidRows:" + row.toString());
-                                invalidRows.add(row.toString());
-                                LOG.info("invalid rows contents:" + invalidRows.value());
-                            }
-                        } else {
-                            long hashValue = DppUtils.getHashValue(row, distributeColumns, dstTableSchema);
-                            int bucketId = (int) ((hashValue & 0xffffffff) % partitionInfo.partitions.get(pid).bucketNum);
-                            long partitionId = partitionInfo.partitions.get(pid).partitionId;
-                            // bucketKey is partitionId_bucketId
-                            String bucketKey = partitionId + "_" + bucketId;
-                            Tuple2<String, DppColumns> newTuple = new Tuple2<String, DppColumns>(bucketKey, dppColumns);
-                            result.add(newTuple);
-                        }
-                        return result.iterator();
-                    }
-                });
-        // TODO(wb): using rdd instead of dataframe from here
-        JavaRDD<Row> resultRdd = pairRDD.map(record -> {
-                    String bucketKey = record._1;
-                    List<Object> row = new ArrayList<>();
-                    // bucketKey as the first key
-                    row.add(bucketKey);
-                    row.addAll(record._2.columns);
-                    return RowFactory.create(row.toArray());
+            @Override
+            public Iterator call(Row row) throws Exception {
+                List<Object> columns = new ArrayList<>();
+                List<Object> keyColumns = new ArrayList<>();
+                for (String columnName : keyColumnNames) {
+                    Object columnObject = row.get(row.fieldIndex(columnName));
+                    columns.add(columnObject);
+                    keyColumns.add(columnObject);
                 }
-        );
 
-        StructType tableSchemaWithBucketId = DppUtils.createDstTableSchema(baseIndex.columns, true, false);
-        dataframe = spark.createDataFrame(resultRdd, tableSchemaWithBucketId);
+                for (String columnName : valueColumnNames) {
+                    columns.add(row.get(row.fieldIndex(columnName)));
+                }
+                DppColumns key = new DppColumns(keyColumns);
+                int pid = partitioner.getPartition(key);
+                List<Row> result = new ArrayList<>();
+                if (!validPartitionIndex.contains(pid)) {
+                    LOG.warn("invalid partition for row:" + row + ", pid:" + pid);
+                    abnormalRowAcc.add(1);
+                    LOG.info("abnormalRowAcc:" + abnormalRowAcc);
+                    if (abnormalRowAcc.value() < 5) {
+                        LOG.info("add row to invalidRows:" + row.toString());
+                        invalidRows.add(row.toString());
+                        LOG.info("invalid rows contents:" + invalidRows.value());
+                    }
+                } else {
+                    long hashValue = DppUtils.getHashValue(row, distributeColumns, dstTableSchema);
+                    int bucketId = (int) ((hashValue & 0xffffffff) % partitionInfo.partitions.get(pid).bucketNum);
+                    long partitionId = partitionInfo.partitions.get(pid).partitionId;
+                    // bucketKey is partitionId_bucketId
+                    String bucketKey = partitionId + "_" + bucketId;
+
+                    List<Object> tuple = new ArrayList<>();
+                    tuple.add(bucketKey);
+                    tuple.addAll(columns);
+                    result.add(RowFactory.create(tuple.toArray()));
+                }
+                return result.iterator();
+            }
+        });
+
         // use bucket number as the parallel number
         int reduceNum = 0;
         for (EtlJobConfig.EtlPartition partition : partitionInfo.partitions) {
@@ -431,7 +449,7 @@ public final class SparkDpp implements java.io.Serializable {
         // print to system.out for easy to find log info
         System.out.println("print bucket key map:" + bucketKeyMap.toString());
 
-        return dataframe;
+        return resultRdd;
     }
 
     // do the etl process
@@ -809,6 +827,7 @@ public final class SparkDpp implements java.io.Serializable {
                 LOG.info("Start to process rollup tree:" + rootNode);
 
                 Dataset<Row> tableDataframe = null;
+                JavaRDD<Row> tableRDD = null;
                 for (EtlJobConfig.EtlFileGroup fileGroup : etlTable.fileGroups) {
                     List<String> filePaths = fileGroup.filePaths;
                     Dataset<Row> fileGroupDataframe = null;
@@ -831,15 +850,15 @@ public final class SparkDpp implements java.io.Serializable {
                         unselectedRowAcc.add(currentSize - originalSize);
                     }
 
-                    fileGroupDataframe = repartitionDataframeByBucketId(spark, fileGroupDataframe,
+                    JavaRDD<Row> ret = fillTupleWithPartitionColumn(spark, fileGroupDataframe,
                             partitionInfo, partitionKeyIndex,
                             partitionKeySchema, partitionRangeKeys,
                             keyColumnNames, valueColumnNames,
                             dstTableSchema, baseIndex, fileGroup.partitions);
-                    if (tableDataframe == null) {
-                        tableDataframe = fileGroupDataframe;
+                    if (tableRDD == null) {
+                        tableRDD = ret;
                     } else {
-                        tableDataframe.union(fileGroupDataframe);
+                        tableRDD.union(ret);
                     }
                 }
                 processRollupTree(rootNode, tableDataframe, tableId, etlTable, baseIndex);
