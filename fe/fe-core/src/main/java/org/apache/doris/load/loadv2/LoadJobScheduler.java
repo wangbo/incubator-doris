@@ -33,7 +33,11 @@ import com.google.common.collect.Queues;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
@@ -46,6 +50,10 @@ public class LoadJobScheduler extends MasterDaemon {
     private static final Logger LOG = LogManager.getLogger(LoadJobScheduler.class);
 
     private LinkedBlockingQueue<LoadJob> needScheduleJobs = Queues.newLinkedBlockingQueue();
+
+    // Used to implement a job granularity lock for update global dict table serially
+    // The runningBitmapTables keeps the doris table id of the spark load job which in state pending or etl
+    private Map<Long, Set<Long>> runningTabletWithBitmapColumnsMap = new HashMap<>();
 
     public LoadJobScheduler() {
         super("Load job scheduler", Config.load_checker_interval_second * 1000);
@@ -70,6 +78,9 @@ public class LoadJobScheduler extends MasterDaemon {
 
             // schedule job
             try {
+                if (!isAllowBitmapTableLoad(loadJob)) {
+                    continue;
+                }
                 loadJob.execute();
             } catch (LabelAlreadyUsedException | AnalysisException e) {
                 LOG.warn(new LogBuilder(LogKey.LOAD_JOB, loadJob.getId())
@@ -100,6 +111,71 @@ public class LoadJobScheduler extends MasterDaemon {
                 needScheduleJobs.put(loadJob);
                 return;
             }
+        }
+    }
+
+    private boolean isAllowBitmapTableLoad(LoadJob loadJob) throws InterruptedException {
+        // only deal spark load job
+        if (!(loadJob instanceof SparkLoadJob)) {
+            return true;
+        }
+
+        SparkLoadJob sparkLoadJob = (SparkLoadJob)loadJob;
+        // get load table which contains bitmap column
+        Set<Long> tableIdWithBitmapColumn = sparkLoadJob.getTableWithBitmapColumn();
+
+        if (!addRunningTable(sparkLoadJob.getId(), tableIdWithBitmapColumn)) {
+            // the job needs to wait
+            needScheduleJobs.add(loadJob);
+            return false;
+        }
+
+        return true;
+    }
+
+    // add lock cases as below:
+    // 1 LoadJobScheduler.submit success
+    // 2 SparkLoadJob in etl then replay when fe restart(exclude checkpoint.replay)
+    // 3 load SparkLoadJob in ETL from image
+    public boolean addRunningTable(Long jobId, Set<Long> tableIds) {
+        // skip spark load job which needn't build global dict
+        if (tableIds.size() == 0) {
+            return true;
+        }
+
+        synchronized (runningTabletWithBitmapColumnsMap) {
+            Set<Long> runningTableIdSet = new HashSet<>();
+            for (Set<Long> set : runningTabletWithBitmapColumnsMap.values()) {
+                runningTableIdSet.addAll(set);
+            }
+
+            for (Long tableId : tableIds) {
+                // there is already a running job for the same table, so it needs to wait
+                if (runningTableIdSet.contains(tableId)) {
+                    return false;
+                }
+            }
+            if (runningTabletWithBitmapColumnsMap.containsKey(jobId)) {
+                LOG.warn("unexpected case: runningBitmapTableMap contains job id {}, should add only once", jobId);
+            }
+            runningTabletWithBitmapColumnsMap.put(jobId, tableIds);
+            return true;
+        }
+    }
+
+    // release lock cases as below
+    // 1 SparkLoadJob in pending status then failed
+    // 2 SparkLoadJob in etl then status failed
+    // 3 SparkLoadJob in etl then status finish
+    // 4 LoadJobScheduler.submit failed
+    // 5 SparkLoadJob's state convert to Loading
+    // 6 transaction abort
+    public void removeRunningTable(Long jobId, Set<Long> tableIds) {
+        if (tableIds.size() == 0) {
+            return;
+        }
+        synchronized (runningTabletWithBitmapColumnsMap) {
+            runningTabletWithBitmapColumnsMap.remove(jobId);
         }
     }
 

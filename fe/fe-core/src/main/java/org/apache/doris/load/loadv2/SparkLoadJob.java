@@ -101,6 +101,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static org.apache.doris.common.FeMetaVersion.VERSION_87;
+
 /**
  * There are 4 steps in SparkLoadJob:
  * Step1: SparkLoadPendingTask will be created by unprotectedExecuteJob method and submit spark etl job.
@@ -138,6 +140,10 @@ public class SparkLoadJob extends BulkLoadJob {
     private Set<Long> finishedReplicas = Sets.newHashSet();
     private Set<Long> quorumTablets = Sets.newHashSet();
     private Set<Long> fullTablets = Sets.newHashSet();
+
+    // used for global dict lock
+    // keeps tableid which has bitmap columns
+    private Set<Long> tableWithBitmapColumn = Sets.newHashSet();
 
     // only for log replay
     public SparkLoadJob() {
@@ -340,6 +346,8 @@ public class SparkLoadJob extends BulkLoadJob {
         unprotectedUpdateToLoadingState(etlStatus, handler.getEtlFilePaths(etlOutputPath, brokerDesc));
         // log loading state
         unprotectedLogUpdateStateInfo();
+        // release dict lock when etl finished
+        Catalog.getCurrentCatalog().getLoadJobScheduler().removeRunningTable(getId(), getTableWithBitmapColumn());
         // prepare loading infos
         unprotectedPrepareLoadingInfos();
     }
@@ -685,12 +693,22 @@ public class SparkLoadJob extends BulkLoadJob {
     public void cancelJobWithoutCheck(FailMsg failMsg, boolean abortTxn, boolean needLog) {
         super.cancelJobWithoutCheck(failMsg, abortTxn, needLog);
         clearJob();
+        // release dict lock when cancel internal
+        Catalog.getCurrentCatalog().getLoadJobScheduler().removeRunningTable(getId(), getTableWithBitmapColumn());
     }
 
     @Override
     public void cancelJob(FailMsg failMsg) throws DdlException {
         super.cancelJob(failMsg);
         clearJob();
+        // release dict lock when user cancel
+        Catalog.getCurrentCatalog().getLoadJobScheduler().removeRunningTable(getId(), getTableWithBitmapColumn());
+    }
+
+    public void unprotectedExecuteCancel(FailMsg failMsg, boolean abortTxn) {
+        super.unprotectedExecuteCancel(failMsg, abortTxn);
+        // release dict lock when sparkPendingTaskFailed or TransactionMgr aborts
+        Catalog.getCurrentCatalog().getLoadJobScheduler().removeRunningTable(getId(), getTableWithBitmapColumn());
     }
 
     @Override
@@ -716,6 +734,11 @@ public class SparkLoadJob extends BulkLoadJob {
             Text.writeString(out, entry.getValue().first);
             out.writeLong(entry.getValue().second);
         }
+
+        out.writeInt(this.tableWithBitmapColumn.size());
+        for (Long tableId : this.tableWithBitmapColumn) {
+            out.writeLong(tableId);
+        }
     }
 
     public void readFields(DataInput in) throws IOException {
@@ -729,6 +752,16 @@ public class SparkLoadJob extends BulkLoadJob {
             String tabletMetaStr = Text.readString(in);
             Pair<String, Long> fileInfo = Pair.create(Text.readString(in), in.readLong());
             tabletMetaToFileInfo.put(tabletMetaStr, fileInfo);
+        }
+
+        if (Catalog.getCurrentCatalogJournalVersion() >= VERSION_87) {
+            int tableWithBitmapColumnsSize = in.readInt();
+            for (int i = 0; i < tableWithBitmapColumnsSize; i++) {
+                this.tableWithBitmapColumn.add(in.readLong());
+            }
+            if (this.state == JobState.ETL && tableWithBitmapColumnsSize != 0) {
+                Catalog.getCurrentCatalog().getLoadJobScheduler().addRunningTable(getId(), getTableWithBitmapColumn());
+            }
         }
     }
 
@@ -753,12 +786,21 @@ public class SparkLoadJob extends BulkLoadJob {
 
         switch (state) {
             case ETL:
-                // nothing to do
+                // acquire dict lock when job relays
+                if (!Catalog.isCheckpointThread()) {
+                    Catalog.getCurrentCatalog().getLoadJobScheduler().addRunningTable(getId(), getTableWithBitmapColumn());
+                }
                 break;
             case LOADING:
+                if (!Catalog.isCheckpointThread()) {
+                    Catalog.getCurrentCatalog().getLoadJobScheduler().removeRunningTable(getId(), getTableWithBitmapColumn());
+                }
                 unprotectedPrepareLoadingInfos();
                 break;
             default:
+                if (!Catalog.isCheckpointThread()) {
+                    Catalog.getCurrentCatalog().getLoadJobScheduler().removeRunningTable(getId(), getTableWithBitmapColumn());
+                }
                 LOG.warn("replay update load job state info failed. error: wrong state. job id: {}, state: {}",
                          id, state);
                 break;
@@ -909,4 +951,9 @@ public class SparkLoadJob extends BulkLoadJob {
             tDescriptorTable = descTable.toThrift();
         }
     }
+
+    public Set<Long> getTableWithBitmapColumn() {
+        return tableWithBitmapColumn;
+    }
+
 }
