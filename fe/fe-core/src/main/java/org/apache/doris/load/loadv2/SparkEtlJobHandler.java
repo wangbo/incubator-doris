@@ -149,7 +149,7 @@ public class SparkEtlJobHandler {
             launcher.setConf(entry.getKey(), entry.getValue());
         }
 
-        launcher.addSparkArg("--files", "/opt/meituan/spark-2.2/conf/hive-site.xml");
+        launcher.addSparkArg("--files", "/opt/meituan/spark-2.2/conf/hive-site.xml,/home/sankuai/liblagent.so");
 
         // start app
         State state = null;
