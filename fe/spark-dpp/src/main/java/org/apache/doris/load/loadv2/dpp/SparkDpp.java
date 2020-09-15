@@ -799,6 +799,7 @@ public final class SparkDpp implements java.io.Serializable {
             sql.append(column.columnName).append(",");
         });
         sql.deleteCharAt(sql.length() - 1).append(" from ").append(hiveDbTableName);
+        sql.append(" where datekey=20200914");
         Dataset<Row> dataframe = spark.sql(sql.toString());
         dataframe = convertSrcDataframeToDstDataframe(baseIndex, dataframe, dstTableSchema, fileGroup);
         return dataframe;
