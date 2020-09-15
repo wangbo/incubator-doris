@@ -283,7 +283,7 @@ public final class SparkDpp implements java.io.Serializable {
         Map<Long, JavaPairRDD<List<Object>, Object[]>> parentRDDMap = new HashMap<>();
         parentRDDMap.put(baseIndex.indexId, rootRDD);
         Map<Long, JavaPairRDD<List<Object>, Object[]>> childrenRDDMap = new HashMap<>();
-        String pathPattern = etlJobConfig.outputPath + "/" + etlJobConfig.outputFilePattern;
+        String pathPattern = etlJobConfig.outputPath.replace("hdfs://dfsrouter.vip.sankuai.com:8888","") + "/" + etlJobConfig.outputFilePattern;
         while (!nodeQueue.isEmpty()) {
             RollupTreeNode curNode = nodeQueue.poll();
             LOG.info("start to process index:" + curNode.indexId);
