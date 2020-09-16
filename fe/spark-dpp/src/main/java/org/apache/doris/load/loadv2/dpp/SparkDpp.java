@@ -143,14 +143,14 @@ public final class SparkDpp implements java.io.Serializable {
 
             if (curNode.indexMeta.isBaseIndex) {
                 JavaPairRDD<List<Object>, Object[]> result = currentPairRDD.mapToPair(new EncodeBaseAggregateTableFunction(sparkRDDAggregators))
-                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), aggregateConcurrency);
+                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), 500);
                 return result;
             } else {
                 JavaPairRDD<List<Object>, Object[]> result = currentPairRDD
                         .mapToPair(new EncodeRollupAggregateTableFunction(
                                 getColumnIndexInParentRollup(curNode.keyColumnNames, curNode.valueColumnNames,
                                         curNode.parent.keyColumnNames, curNode.parent.valueColumnNames)))
-                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), aggregateConcurrency);
+                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), 200);
                 return result;
             }
         // Duplicate Table
