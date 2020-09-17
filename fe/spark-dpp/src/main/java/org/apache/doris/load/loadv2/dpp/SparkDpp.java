@@ -313,14 +313,14 @@ public final class SparkDpp implements java.io.Serializable {
 
             // aggregate
             SparkRDDAggregator[] sparkRDDAggregators = new SparkRDDAggregator[curNode.valueColumnNames.size()];
-            curRDD = processRDDAggregate(parentRDD, curNode, sparkRDDAggregators).persist(StorageLevel.MEMORY_AND_DISK_SER());
+            curRDD = processRDDAggregate(parentRDD, curNode, sparkRDDAggregators);
 
             childrenRDDMap.put(curNode.indexId, curRDD);
 
-//            if (curNode.children != null && curNode.children.size() > 1) {
-//                // if the children number larger than 1, persist the dataframe for performance
-//                curRDD.persist(StorageLevel.MEMORY_AND_DISK());
-//            }
+            if (curNode.children != null && curNode.children.size() > 1) {
+                // if the children number larger than 1, persist the dataframe for performance
+                curRDD.persist(StorageLevel.MEMORY_AND_DISK());
+            }
             // repartition and write to hdfs
             writeRepartitionAndSortedRDDToParquet(curRDD, pathPattern, tableId, curNode.indexMeta, sparkRDDAggregators);
         }
