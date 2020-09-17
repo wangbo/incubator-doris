@@ -319,7 +319,7 @@ public final class SparkDpp implements java.io.Serializable {
 
             if (curNode.children != null && curNode.children.size() > 1) {
                 // if the children number larger than 1, persist the dataframe for performance
-                curRDD.persist(StorageLevel.MEMORY_AND_DISK());
+                curRDD.persist(StorageLevel.MEMORY_AND_DISK_2());
             }
             // repartition and write to hdfs
             writeRepartitionAndSortedRDDToParquet(curRDD, pathPattern, tableId, curNode.indexMeta, sparkRDDAggregators);
