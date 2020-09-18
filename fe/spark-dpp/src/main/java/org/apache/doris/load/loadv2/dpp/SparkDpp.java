@@ -121,6 +121,9 @@ public final class SparkDpp implements java.io.Serializable {
         fileSizeAcc = spark.sparkContext().longAccumulator("fileSizeAcc");
         spark.sparkContext().register(invalidRows, "InvalidRowsAccumulator");
         this.serializableHadoopConf = new SerializableConfiguration(spark.sparkContext().hadoopConfiguration());
+
+        // set checkpoint
+        spark.sparkContext().setCheckpointDir("/ghnn01/kylin/tmp_test/ck");
     }
 
     private JavaPairRDD<List<Object>, Object[]> processRDDAggregate(JavaPairRDD<List<Object>, Object[]> currentPairRDD, RollupTreeNode curNode,
@@ -143,7 +146,7 @@ public final class SparkDpp implements java.io.Serializable {
 
             if (curNode.indexMeta.isBaseIndex) {
                 JavaPairRDD<List<Object>, Object[]> result = currentPairRDD.mapToPair(new EncodeBaseAggregateTableFunction(sparkRDDAggregators))
-                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), 500);
+                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), 200);
                 return result;
             } else {
                 JavaPairRDD<List<Object>, Object[]> result = currentPairRDD
@@ -319,7 +322,8 @@ public final class SparkDpp implements java.io.Serializable {
 
             if (curNode.children != null && curNode.children.size() > 1) {
                 // if the children number larger than 1, persist the dataframe for performance
-                curRDD.persist(StorageLevel.MEMORY_AND_DISK_2());
+                curRDD.persist(StorageLevel.MEMORY_AND_DISK());
+                curRDD.checkpoint();
             }
             // repartition and write to hdfs
             writeRepartitionAndSortedRDDToParquet(curRDD, pathPattern, tableId, curNode.indexMeta, sparkRDDAggregators);
