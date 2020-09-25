@@ -146,7 +146,7 @@ public final class SparkDpp implements java.io.Serializable {
 
             if (curNode.indexMeta.isBaseIndex) {
                 JavaPairRDD<List<Object>, Object[]> result = currentPairRDD.mapToPair(new EncodeBaseAggregateTableFunction(sparkRDDAggregators))
-                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), 200);
+                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), 500);
                 return result;
             } else {
                 JavaPairRDD<List<Object>, Object[]> result = currentPairRDD
@@ -319,11 +319,10 @@ public final class SparkDpp implements java.io.Serializable {
             curRDD = processRDDAggregate(parentRDD, curNode, sparkRDDAggregators);
 
 
-//            if (curNode.children != null && curNode.children.size() >= 1) {
+            if (curNode.children != null && curNode.children.size() >= 1) {
                 // if the children number larger than 1, persist the dataframe for performance
-            curRDD = curRDD.persist(StorageLevel.MEMORY_AND_DISK());
-            curRDD.checkpoint();
-//            }
+                curRDD = curRDD.persist(StorageLevel.MEMORY_AND_DISK());
+            }
             childrenRDDMap.put(curNode.indexId, curRDD);
             // repartition and write to hdfs
             writeRepartitionAndSortedRDDToParquet(curRDD, pathPattern, tableId, curNode.indexMeta, sparkRDDAggregators);
