@@ -200,7 +200,13 @@ public final class SparkDpp implements java.io.Serializable {
                 String dstPath = "";
                 String tmpPath = "";
 
+                long begin = System.currentTimeMillis();
+                long newParquetWriteTimeCost = 0;
+                long encodeTimeCost = 0;
+                long foreachTimeCost = 0;
+                long write2HDFSTimeCost = 0;
                 while (t.hasNext()) {
+                    long beginForeach = System.currentTimeMillis();
                     Tuple2<List<Object>, Object[]> pair = t.next();
                     List<Object> keyColumns = pair._1();
                     Object[] valueColumns = pair._2();
@@ -250,18 +256,33 @@ public final class SparkDpp implements java.io.Serializable {
                         conf.set("spark.sql.parquet.outputTimestampType", "INT96");
                         ParquetWriteSupport.setSchema(dstSchema, conf);
                         ParquetWriteSupport parquetWriteSupport = new ParquetWriteSupport();
+                        long beginInitParquetWriter = System.currentTimeMillis();
                         parquetWriter = new ParquetWriter<InternalRow>(new Path(tmpPath), parquetWriteSupport,
                                 CompressionCodecName.SNAPPY, 256 * 1024 * 1024, 16 * 1024, 1024 * 1024,
                                 true, false,
                                 ParquetProperties.WriterVersion.PARQUET_1_0, conf);
+                        newParquetWriteTimeCost = newParquetWriteTimeCost + (System.currentTimeMillis() - beginInitParquetWriter);
                         if (parquetWriter != null) {
                             LOG.info("[HdfsOperate]>> initialize writer succeed! path:" + tmpPath);
                         }
                         lastBucketKey = curBucketKey;
                     }
+                    long beginEncodeToRow = System.currentTimeMillis();
                     InternalRow internalRow = encoder.toRow(rowWithoutBucketKey);
+                    encodeTimeCost = encodeTimeCost + (System.currentTimeMillis() - beginEncodeToRow);
+
+                    long beginWrite = System.currentTimeMillis();
                     parquetWriter.write(internalRow);
+                    write2HDFSTimeCost = write2HDFSTimeCost + (System.currentTimeMillis() - beginWrite);
+
+                    foreachTimeCost = foreachTimeCost + (System.currentTimeMillis() - beginForeach);
                 }
+                System.out.println(System.currentTimeMillis());
+                System.out.println("newParquetWriteTimeCost=" + newParquetWriteTimeCost);
+                System.out.println("encodeTimeCost=" +  encodeTimeCost);
+                System.out.println("write2HDFSTimeCost=" + write2HDFSTimeCost);
+                System.out.println("foreachTimeCost=" + foreachTimeCost);
+                System.out.println("total=" + (System.currentTimeMillis() - begin));
                 if (parquetWriter != null) {
                     parquetWriter.close();
                     try {
