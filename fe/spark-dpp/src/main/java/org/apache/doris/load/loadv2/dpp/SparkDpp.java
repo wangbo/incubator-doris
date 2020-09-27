@@ -115,6 +115,8 @@ public final class SparkDpp implements java.io.Serializable {
 
     private LongAccumulator fillTupleCounter = null;
     private LongAccumulator fillTupleHashCounter = null;
+    private LongAccumulator mapCounter = null;
+    private LongAccumulator reduceCounter = null;
 
     public void init() {
         abnormalRowAcc = spark.sparkContext().longAccumulator("abnormalRowAcc");
@@ -127,6 +129,8 @@ public final class SparkDpp implements java.io.Serializable {
 
         fillTupleCounter = spark.sparkContext().longAccumulator("fillTupleCounter");
         fillTupleHashCounter = spark.sparkContext().longAccumulator("fillTupleHashCounter");
+        mapCounter = spark.sparkContext().longAccumulator("mapCounter");
+        reduceCounter = spark.sparkContext().longAccumulator("reduceCounter");
 
     }
 
@@ -149,8 +153,8 @@ public final class SparkDpp implements java.io.Serializable {
             }
 
             if (curNode.indexMeta.isBaseIndex) {
-                JavaPairRDD<List<Object>, Object[]> result = currentPairRDD.mapToPair(new EncodeBaseAggregateTableFunction(sparkRDDAggregators))
-                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators), 500);
+                JavaPairRDD<List<Object>, Object[]> result = currentPairRDD.mapToPair(new EncodeBaseAggregateTableFunction(sparkRDDAggregators, mapCounter))
+                        .reduceByKey(new AggregateReduceFunction(sparkRDDAggregators, reduceCounter), 500);
                 return result;
             } else {
                 JavaPairRDD<List<Object>, Object[]> result = currentPairRDD
@@ -213,6 +217,7 @@ public final class SparkDpp implements java.io.Serializable {
                 long foreachTimeCost = 0;
                 long write2HDFSTimeCost = 0;
                 long getRowTimeCost = 0;
+                long finalizeTimeCost = 0;
 
                 long lastEndTime = System.currentTimeMillis();
                 while (t.hasNext()) {
@@ -237,6 +242,8 @@ public final class SparkDpp implements java.io.Serializable {
                     for (int i = 0; i < valueColumns.length; ++i) {
                         columnObjects.add(sparkRDDAggregators[i].finalize(valueColumns[i]));
                     }
+
+                    finalizeTimeCost = finalizeTimeCost + (System.currentTimeMillis() - beginForeach);
 
                     Row rowWithoutBucketKey = RowFactory.create(columnObjects.toArray());
                     // if the bucket key is new, it will belong to a new tablet
@@ -293,11 +300,11 @@ public final class SparkDpp implements java.io.Serializable {
                 }
                 System.out.println(System.currentTimeMillis());
                 System.out.println("newParquetWriteTimeCost=" + newParquetWriteTimeCost);
+                System.out.println("getRowTimeCost=" + getRowTimeCost);
                 System.out.println("encodeTimeCost=" +  encodeTimeCost);
                 System.out.println("write2HDFSTimeCost=" + write2HDFSTimeCost);
                 System.out.println("foreachTimeCost=" + foreachTimeCost);
-                System.out.println("foreachTimeCost=" + foreachTimeCost);
-                System.out.println("getRowTimeCost=" + getRowTimeCost);
+                System.out.println("finalizeTimeCost=" + finalizeTimeCost);
                 System.out.println("total=" + (System.currentTimeMillis() - begin));
                 if (parquetWriter != null) {
                     parquetWriter.close();

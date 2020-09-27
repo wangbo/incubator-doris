@@ -24,6 +24,7 @@ import org.apache.doris.load.loadv2.etl.EtlJobConfig;
 import org.apache.spark.Partitioner;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
+import org.apache.spark.util.LongAccumulator;
 import scala.Tuple2;
 
 import java.io.ByteArrayInputStream;
@@ -138,17 +139,24 @@ class DefaultSparkRDDAggregator extends SparkRDDAggregator {
 class EncodeBaseAggregateTableFunction implements PairFunction<Tuple2<List<Object>, Object[]>, List<Object>, Object[]> {
 
     private SparkRDDAggregator[] valueAggregators;
+    private LongAccumulator mapCounter;
 
     public EncodeBaseAggregateTableFunction(SparkRDDAggregator[] valueAggregators) {
         this.valueAggregators = valueAggregators;
     }
 
+    public EncodeBaseAggregateTableFunction(SparkRDDAggregator[] valueAggregators, LongAccumulator longAccumulator) {
+        this.valueAggregators = valueAggregators;
+        this.mapCounter = longAccumulator;
+    }
 
     @Override
     public Tuple2<List<Object>, Object[]> call(Tuple2<List<Object>, Object[]> srcPair) throws Exception {
+        long begin = System.currentTimeMillis();
         for (int i = 0; i < srcPair._2().length; i++) {
             srcPair._2()[i] = valueAggregators[i].init(srcPair._2()[i]);
         }
+        mapCounter.add(System.currentTimeMillis() - begin);
         return srcPair;
     }
 }
@@ -186,17 +194,25 @@ class EncodeRollupAggregateTableFunction implements PairFunction<Tuple2<List<Obj
 class AggregateReduceFunction implements Function2<Object[], Object[], Object[]> {
 
     private SparkRDDAggregator[] valueAggregators;
+    private LongAccumulator reduceCounter;
 
     public AggregateReduceFunction(SparkRDDAggregator[] sparkDppAggregators) {
         this.valueAggregators = sparkDppAggregators;
     }
 
+    public AggregateReduceFunction(SparkRDDAggregator[] sparkDppAggregators, LongAccumulator reduceCounter) {
+        this.valueAggregators = sparkDppAggregators;
+        this.reduceCounter = reduceCounter;
+    }
+
     @Override
     public Object[] call(Object[] v1, Object[] v2) throws Exception {
+        long begin = System.currentTimeMillis();
         Object[] result = new Object[valueAggregators.length];
         for (int i = 0; i < v1.length; i++) {
             result[i] = valueAggregators[i].update(v1[i], v2[i]);
         }
+        reduceCounter.add(System.currentTimeMillis() - begin);
         return result;
     }
 }
