@@ -113,6 +113,9 @@ public final class SparkDpp implements java.io.Serializable {
         this.etlJobConfig = etlJobConfig;
     }
 
+    private LongAccumulator fillTupleCounter = null;
+    private LongAccumulator fillTupleHashCounter = null;
+
     public void init() {
         abnormalRowAcc = spark.sparkContext().longAccumulator("abnormalRowAcc");
         unselectedRowAcc = spark.sparkContext().longAccumulator("unselectedRowAcc");
@@ -122,8 +125,9 @@ public final class SparkDpp implements java.io.Serializable {
         spark.sparkContext().register(invalidRows, "InvalidRowsAccumulator");
         this.serializableHadoopConf = new SerializableConfiguration(spark.sparkContext().hadoopConfiguration());
 
-        // set checkpoint
-        spark.sparkContext().setCheckpointDir("/ghnn01/kylin/tmp_test/ck");
+        fillTupleCounter = spark.sparkContext().longAccumulator("fillTupleCounter");
+        fillTupleHashCounter = spark.sparkContext().longAccumulator("fillTupleHashCounter");
+
     }
 
     private JavaPairRDD<List<Object>, Object[]> processRDDAggregate(JavaPairRDD<List<Object>, Object[]> currentPairRDD, RollupTreeNode curNode,
@@ -191,8 +195,11 @@ public final class SparkDpp implements java.io.Serializable {
             @Override
             public void call(Iterator<Tuple2<List<Object>, Object[]>> t) throws Exception {
                 // write the data to dst file
+                long beginGetHDFS = System.currentTimeMillis();
                 Configuration conf = new Configuration(serializableHadoopConf.value());
                 FileSystem fs = FileSystem.get(URI.create(etlJobConfig.outputPath), conf);
+                System.out.println(System.currentTimeMillis());
+                System.out.println("getHDFS=" + (System.currentTimeMillis() - beginGetHDFS));
                 String lastBucketKey = null;
                 ParquetWriter<InternalRow> parquetWriter = null;
                 TaskContext taskContext = TaskContext.get();
@@ -205,9 +212,15 @@ public final class SparkDpp implements java.io.Serializable {
                 long encodeTimeCost = 0;
                 long foreachTimeCost = 0;
                 long write2HDFSTimeCost = 0;
+                long getRowTimeCost = 0;
+
+                long lastEndTime = System.currentTimeMillis();
                 while (t.hasNext()) {
-                    long beginForeach = System.currentTimeMillis();
                     Tuple2<List<Object>, Object[]> pair = t.next();
+                    getRowTimeCost = getRowTimeCost + (System.currentTimeMillis() - lastEndTime);
+
+                    long beginForeach = System.currentTimeMillis();
+
                     List<Object> keyColumns = pair._1();
                     Object[] valueColumns = pair._2();
                     if ((keyColumns.size() + valueColumns.length) <= 1) {
@@ -275,13 +288,16 @@ public final class SparkDpp implements java.io.Serializable {
                     parquetWriter.write(internalRow);
                     write2HDFSTimeCost = write2HDFSTimeCost + (System.currentTimeMillis() - beginWrite);
 
-                    foreachTimeCost = foreachTimeCost + (System.currentTimeMillis() - beginForeach);
+                    lastEndTime = System.currentTimeMillis();
+                    foreachTimeCost = foreachTimeCost + (lastEndTime - beginForeach);
                 }
                 System.out.println(System.currentTimeMillis());
                 System.out.println("newParquetWriteTimeCost=" + newParquetWriteTimeCost);
                 System.out.println("encodeTimeCost=" +  encodeTimeCost);
                 System.out.println("write2HDFSTimeCost=" + write2HDFSTimeCost);
                 System.out.println("foreachTimeCost=" + foreachTimeCost);
+                System.out.println("foreachTimeCost=" + foreachTimeCost);
+                System.out.println("getRowTimeCost=" + getRowTimeCost);
                 System.out.println("total=" + (System.currentTimeMillis() - begin));
                 if (parquetWriter != null) {
                     parquetWriter.close();
@@ -294,7 +310,10 @@ public final class SparkDpp implements java.io.Serializable {
                 }
 
             }
-        });}
+        });
+        System.out.println("fillTupleCounter=" + fillTupleCounter.value());
+        System.out.println("fillTupleHashCounter=" + fillTupleHashCounter.value());
+    }
 
     // TODO(wb) one shuffle to calculate the rollup in the same level
     private void processRollupTree(RollupTreeNode rootNode,
@@ -414,6 +433,7 @@ public final class SparkDpp implements java.io.Serializable {
         JavaPairRDD<List<Object>, Object[]> resultPairRDD = dataframe.toJavaRDD().flatMapToPair(new PairFlatMapFunction<Row, List<Object>, Object[]>() {
             @Override
             public Iterator<Tuple2<List<Object>, Object[]>> call(Row row) throws Exception {
+                long begin = System.currentTimeMillis();
                 List<Object> keyColumns = new ArrayList<>();
                 Object[] valueColumns = new Object[valueColumnNames.size()];
                 for (String columnName : keyColumnNames) {
@@ -438,8 +458,11 @@ public final class SparkDpp implements java.io.Serializable {
                         LOG.info("invalid rows contents:" + invalidRows.value());
                     }
                 } else {
+                    long beginHash = System.currentTimeMillis();
                     long hashValue = DppUtils.getHashValue(row, distributeColumns, dstTableSchema);
                     int bucketId = (int) ((hashValue & 0xffffffff) % partitionInfo.partitions.get(pid).bucketNum);
+                    fillTupleHashCounter.add(System.currentTimeMillis() - beginHash);
+
                     long partitionId = partitionInfo.partitions.get(pid).partitionId;
                     // bucketKey is partitionId_bucketId
                     String bucketKey = partitionId + "_" + bucketId;
@@ -449,6 +472,7 @@ public final class SparkDpp implements java.io.Serializable {
                     tuple.addAll(keyColumns);
                     result.add(new Tuple2<>(tuple, valueColumns));
                 }
+                fillTupleCounter.add(System.currentTimeMillis() - begin);
                 return result.iterator();
             }
         });
