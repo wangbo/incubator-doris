@@ -200,8 +200,8 @@ public class SparkEtlJobHandler {
             Preconditions.checkState(appId != null && !appId.isEmpty());
             try {
                 CloseableHttpClient httpclient = HttpClients.createDefault();
-//                HttpGet httpget = new HttpGet("http://rz-data-hdp-rm01.rz.sankuai.com:8088/ws/v1/cluster/apps/" + appId);
-                HttpGet httpget = new HttpGet("http://zw02-data-hdp-rmha01.sankuai.com:8088/ws/v1/cluster/apps/" + appId);
+                HttpGet httpget = new HttpGet("http://rz-data-hdp-rm01.rz.sankuai.com:8088/ws/v1/cluster/apps/" + appId);
+//                HttpGet httpget = new HttpGet("http://zw02-data-hdp-rmha01.sankuai.com:8088/ws/v1/cluster/apps/" + appId);
                 HttpResponse httpresponse = httpclient.execute(httpget);
                 Scanner sc = new Scanner(httpresponse.getEntity().getContent());
 
