@@ -234,12 +234,6 @@ public class SparkResource extends Resource {
         } else {
             throw new DdlException("Missing " + SPARK_SUBMIT_DEPLOY_MODE + " in properties");
         }
-        // if deploy machines do not set HADOOP_CONF_DIR env, we should set these configs blow
-        if ((!sparkConfigs.containsKey(SPARK_YARN_RESOURCE_MANAGER_ADDRESS) || !sparkConfigs.containsKey(SPARK_FS_DEFAULT_FS))
-                && isYarnMaster()) {
-            throw new DdlException("Missing (" + SPARK_YARN_RESOURCE_MANAGER_ADDRESS + " and " + SPARK_FS_DEFAULT_FS
-                                           + ") in yarn master");
-        }
 
         // check working dir and broker
         workingDir = properties.get(WORKING_DIR);
