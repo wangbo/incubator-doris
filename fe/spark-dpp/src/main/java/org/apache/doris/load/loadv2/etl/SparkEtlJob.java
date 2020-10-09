@@ -91,6 +91,7 @@ public class SparkEtlJob {
         String jsonConfig = ds.first();
         LOG.info("rdd read json config: " + jsonConfig);
         etlJobConfig = EtlJobConfig.configFromJson(jsonConfig);
+        etlJobConfig.outputPath = etlJobConfig.outputPath.replace("hdfs://dfsrouter.vip.sankuai.com:8888","");
         LOG.info("etl job config: " + etlJobConfig);
     }
 

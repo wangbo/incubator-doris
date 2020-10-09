@@ -146,7 +146,9 @@ public class Util {
         String[] cmds = cmdList.toArray(new String[0]);
 
         try {
-            Process p = Runtime.getRuntime().exec(cmds, envp);
+            ProcessBuilder builder = new ProcessBuilder(cmds);
+            Process p = builder.start();
+
             CmdWorker cmdWorker = new CmdWorker(p);
             cmdWorker.start();
 
