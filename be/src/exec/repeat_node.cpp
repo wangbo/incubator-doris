@@ -16,6 +16,7 @@
 // under the License.
 
 #include "exec/repeat_node.h"
+#include "common/logging.h"
 
 #include "exprs/expr.h"
 #include "runtime/raw_value.h"
@@ -61,6 +62,21 @@ Status RepeatNode::open(RuntimeState* state) {
     RETURN_IF_ERROR(ExecNode::open(state));
     RETURN_IF_CANCELLED(state);
     RETURN_IF_ERROR(child(0)->open(state));
+//
+//    for (std::set<SlotId>::iterator it = _all_slot_ids.begin(); it!= _all_slot_ids.end(); it++) {
+//        LOG(WARNING) << "[RepeatNode] print _all_slot_ids=" << *it;
+//    }
+//
+//    for (int i = 0 ; i < _grouping_list[0].size(); i++) {
+//        LOG(WARNING) << "[RepeatNode] print _grouping_list=" << _grouping_list[0][i];
+//    }
+//
+//    for (int i = 0; i < _slot_id_set_list.size(); i++) {
+//        for (std::set<SlotId>::iterator it = _slot_id_set_list[i].begin(); it!=_slot_id_set_list[i].end() ; it++) {
+//            LOG(WARNING) << "[RepeatNode] i=" << i  <<  " print _slot_id_set_list=" << *it;
+//        }
+//    }
+
     return Status::OK();
 }
 
@@ -114,16 +130,21 @@ Status RepeatNode::get_repeated_batch(
                 SlotDescriptor* dst_slot_desc = (*dst_it)->slots()[k];
                 DCHECK_EQ(src_slot_desc->type().type, dst_slot_desc->type().type);
                 DCHECK_EQ(src_slot_desc->col_name(), dst_slot_desc->col_name());
+//                LOG(WARNING) << "[RepeatNode]col_name=" << src_slot_desc->col_name() << ",slot_id=" << src_slot_desc->id() << ",repeat_id_idx=" << repeat_id_idx;
                 // set null base on repeated list
                 if (_all_slot_ids.find(src_slot_desc->id()) != _all_slot_ids.end()) {
                     std::set<SlotId>& repeat_ids = _slot_id_set_list[repeat_id_idx];
                     if (repeat_ids.find(src_slot_desc->id()) == repeat_ids.end()) {
                         dst_tuples[j]->set_null(dst_slot_desc->null_indicator_offset());
+//                        LOG(WARNING) << "[RepeatNode] set null success,col_name=" << src_slot_desc->col_name()
+//                                     << ",is null=" << dst_tuples[j]->is_null(dst_slot_desc->null_indicator_offset());
                         continue;
                     }
                 }
             }
         }
+//        LOG(WARNING) << "[RepeatNode] row=" << dst_row->to_string(row_batch->row_desc()) << ",repeat_id_idx=" << repeat_id_idx
+//                     << ",src tuple desc=" << child_row_batch->row_desc().debug_string() << ",dst tuple desc=" << row_batch->row_desc().debug_string();
         row_batch->commit_last_row();
     }
     Tuple *tuple = nullptr;

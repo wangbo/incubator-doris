@@ -17,8 +17,11 @@
 
 package org.apache.doris.planner;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.doris.analysis.Analyzer;
+import org.apache.doris.analysis.CaseExpr;
 import org.apache.doris.analysis.Expr;
+import org.apache.doris.analysis.FunctionCallExpr;
 import org.apache.doris.analysis.GroupByClause;
 import org.apache.doris.analysis.GroupingFunctionCallExpr;
 import org.apache.doris.analysis.GroupingInfo;
@@ -27,6 +30,7 @@ import org.apache.doris.analysis.SlotId;
 import org.apache.doris.analysis.SlotRef;
 import org.apache.doris.analysis.TupleDescriptor;
 import org.apache.doris.analysis.TupleId;
+import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.thrift.TExplainLevel;
 import org.apache.doris.thrift.TPlanNode;
@@ -100,18 +104,51 @@ public class RepeatNode extends PlanNode {
         numNodes = 1;
     }
 
+    private void findRealSlotRef(List<Expr> originExprList, List<Object> realSlotRef) throws AnalysisException {
+        for (Expr originExpr : originExprList) {
+            if (originExpr instanceof SlotRef || (originExpr instanceof GroupingFunctionCallExpr)) {
+                realSlotRef.add(originExpr);
+                continue;
+            }
+            if (originExpr instanceof FunctionCallExpr) {
+                FunctionCallExpr fnExpr = (FunctionCallExpr) originExpr;
+                if (StringUtils.equalsIgnoreCase(fnExpr.getFn().getFunctionName().toString(), "coalesce")) {
+                    Set<Expr> slotSet = new HashSet<>();
+                    findSlotInChildren(fnExpr, slotSet);
+                    realSlotRef.add(slotSet);
+                    continue;
+                }
+                throw new AnalysisException("function or expr is not allowed in grouping sets clause currently.");
+            }
+            if (originExpr instanceof CaseExpr) {
+                Set<Expr> slotSet = new HashSet<>();
+                findSlotInChildren(originExpr, slotSet);
+                realSlotRef.add(slotSet);
+            }
+        }
+    }
+
+    private void findSlotInChildren(Expr expr, Set<Expr> slotSet) {
+        if (expr == null) {
+            return;
+        }
+        if (expr instanceof SlotRef) {
+            slotSet.add(expr);
+            return;
+        }
+        for (Expr child : expr.getChildren()) {
+            findSlotInChildren(child, slotSet);
+        }
+    }
+
     @Override
     public void init(Analyzer analyzer) throws UserException {
         Preconditions.checkState(conjuncts.isEmpty());
         groupByClause.substituteGroupingExprs(groupingInfo.getGroupingSlots(), input.getOutputSmap(),
                 analyzer);
 
-        for (Expr expr : groupByClause.getGroupingExprs()) {
-            if (expr instanceof SlotRef || (expr instanceof GroupingFunctionCallExpr)) {
-                continue;
-            }
-            // throw new AnalysisException("function or expr is not allowed in grouping sets clause.");
-        }
+        List<Object> realSlot = new ArrayList<>();
+        findRealSlotRef(groupByClause.getGroupingExprs(), realSlot);
 
         // build new BitSet List for tupleDesc
         Set<SlotDescriptor> slotDescSet = new HashSet<>();
@@ -123,16 +160,20 @@ public class RepeatNode extends PlanNode {
         // build tupleDesc according to child's tupleDesc info
         outputTupleDesc = groupingInfo.getVirtualTuple();
         //set aggregate nullable
-        for (Expr slot : groupByClause.getGroupingExprs()) {
-            if (slot instanceof SlotRef) {
-                ((SlotRef) slot).getDesc().setIsNullable(true);
+        for (Object slotObj : realSlot) {
+            if (slotObj instanceof SlotRef) {
+                ((SlotRef) slotObj).getDesc().setIsNullable(true);
+            }
+            if (slotObj instanceof Set) {
+                for (Object slot : (Set)slotObj) {
+                    ((SlotRef) slot).getDesc().setIsNullable(true);
+                }
             }
         }
         outputTupleDesc.computeMemLayout();
 
         List<Set<SlotId>> groupingIdList = new ArrayList<>();
-        List<Expr> exprList = groupByClause.getGroupingExprs();
-        Preconditions.checkState(exprList.size() >= 2);
+        Preconditions.checkState(realSlot.size() >= 2);
         allSlotId = new HashSet<>();
         for (BitSet bitSet : Collections.unmodifiableList(groupingInfo.getGroupingIdList())) {
             Set<SlotId> slotIdSet = new HashSet<>();
@@ -141,12 +182,22 @@ public class RepeatNode extends PlanNode {
                 if (slotId == null) {
                     continue;
                 }
-                for (int i = 0; i < exprList.size(); i++) {
-                    if (exprList.get(i) instanceof SlotRef) {
-                        SlotRef slotRef = (SlotRef) (exprList.get(i));
+                for (int i = 0; i < realSlot.size(); i++) {
+                    Object exprObj = realSlot.get(i);
+                    if (exprObj instanceof SlotRef) {
+                        SlotRef slotRef = (SlotRef) exprObj;
                         if (bitSet.get(i) && slotRef.getSlotId() == slotId) {
                             slotIdSet.add(slotId);
                             break;
+                        }
+                    }
+                    if (exprObj instanceof Set) {
+                        for (Object slot : (Set)exprObj) {
+                            SlotRef slotRef = (SlotRef)slot;
+                            if (bitSet.get(i) && slotRef.getSlotId() == slotId) {
+                                slotIdSet.add(slotId);
+                                break;
+                            }
                         }
                     }
                 }

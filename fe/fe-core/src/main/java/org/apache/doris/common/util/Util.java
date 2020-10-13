@@ -147,6 +147,7 @@ public class Util {
 
         try {
             ProcessBuilder builder = new ProcessBuilder(cmds);
+            builder.redirectErrorStream(true);
             Process p = builder.start();
 
             CmdWorker cmdWorker = new CmdWorker(p);
