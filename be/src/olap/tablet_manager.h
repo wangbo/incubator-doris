@@ -203,7 +203,7 @@ private:
         // protect tablet_map, tablets_under_clone and tablets_under_restore
         std::unique_ptr<RWMutex> lock;
         tablet_map_t tablet_map;
-        std::set<int64_t> tablets_under_clone;
+        std::map<int64_t, int> tablets_under_clone_map;
         std::set<int64_t> tablets_under_restore;
     };
 

@@ -1111,13 +1111,27 @@ OLAPStatus TabletManager::start_trash_sweep() {
 void TabletManager::register_clone_tablet(int64_t tablet_id) {
     tablets_shard& shard = _get_tablets_shard(tablet_id);
     WriteLock wlock(shard.lock.get());
-    shard.tablets_under_clone.insert(tablet_id);
+    if(shard.tablets_under_clone_map.find(tablet_id) == shard.tablets_under_clone_map.end()) {
+        shard.tablets_under_clone_map.insert(make_pair(tablet_id, 1));
+    } else {
+        shard.tablets_under_clone_map[tablet_id]++;
+    }
 }
 
 void TabletManager::unregister_clone_tablet(int64_t tablet_id) {
     tablets_shard& shard = _get_tablets_shard(tablet_id);
     WriteLock wlock(shard.lock.get());
-    shard.tablets_under_clone.erase(tablet_id);
+    if (shard.tablets_under_clone_map.find(tablet_id) == shard.tablets_under_clone_map.end()) {
+        LOG(WARNING) << "remove tablet from tablet_under_clone_map failed, tablet id=" << tablet_id;
+    } else {
+        shard.tablets_under_clone_map[tablet_id]--;
+        if (shard.tablets_under_clone_map[tablet_id] == 0) {
+            shard.tablets_under_clone_map.erase(tablet_id);
+        } else if (shard.tablets_under_clone_map[tablet_id] < 0) {
+            LOG(WARNING) << "unexpected error for tablets clone map, count is negative, id=" << tablet_id << ", count=" << shard.tablets_under_clone_map[tablet_id];
+            shard.tablets_under_clone_map[tablet_id].erase(tablet_id);
+        }
+    }
 }
 
 void TabletManager::try_delete_unused_tablet_path(DataDir* data_dir, TTabletId tablet_id,
@@ -1137,8 +1151,13 @@ void TabletManager::try_delete_unused_tablet_path(DataDir* data_dir, TTabletId t
         return;
     }
 
-    if (shard.tablets_under_clone.count(tablet_id) > 0) {
-        LOG(INFO) << "tablet is under clone, skip delete the path " << schema_hash_path;
+    if (shard.tablets_under_clone_map.find(tablet_id) != shard.tablets_under_clone_map.end()) {
+        if (shard.tablets_under_clone_map[tablet_id] > 0) {
+            LOG(INFO) << "tablet is under clone, skip delete the path " << schema_hash_path;
+        } else {
+            LOG(WARNING) << "[delete thread]unexpected error for tablets clone map, count is negative, id=" << tablet_id
+                         << ", count=" << shard.tablets_under_clone_map[tablet_id];
+        }
         return;
     }
 
