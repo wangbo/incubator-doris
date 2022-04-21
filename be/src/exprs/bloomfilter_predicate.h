@@ -65,6 +65,10 @@ public:
         return _bloom_filter->find(Slice(data, len));
     }
 
+    bool test_uint32_t(uint32_t data) const {
+        return _bloom_filter->find(data);
+    }
+
     void add_bytes(const char* data, size_t len) { _bloom_filter->insert(Slice(data, len)); }
 
 private:
@@ -83,6 +87,7 @@ public:
     virtual void insert(const void* data) = 0;
     virtual bool find(const void* data) const = 0;
     virtual bool find_olap_engine(const void* data) const = 0;
+    virtual bool find_uint32_t(uint32_t data) const = 0;
 
     virtual Status merge(IBloomFilterFuncBase* bloomfilter_func) = 0;
     virtual Status assign(const char* data, int len) = 0;
@@ -178,6 +183,9 @@ struct CommonFindOp {
                                         const void* data) const {
         return this->find(bloom_filter, data);
     }
+    ALWAYS_INLINE bool find_uint32_t(const BloomFilterAdaptor& bloom_filter, uint32_t data) const {
+        return bloom_filter.test_uint32_t(data);
+    }
 };
 
 template <class BloomFilterAdaptor>
@@ -198,6 +206,9 @@ struct StringFindOp {
     ALWAYS_INLINE bool find_olap_engine(const BloomFilterAdaptor& bloom_filter,
                                         const void* data) const {
         return StringFindOp::find(bloom_filter, data);
+    }
+    ALWAYS_INLINE bool find_uint32_t(const BloomFilterAdaptor& bloom_filter, uint32_t data) const {
+        return bloom_filter.test_uint32_t(data);
     }
 };
 
@@ -314,6 +325,10 @@ public:
 
     bool find_olap_engine(const void* data) const override {
         return dummy.find_olap_engine(*this->_bloom_filter, data);
+    }
+    
+    bool find_uint32_t(uint32_t data) const override {
+        return dummy.find_uint32_t(*this->_bloom_filter, data);
     }
 
 private:
