@@ -930,8 +930,8 @@ Status SegmentIterator::next_batch(vectorized::Block* block) {
                 // the segment of c do not effective delete condition, but it still need read the column
                 // to match the schema.
                 // TODO: skip read the not effective delete column to speed up segment read.
-                _current_return_columns[cid] =
-                        Schema::get_data_type_ptr(column_desc->type())->create_column();
+                _current_return_columns[cid] = Schema::get_predicate_column_nullable_ptr(
+                        column_desc->type(), column_desc->is_nullable());
                 _current_return_columns[cid]->reserve(_opts.block_row_max);
             }
         }
