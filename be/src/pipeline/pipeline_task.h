@@ -181,6 +181,15 @@ public:
 
     static constexpr auto THREAD_TIME_SLICE = 100'000'000L;
 
+    uint64_t get_task_vruntime() { return _task_vruntime_ns; }
+
+    void inc_task_vruntime(uint64_t task_vruntime_ns) {
+        _task_vruntime_ns += task_vruntime_ns;
+        _last_sche_vruntime_ns = task_vruntime_ns;
+    }
+
+    uint64_t get_last_sched_vruntime() { return _last_sche_vruntime_ns; }
+
 private:
     Status open();
     void _init_profile();
@@ -203,6 +212,8 @@ private:
     SourceState _data_state;
     std::unique_ptr<doris::vectorized::Block> _block;
     PipelineFragmentContext* _fragment_context;
+    uint64_t _task_vruntime_ns = 0;
+    uint64_t _last_sche_vruntime_ns = 0;
 
     RuntimeProfile* _parent_profile;
     std::unique_ptr<RuntimeProfile> _task_profile;
