@@ -37,6 +37,18 @@ public:
 
     bool empty() { return _queue.empty(); }
 
+    double get_total_vruntime_after_normal() { return _total_vruntime / _factor_for_normal; }
+
+    uint64_t get_total_vruntime() { return _total_vruntime; }
+
+    void adjust_queue_vruntime_to_min(double min_vruntime_after_normal) {
+        _total_vruntime = min_vruntime_after_normal * _factor_for_normal;
+    }
+
+    void inc_total_vruntime(uint64_t curr_vruntime) {
+        _total_vruntime += curr_vruntime;
+    }
+
 private:
     std::queue<PipelineTask*> _queue;
     // factor for normalization
@@ -44,6 +56,8 @@ private:
     // the value cal the queue task time consume, the WorkTaskQueue
     // use it to find the min queue to take task work
     std::atomic<uint64_t> _schedule_time = 0;
+
+    uint64_t _total_vruntime = 0;
 };
 
 // Each thread have private MLFQ
@@ -66,15 +80,17 @@ public:
 
 private:
     static constexpr auto LEVEL_QUEUE_TIME_FACTOR = 1.5;
-    static constexpr size_t SUB_QUEUE_LEVEL = 5;
+    static constexpr size_t SUB_QUEUE_LEVEL = 10;
     // 3, 6, 9, 12
     static constexpr uint32_t BASE_LIMIT = 3;
     SubWorkTaskQueue _sub_queues[SUB_QUEUE_LEVEL];
-    uint32_t _task_schedule_limit[SUB_QUEUE_LEVEL - 1];
     std::mutex _work_size_mutex;
     std::condition_variable _wait_task;
     std::atomic<size_t> _total_task_size = 0;
     bool _closed;
+
+    static constexpr int64_t BASE_TIME_SLICE_NS = 100'000'000;
+    uint64_t _task_vruntime_level_limit[SUB_QUEUE_LEVEL];
 
     int _compute_level(PipelineTask* task);
 };

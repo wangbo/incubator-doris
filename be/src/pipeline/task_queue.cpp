@@ -36,17 +36,24 @@ PipelineTask* SubWorkTaskQueue::try_take(bool is_steal) {
 ////////////////////  WorkTaskQueue ////////////////////
 
 WorkTaskQueue::WorkTaskQueue() : _closed(false) {
+    std::cout << "begin init" << std::endl;
     double factor = 1;
     for (int i = 0; i < SUB_QUEUE_LEVEL; ++i) {
-        _sub_queues[i].set_factor_for_normal(factor);
+        _sub_queues[SUB_QUEUE_LEVEL - i - 1].set_factor_for_normal(factor);
         factor *= LEVEL_QUEUE_TIME_FACTOR;
+        std::cout << "level=" << (SUB_QUEUE_LEVEL - i - 1) << ",factor=" << factor << std::endl;
     }
 
-    int i = 0;
-    _task_schedule_limit[i] = BASE_LIMIT * (i + 1);
-    for (i = 1; i < SUB_QUEUE_LEVEL - 1; ++i) {
-        _task_schedule_limit[i] = _task_schedule_limit[i - 1] + BASE_LIMIT * (i + 1);
+    std::cout << std::endl;
+
+    _task_vruntime_level_limit[0] = BASE_TIME_SLICE_NS;
+    std::cout << "level=" << 0 << ", vruntime=" << _task_vruntime_level_limit[0] << std::endl;
+    for (int i = 1; i < SUB_QUEUE_LEVEL; i++) {
+        _task_vruntime_level_limit[i] = _task_vruntime_level_limit[i - 1] + BASE_TIME_SLICE_NS * i;
+        std::cout << "level=" << i << ", vruntime=" << _task_vruntime_level_limit[i] << std::endl;
     }
+    std::cout << "end init" << std::endl;
+    std::cout << std::endl;
 }
 
 void WorkTaskQueue::close() {
@@ -59,27 +66,26 @@ PipelineTask* WorkTaskQueue::try_take_unprotected(bool is_steal) {
     if (_total_task_size == 0 || _closed) {
         return nullptr;
     }
-    double normal_schedule_times[SUB_QUEUE_LEVEL];
-    double min_schedule_time = 0;
-    int idx = -1;
+    double normal_vruntime_array[SUB_QUEUE_LEVEL];
+    double min_vruntime = -1;
+    int min_vruntime_queue_idx = -1;
     for (int i = 0; i < SUB_QUEUE_LEVEL; ++i) {
-        normal_schedule_times[i] = _sub_queues[i].schedule_time_after_normal();
-        if (!_sub_queues[i].empty()) {
-            if (idx == -1 || normal_schedule_times[i] < min_schedule_time) {
-                idx = i;
-                min_schedule_time = normal_schedule_times[i];
-            }
+        normal_vruntime_array[i] = _sub_queues[i].get_total_vruntime_after_normal();
+        if (!_sub_queues[i].empty() && (min_vruntime == -1 || normal_vruntime_array[i] < min_vruntime)) {
+            min_vruntime_queue_idx = i;
+            min_vruntime = normal_vruntime_array[i];
         }
     }
-    DCHECK(idx != -1);
-    // update empty queue's schedule time, to avoid too high priority
+    DCHECK(min_vruntime_queue_idx != -1);
+    // todo(wb) rethinking is it appropriate to update empty queue's schedule time here
+    // or we can update it when queue is not empty
     for (int i = 0; i < SUB_QUEUE_LEVEL; ++i) {
-        if (_sub_queues[i].empty() && normal_schedule_times[i] < min_schedule_time) {
-            _sub_queues[i]._schedule_time = min_schedule_time / _sub_queues[i]._factor_for_normal;
+        if (_sub_queues[i].empty() && normal_vruntime_array[i] < min_vruntime) {
+            _sub_queues[i].adjust_queue_vruntime_to_min(min_vruntime);
         }
     }
 
-    auto task = _sub_queues[idx].try_take(is_steal);
+    auto task = _sub_queues[min_vruntime_queue_idx].try_take(is_steal);
     if (task) {
         _total_task_size--;
     }
@@ -87,9 +93,9 @@ PipelineTask* WorkTaskQueue::try_take_unprotected(bool is_steal) {
 }
 
 int WorkTaskQueue::_compute_level(PipelineTask* task) {
-    uint32_t schedule_time = task->total_schedule_time();
-    for (int i = 0; i < SUB_QUEUE_LEVEL - 1; ++i) {
-        if (schedule_time <= _task_schedule_limit[i]) {
+    uint64_t task_vruntime = task->get_task_vruntime();
+    for (int i = 0; i < SUB_QUEUE_LEVEL; ++i) {
+        if (task_vruntime <= _task_vruntime_level_limit[i]) {
             return i;
         }
     }
@@ -124,6 +130,7 @@ Status WorkTaskQueue::push(PipelineTask* task) {
     auto level = _compute_level(task);
     std::unique_lock<std::mutex> lock(_work_size_mutex);
     _sub_queues[level].push_back(task);
+    _sub_queues[level].inc_total_vruntime(task->get_last_sched_vruntime());
     _total_task_size++;
     _wait_task.notify_one();
     return Status::OK();

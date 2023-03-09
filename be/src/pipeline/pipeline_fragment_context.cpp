@@ -451,6 +451,7 @@ Status PipelineFragmentContext::_build_pipeline_tasks(
     for (auto& task : _tasks) {
         RETURN_IF_ERROR(task->prepare(_runtime_state.get()));
     }
+    
     _total_tasks = _tasks.size();
     return Status::OK();
 }

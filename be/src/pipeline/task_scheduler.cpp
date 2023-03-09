@@ -246,8 +246,14 @@ void TaskScheduler::_do_work(size_t index) {
         DCHECK(check_state == PipelineTaskState::RUNNABLE);
         // task exec
         bool eos = false;
-        auto status = task->execute(&eos);
+        
+        MonotonicStopWatch timer; // cpu time or monotonic time, which is better?
+        timer.start();
+        Status status = task->execute(&eos);
+        int64_t task_vruntime_ns = timer.elapsed_time();
+        
         task->set_previous_core_id(index);
+        task->inc_task_vruntime(task_vruntime_ns);
         if (!status.ok()) {
             LOG(WARNING) << fmt::format("Pipeline task [{}] failed: {}", task->debug_string(),
                                         status.to_string());
