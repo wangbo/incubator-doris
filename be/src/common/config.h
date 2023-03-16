@@ -428,6 +428,11 @@ CONF_Int32(fragment_pool_thread_num_min, "64");
 CONF_Int32(fragment_pool_thread_num_max, "512");
 CONF_Int32(fragment_pool_queue_size, "2048");
 
+// test pool config
+CONF_Int32(test_pool_thread_num_min, "64");
+CONF_Int32(test_pool_thread_num_max, "512");
+CONF_Int32(test_pool_queue_size, "2048");
+
 // Control the number of disks on the machine.  If 0, this comes from the system settings.
 CONF_Int32(num_disks, "0");
 // The maximum number of the threads per disk is also the max queue depth per disk.
