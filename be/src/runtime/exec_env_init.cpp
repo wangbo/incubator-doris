@@ -165,6 +165,7 @@ Status ExecEnv::init_pipeline_task_scheduler() {
     auto executors_size = config::pipeline_executor_size;
     if (executors_size <= 0) {
         executors_size = CpuInfo::num_cores();
+        std::cout << "get cpu core nums=" << executors_size << std::endl;
     }
     auto t_queue = std::make_shared<pipeline::TaskQueue>(executors_size);
     auto b_scheduler = std::make_shared<pipeline::BlockedTaskScheduler>(t_queue);
