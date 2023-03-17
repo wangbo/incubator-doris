@@ -227,7 +227,7 @@ suite("test_nereids_set_operation") {
     }
     qt_union39 """(select  k1 from setOperationTable order by k1) union all (select k1 from setOperationTableNotNullable order by k1) order by k1;"""
 
-    order_qt_union40 """
+    qt_union40 """
         SELECT k1 FROM setOperationTable WHERE k2 = 2 
         INTERSECT 
         SELECT k1 FROM setOperationTable WHERE k1 = 1 
@@ -235,7 +235,7 @@ suite("test_nereids_set_operation") {
         SELECT k1 FROM setOperationTable WHERE k3 = 2
     """
 
-    order_qt_union41 """
+    qt_union41 """
     SELECT k1 FROM setOperationTable WHERE k2 = 1
     EXCEPT
     SELECT k1 FROM setOperationTable WHERE k3 = 2
@@ -245,7 +245,7 @@ suite("test_nereids_set_operation") {
     SELECT k1 FROM setOperationTable WHERE k2 > 0)
     """
 
-    order_qt_union42 """
+    qt_union42 """
     SELECT k1 FROM setOperationTable WHERE k2 = 1
     EXCEPT
     SELECT k1 FROM setOperationTable WHERE k3 = 2
