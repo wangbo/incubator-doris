@@ -849,7 +849,6 @@ Status FragmentMgr::exec_plan_fragment(const TPipelineFragmentParams& params,
         }
         if (params.query_options.__isset.is_report_success &&
             params.query_options.is_report_success) {
-            std::cout << "is_report_success=true" << std::endl;
             fragments_ctx->query_mem_tracker->enable_print_log_usage();
         }
         {

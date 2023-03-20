@@ -41,7 +41,7 @@ public:
         int priority;
         WorkFunction work_function;
         int queue_id;
-        bool operator<(const Task& o) const { return priority < o.priority; }
+        bool operator<(const Task& o) const { return priority > o.priority; }
 
         Task& operator++() {
             priority += 2;
