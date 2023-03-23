@@ -109,6 +109,15 @@ public:
     void clear_and_join(VScanNode* node, RuntimeState* state);
 
     virtual bool no_schedule();
+    
+    // Note(wb) 
+    // For scanner_context, because it could trigger new scanner_ctx scheduling 
+    // and wait until data arrives when no data in scanner_ctx's queue
+    // so it should be always false
+    // For pip_scanner_context, it should be rescheduler pip_scanner_ctx when no active pip_scan_ctx and scanner exists
+    // This method is called by ScannerScheduler::_schedule_scanners, used with update_num_running together
+    // An ugly design, should be removed after scanner_context is removed
+    virtual void reschedule_if_necessary();
 
     std::string debug_string();
 
@@ -123,6 +132,11 @@ public:
 
     virtual void set_max_queue_size(int max_queue_size) {};
 
+    // todo(wb) rethinking how to calculate ```_max_bytes_in_queue``` when executing shared scan
+    virtual inline bool has_enough_space_in_blocks_queue() const {
+        return _cur_bytes_in_queue < _max_bytes_in_queue / 2;
+    }
+
     // the unique id of this context
     std::string ctx_id;
     int32_t queue_idx = -1;
@@ -131,10 +145,6 @@ public:
 
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);
-
-    inline bool _has_enough_space_in_blocks_queue() const {
-        return _cur_bytes_in_queue < _max_bytes_in_queue / 2;
-    }
 
 protected:
     RuntimeState* _state;

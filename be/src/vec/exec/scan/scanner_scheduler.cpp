@@ -150,7 +150,9 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
         // 2. All scanners are running.
         //      There running scanner will schedule the ctx after they are finished.
         // So here we just return to stop scheduling ctx.
-        ctx->update_num_running(0, -1);
+        // For pipe_scan_ctx, need to resubmit when no active scanner or scanner_ctx exits, or thread may hang
+        // For scanner_ctx, just return
+        ctx->reschedule_if_necessary();
         return;
     }
 
