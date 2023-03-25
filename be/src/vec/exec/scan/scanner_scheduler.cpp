@@ -293,7 +293,7 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
     // Has to wait at least one full block, or it will cause a lot of schedule task in priority
     // queue, it will affect query latency and query concurrency for example ssb 3.3.
     while (!eos && raw_bytes_read < raw_bytes_threshold &&
-           ((raw_rows_read < raw_rows_threshold && has_free_block) ||
+           ((raw_rows_read < raw_rows_threshold) ||
             num_rows_in_block < state->batch_size())) {
         if (UNLIKELY(ctx->done())) {
             // No need to set status on error here.
