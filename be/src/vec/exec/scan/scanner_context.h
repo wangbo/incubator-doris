@@ -123,6 +123,11 @@ public:
 
     virtual void set_max_queue_size(int max_queue_size) {};
 
+    // todo(wb) rethinking how to calculate ```_max_bytes_in_queue``` when executing shared scan
+    virtual inline bool has_enough_space_in_blocks_queue() const {
+        return _cur_bytes_in_queue < _max_bytes_in_queue / 2;
+    }
+
     // the unique id of this context
     std::string ctx_id;
     int32_t queue_idx = -1;
@@ -131,10 +136,6 @@ public:
 
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);
-
-    inline bool _has_enough_space_in_blocks_queue() const {
-        return _cur_bytes_in_queue < _max_bytes_in_queue / 2;
-    }
 
 protected:
     RuntimeState* _state;
