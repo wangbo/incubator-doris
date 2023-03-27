@@ -55,8 +55,6 @@ Status ScannerContext::init() {
     // 1. Calculate max concurrency
     // TODO: now the max thread num <= config::doris_scanner_thread_pool_thread_num / 4
     // should find a more reasonable value.
-    // _max_thread_num = _state->shared_scan_opt() ? config::doris_scanner_thread_pool_thread_num
-    //                                             : config::doris_scanner_thread_pool_thread_num / 4;
     _max_thread_num = config::doris_scanner_thread_pool_thread_num / 4;
     _max_thread_num = std::min(_max_thread_num, (int32_t)_scanners.size());
     // For select * from table limit 10; should just use one thread.
@@ -292,12 +290,10 @@ std::string ScannerContext::debug_string() {
 void ScannerContext::reschedule_scanner_ctx() {
     std::lock_guard l(_transfer_lock);
     auto submit_st = _scanner_scheduler->submit(this);
-    if (!submit_st.ok()) {
-        _process_status = Status::InternalError("failed to submit scanner to scanner pool");
-    } else {
+    //todo(wb) rethinking is it better to mark current scan_context failed when submit failed many times?
+    if (submit_st.ok()) {
         _num_scheduling_ctx++;
     }
-    _ctx_finish_cv.notify_one();
 }
 
 void ScannerContext::push_back_scanner_and_reschedule(VScanner* scanner) {
