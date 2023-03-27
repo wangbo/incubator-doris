@@ -60,6 +60,11 @@ private:
     void _schedule_scanners(ScannerContext* ctx);
     // execution thread function
     void _scanner_scan(ScannerScheduler* scheduler, ScannerContext* ctx, VScanner* scanner);
+    // compute scanner task's priority due to schedule times
+    // note(wb) how is the value 62 come from?
+    // priority_queue_remaining_tasks_increased_frequency = 512
+    //  100'0000 rows / 512 approximately equal to 62
+    int _calculate_priority(int sche_times);
 
 private:
     // Scheduling queue number.

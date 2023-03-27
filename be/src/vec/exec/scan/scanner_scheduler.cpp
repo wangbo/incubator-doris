@@ -134,6 +134,32 @@ void ScannerScheduler::_schedule_thread(int queue_id) {
     return nullptr;
 }
 
+int ScannerScheduler::_calculate_priority(int sche_times) {
+    if (sche_times < 62) {
+        return 10;
+    } else if (sche_times < 310) {
+        return 9;
+    } else if (sche_times < 620) {
+        return 8;
+    } else if (sche_times < 1240) {
+        return 7;
+    } else if (sche_times < 1860) {
+        return 6;
+    } else if (sche_times < 3100) {
+        return 5;
+    } else if (sche_times < 4650) {
+        return 4;
+    } else if (sche_times < 6200) {
+        return 3;
+    } else if (sche_times < 31000) {
+        return 2;
+    } else if (sche_times < 62000) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
 void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
     ctx->incr_num_ctx_scheduling(1);
     if (ctx->done()) {
@@ -156,8 +182,6 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
 
     ctx->update_num_running(this_run.size(), -1);
     // Submit scanners to thread pool
-    // TODO(cmy): How to handle this "nice"?
-    int nice = 1;
     auto iter = this_run.begin();
     auto submit_to_thread_pool = [&] {
         ctx->incr_num_scanner_scheduling(this_run.size());
@@ -183,7 +207,8 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
                     task.work_function = [this, scanner = *iter, ctx] {
                         this->_scanner_scan(this, ctx, scanner);
                     };
-                    task.priority = nice;
+                    int sche_times = ctx->fetch_add_sche_times();
+                    task.priority = _calculate_priority(sche_times);
                     task.queue_id = (*iter)->queue_id();
                     ret = _local_scan_thread_pool->offer(task);
                 } else {

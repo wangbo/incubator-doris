@@ -130,6 +130,10 @@ public:
 
     void reschedule_scanner_ctx();
 
+    int32_t fetch_add_sche_times() {
+        return _scanner_sche_times.fetch_add(1, std::memory_order_relaxed);
+    }
+
     // the unique id of this context
     std::string ctx_id;
     int32_t queue_idx = -1;
@@ -208,6 +212,8 @@ protected:
     int64_t _cur_bytes_in_queue = 0;
     // The max limit bytes of blocks in blocks queue
     int64_t _max_bytes_in_queue;
+
+    std::atomic_int32_t _scanner_sche_times = 0;
 
     doris::vectorized::ScannerScheduler* _scanner_scheduler;
     // List "scanners" saves all "unfinished" scanners.
