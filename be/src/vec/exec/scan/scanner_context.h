@@ -124,17 +124,23 @@ public:
     virtual void set_max_queue_size(int max_queue_size) {};
 
     // todo(wb) rethinking how to calculate ```_max_bytes_in_queue``` when executing shared scan
-    virtual inline bool has_enough_space_in_blocks_queue() const {
+    virtual inline bool has_enough_space_in_blocks_queue() {
         return _cur_bytes_in_queue < _max_bytes_in_queue / 2;
     }
 
     virtual void try_reschedule_scanner_ctx() {};
+
+    bool execeeds_block_num(int used_block) {
+        return used_block >= _block_per_scanner;
+    }
 
     // the unique id of this context
     std::string ctx_id;
     int32_t queue_idx = -1;
     ThreadPoolToken* thread_token;
     std::vector<bthread_t> _btids;
+    std::atomic_int32_t _current_used_blocks = 0;
+    std::atomic_int32_t _pre_alloc_block_count = 0;
 
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);

@@ -82,18 +82,23 @@ Status ScannerContext::init() {
     int real_block_size =
             limit == -1 ? _batch_size : std::min(static_cast<int64_t>(_batch_size), limit);
     _block_per_scanner = (doris_scanner_row_num + (real_block_size - 1)) / real_block_size;
-    auto pre_alloc_block_count = _max_thread_num * _block_per_scanner;
+    _pre_alloc_block_count = _max_thread_num * _block_per_scanner;
 
     // The free blocks is used for final output block of scanners.
     // So use _output_tuple_desc;
     int64_t free_blocks_memory_usage = 0;
-    for (int i = 0; i < pre_alloc_block_count; ++i) {
+    for (int i = 0; i < _pre_alloc_block_count; ++i) {
         auto block = std::make_unique<vectorized::Block>(
                 _output_tuple_desc->slots(), real_block_size, true /*ignore invalid slots*/);
         free_blocks_memory_usage += block->allocated_bytes();
         _free_blocks.emplace_back(std::move(block));
     }
     _free_blocks_memory_usage->add(free_blocks_memory_usage);
+
+    std::stringstream ss;
+    ss << " _pre_alloc_block_count=" << _pre_alloc_block_count << ", _block_per_scanner=" << _block_per_scanner
+        << ", _max_thread_num=" << _max_thread_num << std::endl;
+    std::cout << ss.str();
 
 #ifndef BE_TEST
     // 3. get thread token
@@ -106,11 +111,10 @@ Status ScannerContext::init() {
 
     _num_unfinished_scanners = _scanners.size();
 
-    COUNTER_SET(_parent->_pre_alloc_free_blocks_num, (int64_t)pre_alloc_block_count);
+    COUNTER_SET(_parent->_pre_alloc_free_blocks_num, (int64_t)_pre_alloc_block_count);
     COUNTER_SET(_parent->_max_scanner_thread_num, (int64_t)_max_thread_num);
     _parent->_runtime_profile->add_info_string("UseSpecificThreadToken",
                                                thread_token == nullptr ? "False" : "True");
-
     return Status::OK();
 }
 
@@ -315,6 +319,7 @@ void ScannerContext::push_back_scanner_and_reschedule(VScanner* scanner) {
     }
     // In pipeline engine, doris will close scanners when `no_schedule`.
     _num_running_scanners--;
+    _current_used_blocks -= _block_per_scanner;
     _ctx_finish_cv.notify_one();
 }
 
@@ -341,25 +346,27 @@ void ScannerContext::get_next_batch_of_scanners(std::list<VScanner*>* current_ru
             // In both cases, we do not need to continue to schedule ctx here. So just return
             return;
         }
-    }
 
-    // 2. get #thread_slot_num scanners from ctx->scanners
-    // and put them into "this_run".
-    {
-        std::unique_lock l(_scanners_lock);
-        for (int i = 0; i < thread_slot_num && !_scanners.empty();) {
-            auto scanner = _scanners.front();
-            _scanners.pop_front();
-            if (scanner->need_to_close()) {
-                _finished_scanner_runtime.push_back(scanner->get_time_cost_ns());
-                _finished_scanner_rows_read.push_back(scanner->get_rows_read());
-                scanner->close(_state);
-            } else {
-                current_run->push_back(scanner);
-                i++;
+        // 2. get #thread_slot_num scanners from ctx->scanners
+        // and put them into "this_run".
+        {
+            std::unique_lock l(_scanners_lock);
+            for (int i = 0; i < thread_slot_num && !_scanners.empty();) {
+                auto scanner = _scanners.front();
+                _scanners.pop_front();
+                if (scanner->need_to_close()) {
+                    _finished_scanner_runtime.push_back(scanner->get_time_cost_ns());
+                    _finished_scanner_rows_read.push_back(scanner->get_rows_read());
+                    scanner->close(_state);
+                } else {
+                    current_run->push_back(scanner);
+                    i++;
+                }
             }
         }
+        _current_used_blocks += current_run->size() * _block_per_scanner;
     }
+    
 }
 
 } // namespace doris::vectorized

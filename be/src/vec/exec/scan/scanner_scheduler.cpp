@@ -299,6 +299,7 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
     bool should_stop = false;
     // Has to wait at least one full block, or it will cause a lot of schedule task in priority
     // queue, it will affect query latency and query concurrency for example ssb 3.3.
+    int used_block_nums = 0;
     while (!eos && raw_bytes_read < raw_bytes_threshold &&
            ((raw_rows_read < raw_rows_threshold && has_free_block) ||
             num_rows_in_block < state->batch_size())) {
@@ -309,7 +310,19 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
             break;
         }
 
+        if (ctx->execeeds_block_num(used_block_nums)) {
+            std::stringstream ss;
+            ss << " break used_block_nums=" << used_block_nums << ", break" << std::endl;
+            std::cout << ss.str();
+            break;
+        } else {
+            std::stringstream ss;
+            ss << " used_block_nums=" << used_block_nums << std::endl;
+            std::cout << ss.str();
+        }
+
         BlockUPtr block = ctx->get_free_block(&has_free_block);
+        used_block_nums++;
         status = scanner->get_block(state, block.get(), &eos);
         VLOG_ROW << "VScanNode input rows: " << block->rows() << ", eos: " << eos;
         // The VFileScanner for external table may try to open not exist files,

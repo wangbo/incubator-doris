@@ -95,13 +95,14 @@ public:
         }
     }
 
-    bool has_enough_space_in_blocks_queue() const override {
-        return _current_used_bytes.load(std::memory_order_relaxed) < (_max_bytes_in_queue / 2);
+    bool has_enough_space_in_blocks_queue() override {
+        return _current_used_bytes.load(std::memory_order_relaxed) < (_max_bytes_in_queue / 2) &&
+               _current_used_blocks < _pre_alloc_block_count;
     }
 
     void try_reschedule_scanner_ctx() override {
         if (has_enough_space_in_blocks_queue()) {
-            std::lock_guard l(_transfer_lock);
+            std::unique_lock l(_transfer_lock);
             if (has_enough_space_in_blocks_queue()) {
                 auto submit_st = _scanner_scheduler->submit(this);
                 //todo(wb) rethinking is it better to mark current scan_context failed when submit failed many times?
