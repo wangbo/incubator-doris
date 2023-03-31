@@ -128,6 +128,8 @@ public:
         return _cur_bytes_in_queue < _max_bytes_in_queue / 2;
     }
 
+    virtual void try_get_running_scanners(std::list<VScanner*>* this_run) {};
+
     void reschedule_scanner_ctx();
 
     // the unique id of this context
@@ -135,6 +137,8 @@ public:
     int32_t queue_idx = -1;
     ThreadPoolToken* thread_token;
     std::vector<bthread_t> _btids;
+
+    bool _should_resche_after_finish = true;
 
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);

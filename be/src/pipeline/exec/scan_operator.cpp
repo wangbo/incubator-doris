@@ -38,8 +38,15 @@ bool ScanOperator::can_read() {
             // _scanner_ctx->no_schedule(): should schedule _scanner_ctx
             return true;
         } else {
-            if (_node->_scanner_ctx->has_enough_space_in_blocks_queue()) {
-                _node->_scanner_ctx->reschedule_scanner_ctx();
+            std::list<VScanner*> scanners_to_be_running;
+            _node->_scanner_ctx->try_get_running_scanners(&scanners_to_be_running);
+            if (!scanners_to_be_running.empty()) {
+                ctx->update_num_running(this_run.size(), 0);
+                Status ret = _node->exec_env()->scanner_scheduler()->submit_pip_scanners(&scanners_to_be_running);
+                if (!ret.ok()) {
+                    _node->_scanner_ctx->set_status_on_error(
+                            Status::InternalError("failed to submit scanner to scanner pool"));
+                }
             }
             return _node->ready_to_read(); // there are some blocks to process
         }

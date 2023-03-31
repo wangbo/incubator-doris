@@ -304,7 +304,7 @@ void ScannerContext::push_back_scanner_and_reschedule(VScanner* scanner) {
     }
 
     std::lock_guard l(_transfer_lock);
-    if (has_enough_space_in_blocks_queue()) {
+    if (_should_resche_after_finish && has_enough_space_in_blocks_queue()) {
         _num_scheduling_ctx++;
         auto submit_st = _scanner_scheduler->submit(this);
         if (!submit_st.ok()) {

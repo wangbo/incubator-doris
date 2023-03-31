@@ -52,6 +52,7 @@ public:
 
     std::unique_ptr<ThreadPoolToken> new_limited_scan_pool_token(ThreadPool::ExecutionMode mode,
                                                                  int max_concurrency);
+    Status submit_pip_scanners(std::list<VScanner*>* this_run);
 
 private:
     // scheduling thread function

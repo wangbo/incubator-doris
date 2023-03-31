@@ -134,6 +134,26 @@ void ScannerScheduler::_schedule_thread(int queue_id) {
     return nullptr;
 }
 
+Status ScannerScheduler::submit_pip_scanners(std::list<VScanner*>* this_run) {
+    auto iter = this_run->begin();
+    while (iter != this_run->end()) {
+        (*iter)->start_wait_worker_timer();
+        bool ret = false;
+        PriorityThreadPool::Task task;
+        task.work_function = [this, scanner = *iter, ctx] {
+            this->_scanner_scan(this, ctx, scanner);
+        };
+        task.priority = 1;
+        task.queue_id = (*iter)->queue_id();
+        ret = _local_scan_thread_pool->offer(task);
+        if (ret) {
+            this_run->erase(iter++);
+        } else {
+            return Status::InternalError("failed to submit scanner to scanner pool");
+        }
+    }
+}
+
 void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
     ctx->incr_num_ctx_scheduling(1);
     if (ctx->done()) {

@@ -31,7 +31,9 @@ public:
                       const std::list<vectorized::VScanner*>& scanners, int64_t limit,
                       int64_t max_bytes_in_blocks_queue)
             : vectorized::ScannerContext(state, parent, input_tuple_desc, output_tuple_desc,
-                                         scanners, limit, max_bytes_in_blocks_queue) {}
+                                         scanners, limit, max_bytes_in_blocks_queue) {
+        _should_resche_after_finish = false;
+    }
 
     Status get_block_from_queue(RuntimeState* state, vectorized::BlockUPtr* block, bool* eos,
                                 int id, bool wait = false) override {
@@ -99,6 +101,12 @@ public:
 
     bool has_enough_space_in_blocks_queue() const override {
         return _current_used_bytes < _max_bytes_in_queue / 2 * _max_queue_size;
+    }
+
+    void try_get_running_scanners(std::list<VScanner*>* this_run) {
+        if (has_enough_space_in_blocks_queue()) {
+            get_next_batch_of_scanners(this_run);
+        }
     }
 
 private:
