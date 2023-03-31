@@ -18,6 +18,7 @@
 #pragma once
 
 #include "scanner_context.h"
+#include "vec/exec/scan/vscanner.h"
 
 namespace doris {
 

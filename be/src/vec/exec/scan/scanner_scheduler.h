@@ -21,6 +21,7 @@
 #include "util/blocking_queue.hpp"
 #include "util/threadpool.h"
 #include "vec/exec/scan/scanner_context.h"
+#include "vec/exec/scan/vscanner.h"
 
 namespace doris::vectorized {
 
