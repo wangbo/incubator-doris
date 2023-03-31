@@ -53,6 +53,8 @@ public:
     std::unique_ptr<ThreadPoolToken> new_limited_scan_pool_token(ThreadPool::ExecutionMode mode,
                                                                  int max_concurrency);
 
+    void submit_pip_scanners(ScannerContext* ctx);
+
 private:
     // scheduling thread function
     void _schedule_thread(int queue_id);

@@ -102,7 +102,7 @@ Status ScannerContext::init() {
 
     // 4. This ctx will be submitted to the scanner scheduler right after init.
     // So set _num_scheduling_ctx to 1 here.
-    _num_scheduling_ctx = 1;
+    _num_scheduling_ctx = 0;
 
     _num_unfinished_scanners = _scanners.size();
 
@@ -304,7 +304,7 @@ void ScannerContext::push_back_scanner_and_reschedule(VScanner* scanner) {
     }
 
     std::lock_guard l(_transfer_lock);
-    if (has_enough_space_in_blocks_queue()) {
+    if (_should_resche_after_scanner_finish && has_enough_space_in_blocks_queue()) {
         _num_scheduling_ctx++;
         auto submit_st = _scanner_scheduler->submit(this);
         if (!submit_st.ok()) {
@@ -325,6 +325,12 @@ void ScannerContext::push_back_scanner_and_reschedule(VScanner* scanner) {
     // In pipeline engine, doris will close scanners when `no_schedule`.
     _num_running_scanners--;
     _ctx_finish_cv.notify_one();
+}
+
+void ScannerContext::get_scanners_to_running(std::list<VScanner*>* current_run) {
+    if (has_enough_space_in_blocks_queue()) {
+        get_next_batch_of_scanners(current_run);
+    }
 }
 
 void ScannerContext::get_next_batch_of_scanners(std::list<VScanner*>* current_run) {

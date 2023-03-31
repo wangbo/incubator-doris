@@ -241,6 +241,36 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
 #endif
 }
 
+void ScannerScheduler::submit_pip_scanners(ScannerContext* ctx) {
+    std::list<VScanner*> scanners_to_be_running;
+    ctx->get_scanners_to_running(&scanners_to_be_running);
+    if (scanners_to_be_running.size() == 0) {
+        return;
+    }
+    ctx->update_num_running(scanners_to_be_running.size(), 0);
+    ctx->incr_num_scanner_scheduling(scanners_to_be_running.size());
+
+    auto iter = scanners_to_be_running.begin();
+    while (iter != scanners_to_be_running.end()) {
+        (*iter)->start_wait_worker_timer();
+        bool ret = false;
+        PriorityThreadPool::Task task;
+        task.work_function = [this, scanner = *iter, ctx] {
+            this->_scanner_scan(this, ctx, scanner);
+        };
+        task.priority = 1;
+        task.queue_id = (*iter)->queue_id();
+        ret = _local_scan_thread_pool->offer(task);
+        if (ret) {
+            scanners_to_be_running.erase(iter++);
+        } else {
+            ctx->set_status_on_error(
+                    Status::InternalError("failed to submit scanner to scanner pool"));
+            return;
+        }
+    }
+}
+
 void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext* ctx,
                                      VScanner* scanner) {
     auto tracker_config = [&] {

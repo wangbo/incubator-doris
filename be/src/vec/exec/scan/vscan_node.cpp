@@ -138,8 +138,8 @@ Status VScanNode::alloc_resource(RuntimeState* state) {
                 DCHECK(!_eos && _num_scanners->value() > 0);
                 _scanner_ctx->set_max_queue_size(
                         _shared_scan_opt ? std::max(state->query_parallel_instance_num(), 1) : 1);
-                RETURN_IF_ERROR(
-                        _state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
+                // RETURN_IF_ERROR(
+                //         _state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
             }
             if (_shared_scan_opt) {
                 _shared_scanner_controller->set_scanner_context(id(),

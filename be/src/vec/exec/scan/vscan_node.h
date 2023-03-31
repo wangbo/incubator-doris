@@ -182,6 +182,8 @@ protected:
 
     Status _prepare_scanners();
 
+    RuntimeState* get_runtime_status() { return _state; }
+
 protected:
     RuntimeState* _state;
     bool _is_pipeline_scan = false;

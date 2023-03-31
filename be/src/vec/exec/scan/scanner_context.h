@@ -110,6 +110,8 @@ public:
 
     virtual bool no_schedule();
 
+    bool has_running_scanner() { return _num_running_scanners != 0; }
+
     std::string debug_string();
 
     RuntimeState* state() { return _state; }
@@ -135,6 +137,10 @@ public:
     int32_t queue_idx = -1;
     ThreadPoolToken* thread_token;
     std::vector<bthread_t> _btids;
+
+    void get_scanners_to_running(std::list<VScanner*>* current_run);
+
+    bool _should_resche_after_scanner_finish = true;
 
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);

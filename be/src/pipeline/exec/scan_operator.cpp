@@ -19,6 +19,10 @@
 
 #include "vec/exec/scan/scanner_context.h"
 #include "vec/exec/scan/vscan_node.h"
+// #include "vec/exec/scan/vscanner.h"
+// namespace doris::vectorized {
+// class VScanner;
+// } // namespace doris::vectorized
 
 namespace doris::pipeline {
 
@@ -38,16 +42,15 @@ bool ScanOperator::can_read() {
             // _scanner_ctx->no_schedule(): should schedule _scanner_ctx
             return true;
         } else {
-            if (_node->_scanner_ctx->has_enough_space_in_blocks_queue()) {
-                _node->_scanner_ctx->reschedule_scanner_ctx();
-            }
+            _node->get_runtime_status()->exec_env()->scanner_scheduler()->submit_pip_scanners(
+                    _node->_scanner_ctx.get());
             return _node->ready_to_read(); // there are some blocks to process
         }
     }
 }
 
 bool ScanOperator::is_pending_finish() const {
-    return _node->_scanner_ctx && !_node->_scanner_ctx->no_schedule();
+    return _node->_scanner_ctx && _node->_scanner_ctx->has_running_scanner();
 }
 
 Status ScanOperator::try_close() {

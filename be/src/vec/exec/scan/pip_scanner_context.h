@@ -31,7 +31,9 @@ public:
                       const std::list<vectorized::VScanner*>& scanners, int64_t limit,
                       int64_t max_bytes_in_blocks_queue)
             : vectorized::ScannerContext(state, parent, input_tuple_desc, output_tuple_desc,
-                                         scanners, limit, max_bytes_in_blocks_queue) {}
+                                         scanners, limit, max_bytes_in_blocks_queue) {
+        _should_resche_after_scanner_finish = false;
+    }
 
     Status get_block_from_queue(RuntimeState* state, vectorized::BlockUPtr* block, bool* eos,
                                 int id, bool wait = false) override {
