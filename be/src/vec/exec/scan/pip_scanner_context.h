@@ -98,7 +98,7 @@ public:
     }
 
     bool has_enough_space_in_blocks_queue() const override {
-        return _current_used_bytes < _max_bytes_in_queue / 2 * _max_queue_size;
+        return _current_used_bytes < _max_bytes_in_queue / 2;
     }
 
 private:
