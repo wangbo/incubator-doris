@@ -45,7 +45,7 @@ public:
 
         Task& operator++() {
             priority += 2;
-            priority = priority >= 22 ? 22 : priority;
+            // priority = priority >= 22 ? 22 : priority;
             return *this;
         }
     };
