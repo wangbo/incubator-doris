@@ -202,6 +202,7 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
             int priority = _calculate_priority(his_sche_times);
             std::stringstream ss;
             ss << "his_sche_times=" << his_sche_times << ", priority=" << priority << std::endl;
+            std::cout << ss.str();
             while (iter != this_run.end()) {
                 (*iter)->start_wait_worker_timer();
                 TabletStorageType type = (*iter)->get_storage_type();
