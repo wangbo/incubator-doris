@@ -136,29 +136,79 @@ void ScannerScheduler::_schedule_thread(int queue_id) {
 
 int ScannerScheduler::_calculate_priority(int sche_times) {
     if (sche_times < 62) {
-        return 10;
+        return 22;
+    } else if (sche_times < 124) {
+        return 21;
+    } else if (sche_times < 186) {
+        return 20;
+    } else if (sche_times < 248) {
+        return 19;
     } else if (sche_times < 310) {
-        return 9;
+        return 18;
+    } else if (sche_times < 372) {
+        return 17;
+    } else if (sche_times < 434) {
+        return 16;
+    } else if (sche_times < 496) {
+        return 15;
+    } else if (sche_times < 558) {
+        return 14;
     } else if (sche_times < 620) {
+        return 13;
+    }  else if (sche_times < 930) {
+        return 12;
+    }  else if (sche_times < 1240) {
+        return 11;
+    }  else if (sche_times < 1550) {
+        return 10;
+    }  else if (sche_times < 1860) {
+        return 9;
+    }  else if (sche_times < 2170) {
         return 8;
-    } else if (sche_times < 1240) {
+    }  else if (sche_times < 2480) {
         return 7;
-    } else if (sche_times < 1860) {
+    }  else if (sche_times < 2790) {
         return 6;
-    } else if (sche_times < 3100) {
+    }  else if (sche_times < 3100) {
         return 5;
-    } else if (sche_times < 4650) {
+    }  else if (sche_times < 3720) {
         return 4;
-    } else if (sche_times < 6200) {
+    }  else if (sche_times < 4200) {
         return 3;
-    } else if (sche_times < 31000) {
+    }  else if (sche_times < 5270) {
         return 2;
-    } else if (sche_times < 62000) {
+    }  else if (sche_times < 6200) {
         return 1;
     } else {
         return 0;
     }
 }
+
+// int ScannerScheduler::_calculate_priority(int sche_times) {
+//     if (sche_times < 62) {
+//         return 10;
+//     } else if (sche_times < 310) {
+//         return 9;
+//     } else if (sche_times < 620) {
+//         return 8;
+//     } else if (sche_times < 1240) {
+//         return 7;
+//     } else if (sche_times < 1860) {
+//         return 6;
+//     } else if (sche_times < 3100) {
+//         return 5;
+//     } else if (sche_times < 4650) {
+//         return 4;
+//     } else if (sche_times < 6200) {
+//         return 3;
+//     } else if (sche_times < 31000) {
+//         return 2;
+//     } else if (sche_times < 62000) {
+//         return 1;
+//     } else {
+//         return 0;
+//     }
+// }
 
 void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
     ctx->incr_num_ctx_scheduling(1);
