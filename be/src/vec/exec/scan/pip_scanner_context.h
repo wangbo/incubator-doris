@@ -56,6 +56,7 @@ public:
                 return Status::OK();
             }
         }
+        _current_used_bytes -= (*block)->allocated_bytes();
         {
             std::unique_lock<std::mutex> l(_transfer_lock);
             if (has_enough_space_in_blocks_queue()) {
@@ -65,7 +66,6 @@ public:
                 }
             }
         }
-        _current_used_bytes -= (*block)->allocated_bytes();
         return Status::OK();
     }
 
