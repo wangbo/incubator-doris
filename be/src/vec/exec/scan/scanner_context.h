@@ -130,8 +130,8 @@ public:
 
     void reschedule_scanner_ctx();
 
-    int32_t fetch_add_sche_times() {
-        return _scanner_sche_times.fetch_add(1, std::memory_order_relaxed);
+    int32_t fetch_add_sche_times(int32_t times) {
+        return _scanner_sche_times.fetch_add(times, std::memory_order_relaxed);
     }
 
     // the unique id of this context

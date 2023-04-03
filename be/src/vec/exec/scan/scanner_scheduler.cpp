@@ -198,6 +198,10 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
                 }
             }
         } else {
+            int his_sche_times = ctx->fetch_add_sche_times(this_run.size());
+            int priority = _calculate_priority(his_sche_times);
+            std::stringstream ss;
+            ss << "his_sche_times=" << his_sche_times << ", priority=" << priority << std::endl;
             while (iter != this_run.end()) {
                 (*iter)->start_wait_worker_timer();
                 TabletStorageType type = (*iter)->get_storage_type();
@@ -207,8 +211,7 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
                     task.work_function = [this, scanner = *iter, ctx] {
                         this->_scanner_scan(this, ctx, scanner);
                     };
-                    int sche_times = ctx->fetch_add_sche_times();
-                    task.priority = _calculate_priority(sche_times);
+                    task.priority = priority;
                     task.queue_id = (*iter)->queue_id();
                     ret = _local_scan_thread_pool->offer(task);
                 } else {
