@@ -129,7 +129,7 @@ protected:
         }
     }
 
-protected:
+public:
     RuntimeState* _state;
     VScanNode* _parent;
     // Set if scan node has sort limit info
@@ -178,6 +178,7 @@ protected:
     ThreadCpuStopWatch _cpu_watch;
     int64_t _scanner_wait_worker_timer = 0;
     int64_t _scan_cpu_timer = 0;
+    std::atomic_uint64_t _scan_mon_timer = 0;
 
     bool _is_load = false;
     // set to true after decrease the "_num_unfinished_scanners" in scanner context

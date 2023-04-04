@@ -136,6 +136,8 @@ public:
     ThreadPoolToken* thread_token;
     std::vector<bthread_t> _btids;
 
+    std::atomic_uint64_t his_runtime = 0;
+
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);
 

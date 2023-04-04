@@ -139,7 +139,7 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = true, masterOnly = true)
     public static int default_load_parallelism = 1;
-
+    
     /**
      * Labels of finished or cancelled load jobs will be removed after *label_keep_max_second*
      * The removed labels can be reused.

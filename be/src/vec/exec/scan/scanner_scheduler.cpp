@@ -157,7 +157,6 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
     ctx->update_num_running(this_run.size(), -1);
     // Submit scanners to thread pool
     // TODO(cmy): How to handle this "nice"?
-    int nice = 1;
     auto iter = this_run.begin();
     auto submit_to_thread_pool = [&] {
         ctx->incr_num_scanner_scheduling(this_run.size());
@@ -179,11 +178,11 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
                 TabletStorageType type = (*iter)->get_storage_type();
                 bool ret = false;
                 if (type == TabletStorageType::STORAGE_TYPE_LOCAL) {
-                    PriorityThreadPool::Task task;
+                    PriorityThreadPool::PrioTask task;
                     task.work_function = [this, scanner = *iter, ctx] {
                         this->_scanner_scan(this, ctx, scanner);
                     };
-                    task.priority = nice;
+                    task.real_runtime = ctx->his_runtime;
                     task.queue_id = (*iter)->queue_id();
                     ret = _local_scan_thread_pool->offer(task);
                 } else {
@@ -256,6 +255,8 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
 #endif
     scanner->update_wait_worker_timer();
     scanner->start_scan_cpu_timer();
+    MonotonicStopWatch local_montonic_stop_watch;
+    local_montonic_stop_watch.start();
     Status status = Status::OK();
     bool eos = false;
     RuntimeState* state = ctx->state();
@@ -362,6 +363,9 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
         scanner->mark_to_need_to_close();
     }
 
+    int64_t mon_time = local_montonic_stop_watch.elapsed_time();
+    ctx->his_runtime += mon_time;
+    scanner->_scan_mon_timer += mon_time;
     ctx->push_back_scanner_and_reschedule(scanner);
 }
 

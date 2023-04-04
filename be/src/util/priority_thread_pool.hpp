@@ -49,6 +49,15 @@ public:
         }
     };
 
+    typedef std::function<void()> PrioWorkFunction;
+    struct PrioTask {
+    public:
+        PrioWorkFunction work_function;
+        int queue_id = 0;
+        uint64_t real_runtime = 0;
+        int level = 0;
+    };
+
     // Creates a new thread pool and start num_threads threads.
     //  -- num_threads: how many threads are part of this pool
     //  -- queue_size: the maximum size of the queue on which work items are offered. If the
@@ -81,6 +90,8 @@ public:
     // Returns true if the work item was successfully added to the queue, false otherwise
     // (which typically means that the thread pool has already been shut down).
     virtual bool offer(Task task) { return _work_queue.blocking_put(task); }
+
+    virtual bool offer(PrioTask task) { return true; }
 
     virtual bool offer(WorkFunction func) {
         PriorityThreadPool::Task task = {0, func, 0};
