@@ -58,7 +58,7 @@ public:
         }
         _current_used_bytes -= (*block)->allocated_bytes();
         {
-            if (!done() && has_enough_space_in_blocks_queue()) {
+            if (has_enough_space_in_blocks_queue()) {
                 std::unique_lock<std::mutex> l(_transfer_lock);
                 auto submit_st = _scanner_scheduler->submit(this);
                 if (submit_st.ok()) {
