@@ -182,6 +182,18 @@ public:
 
     static constexpr auto THREAD_TIME_SLICE = 100'000'000L;
 
+    void inc_runtime_ns(uint64_t delta_time) { this->_runtime += delta_time; }
+
+    uint64_t get_runtime_ns() { return this->_runtime; }
+
+    void update_queue_level(int queue_level) { this->_queue_level = queue_level; }
+
+    int get_queue_level() { return this->_queue_level; }
+
+    void set_core_id(int core_id) { this->_core_id = core_id; }
+
+    int get_core_id() { return this->_core_id; }
+
 private:
     Status _open();
     void _init_profile();
@@ -205,6 +217,11 @@ private:
     std::unique_ptr<doris::vectorized::Block> _block;
     PipelineFragmentContext* _fragment_context;
     TaskQueue* _task_queue = nullptr;
+    uint64_t _runtime = 0;
+    int _queue_level = 0;
+    // mark which core this task from, used to update queue's runtime
+    // an ugly implementation, need refactor later
+    int _core_id = 0;
 
     RuntimeProfile* _parent_profile;
     std::unique_ptr<RuntimeProfile> _task_profile;

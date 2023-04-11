@@ -653,14 +653,10 @@ Status FragmentMgr::_get_query_ctx(const Params& params, TUniqueId query_id, boo
             fragments_ctx->query_mem_tracker->enable_print_log_usage();
         }
 
-        if (pipeline) {
-            int ts = fragments_ctx->timeout_second;
+        if (pipeline && config::enable_pipeline_resource_group) {
             taskgroup::TaskGroupPtr tg;
-            auto ts_id = taskgroup::TaskGroupManager::DEFAULT_TG_ID;
-            if (ts > 0 && ts <= config::pipeline_short_query_timeout_s) {
-                ts_id = taskgroup::TaskGroupManager::SHORT_TG_ID;
-            }
-            tg = taskgroup::TaskGroupManager::instance()->get_task_group(ts_id);
+            tg = taskgroup::TaskGroupManager::instance()->get_task_group(
+                    taskgroup::TaskGroupManager::DEFAULT_TG_ID);
             fragments_ctx->set_task_group(tg);
             LOG(INFO) << "Query/load id: " << print_id(fragments_ctx->query_id)
                       << "use task group: " << tg->debug_string();
