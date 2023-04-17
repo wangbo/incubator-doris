@@ -38,10 +38,6 @@ bool ScanOperator::can_read() {
             // _scanner_ctx->no_schedule(): should schedule _scanner_ctx
             return true;
         } else {
-            if (_node->_scanner_ctx->get_num_running_scanners() == 0 &&
-                _node->_scanner_ctx->has_enough_space_in_blocks_queue()) {
-                _node->_scanner_ctx->reschedule_scanner_ctx();
-            }
             return _node->ready_to_read(); // there are some blocks to process
         }
     }
@@ -54,6 +50,17 @@ bool ScanOperator::is_pending_finish() const {
 Status ScanOperator::try_close() {
     return _node->try_close();
 }
+
+Status ScanOperator::get_block(RuntimeState* state, vectorized::Block* block,
+                               SourceState& source_state) {
+    Status ret = SourceOperator::get_block(state, block, source_state);
+    if (!_node->_scanner_ctx->done() 
+        // && _node->_scanner_ctx->get_num_running_scanners() == 0 
+        && _node->_scanner_ctx->has_enough_space_in_blocks_queue()) {
+        _node->_scanner_ctx->reschedule_scanner_ctx();
+    }
+    return ret;
+};
 
 bool ScanOperator::runtime_filters_are_ready_or_timeout() {
     return _node->runtime_filters_are_ready_or_timeout();

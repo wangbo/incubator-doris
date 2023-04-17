@@ -151,8 +151,10 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
         //      There running scanner will schedule the ctx after they are finished.
         // So here we just return to stop scheduling ctx.
         ctx->update_num_running(0, -1);
+        // ctx->_counter_4->update(1);
         return;
     }
+    // ctx->_counter_5->update(1);
 
     ctx->update_num_running(this_run.size(), -1);
     // Submit scanners to thread pool

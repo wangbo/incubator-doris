@@ -47,6 +47,9 @@ public:
     std::string debug_string() const override;
 
     Status try_close() override;
+
+    Status get_block(RuntimeState* state, vectorized::Block* block,
+                     SourceState& source_state) override;
 };
 
 } // namespace doris::pipeline

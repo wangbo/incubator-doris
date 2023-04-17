@@ -68,6 +68,17 @@ Status ScannerContext::init() {
     _scanner_profile = _parent->_scanner_profile;
     _scanner_sched_counter = _parent->_scanner_sched_counter;
     _scanner_ctx_sched_counter = _parent->_scanner_ctx_sched_counter;
+
+    _counter_1 = _parent->_counter_1;
+    _counter_2 = _parent->_counter_2;
+    _counter_3 = _parent->_counter_3;
+    _counter_4 = _parent->_counter_4;
+
+    _counter_5 = _parent->_counter_5;
+    _counter_6 = _parent->_counter_6;
+    _counter_7 = _parent->_counter_7;
+    _counter_8 = _parent->_counter_8;
+
     _free_blocks_memory_usage = _parent->_free_blocks_memory_usage;
     _newly_create_free_blocks_num = _parent->_newly_create_free_blocks_num;
     _queued_blocks_memory_usage = _parent->_queued_blocks_memory_usage;
@@ -294,10 +305,25 @@ std::string ScannerContext::debug_string() {
 
 void ScannerContext::reschedule_scanner_ctx() {
     std::lock_guard l(_transfer_lock);
+    bool ret1 = has_enough_space_in_blocks_queue();
+    _counter_5->update(1);
+    if (ret1) {
+        _counter_6->update(1);
+    }
+    bool ret2 = _num_scheduling_ctx >= 1;
+    if (ret2) {
+        _counter_7->update(1);
+    }
+    if (ret2) {
+        return;
+    }
     auto submit_st = _scanner_scheduler->submit(this);
     //todo(wb) rethinking is it better to mark current scan_context failed when submit failed many times?
     if (submit_st.ok()) {
         _num_scheduling_ctx++;
+        _counter_8->update(1);
+    } else {
+        std::cout << "buhuiba" << std::endl;
     }
 }
 
@@ -307,10 +333,23 @@ void ScannerContext::push_back_scanner_and_reschedule(VScanner* scanner) {
         _scanners.push_front(scanner);
     }
     std::lock_guard l(_transfer_lock);
-    if (has_enough_space_in_blocks_queue()) {
+    _counter_1->update(1);
+    bool ret1 = _num_scheduling_ctx < 1;
+    bool ret2 = has_enough_space_in_blocks_queue();
+    if (ret1) {
+        _counter_2->update(1);
+    }
+    if (ret2) {
+        _counter_3->update(1);
+    }
+    // if (_num_scheduling_ctx < 1 && has_enough_space_in_blocks_queue()) {
+    if (ret1 && ret2) {
+    //  if (ret2) {
+        _counter_4->update(1);
         _num_scheduling_ctx++;
         auto submit_st = _scanner_scheduler->submit(this);
         if (!submit_st.ok()) {
+            std::cout << "buhuiba" << std::endl;
             _num_scheduling_ctx--;
         }
     }

@@ -316,6 +316,17 @@ protected:
 
     RuntimeProfile::Counter* _scanner_sched_counter = nullptr;
     RuntimeProfile::Counter* _scanner_ctx_sched_counter = nullptr;
+
+    RuntimeProfile::Counter* _counter_1 = nullptr;
+    RuntimeProfile::Counter* _counter_2 = nullptr;
+    RuntimeProfile::Counter* _counter_3 = nullptr;
+    RuntimeProfile::Counter* _counter_4 = nullptr;
+
+    RuntimeProfile::Counter* _counter_5 = nullptr;
+    RuntimeProfile::Counter* _counter_6 = nullptr;
+    RuntimeProfile::Counter* _counter_7 = nullptr;
+    RuntimeProfile::Counter* _counter_8 = nullptr;
+
     RuntimeProfile::Counter* _scanner_wait_batch_timer = nullptr;
     RuntimeProfile::Counter* _scanner_wait_worker_timer = nullptr;
     // Num of pre allocated free blocks

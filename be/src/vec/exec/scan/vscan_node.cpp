@@ -250,6 +250,16 @@ Status VScanNode::_init_profile() {
     _scanner_sched_counter = ADD_COUNTER(_scanner_profile, "ScannerSchedCount", TUnit::UNIT);
     _scanner_ctx_sched_counter = ADD_COUNTER(_scanner_profile, "ScannerCtxSchedCount", TUnit::UNIT);
 
+    _counter_1 = ADD_COUNTER(_scanner_profile, "ScannerCounter1", TUnit::UNIT);
+    _counter_2 = ADD_COUNTER(_scanner_profile, "ScannerCounter2", TUnit::UNIT);
+    _counter_3 = ADD_COUNTER(_scanner_profile, "ScannerCounter3", TUnit::UNIT);
+    _counter_4 = ADD_COUNTER(_scanner_profile, "ScannerCounter4", TUnit::UNIT);
+
+    _counter_5 = ADD_COUNTER(_scanner_profile, "ScannerCounter5", TUnit::UNIT);
+    _counter_6 = ADD_COUNTER(_scanner_profile, "ScannerCounter6", TUnit::UNIT);
+    _counter_7 = ADD_COUNTER(_scanner_profile, "ScannerCounter7", TUnit::UNIT);
+    _counter_8 = ADD_COUNTER(_scanner_profile, "ScannerCounter8", TUnit::UNIT);
+
     _scan_timer = ADD_TIMER(_scanner_profile, "ScannerGetBlockTime");
     _scan_cpu_timer = ADD_TIMER(_scanner_profile, "ScannerCpuTime");
     _prefilter_timer = ADD_TIMER(_scanner_profile, "ScannerPrefilterTime");

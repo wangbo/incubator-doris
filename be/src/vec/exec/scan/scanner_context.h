@@ -138,6 +138,16 @@ public:
     ThreadPoolToken* thread_token;
     std::vector<bthread_t> _btids;
 
+    RuntimeProfile::Counter* _counter_1 = nullptr;
+    RuntimeProfile::Counter* _counter_2 = nullptr;
+    RuntimeProfile::Counter* _counter_3 = nullptr;
+    RuntimeProfile::Counter* _counter_4 = nullptr;
+
+    RuntimeProfile::Counter* _counter_5 = nullptr;
+    RuntimeProfile::Counter* _counter_6 = nullptr;
+    RuntimeProfile::Counter* _counter_7 = nullptr;
+    RuntimeProfile::Counter* _counter_8 = nullptr;
+
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);
 
