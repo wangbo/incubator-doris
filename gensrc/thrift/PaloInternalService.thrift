@@ -281,7 +281,6 @@ struct TPlanFragmentExecParams {
   11: optional bool send_query_statistics_with_every_batch
   // Used to merge and send runtime filter
   12: optional TRuntimeFilterParams runtime_filter_params
-
 }
 
 // Global query parameters assigned by the coordinator.
@@ -573,7 +572,6 @@ struct TPipelineInstanceParams {
   4: optional i32 sender_id
   5: optional TRuntimeFilterParams runtime_filter_params
   6: optional i32 backend_num
-  7: optional map<Types.TPlanNodeId, bool> per_node_shared_scans
 }
 
 struct TPipelineResourceGroup {
@@ -610,6 +608,7 @@ struct TPipelineFragmentParams {
   22: optional TGlobalDict global_dict  // scan node could use the global dict to encode the string value to an integer
   23: optional Planner.TPlanFragment fragment
   24: list<TPipelineInstanceParams> local_params
+  25: optional bool shared_scan_opt = false;
   26: optional list<TPipelineResourceGroup> resource_groups
 }
 
