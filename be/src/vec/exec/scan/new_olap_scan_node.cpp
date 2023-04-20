@@ -476,7 +476,7 @@ Status NewOlapScanNode::_init_scanners(std::list<VScanner*>* scanners) {
         scanner->set_compound_filters(_compound_filters);
         // add scanner to pool before doing prepare.
         // so that scanner can be automatically deconstructed if prepare failed.
-        _scanner_pool.add(scanner);
+        // _shared_scanner_pool->add(scanner);
         scanners->push_back((VScanner*)scanner);
         return Status::OK();
     };

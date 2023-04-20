@@ -62,6 +62,54 @@ public:
         return Status::OK();
     }
 
+    void append_blocks_to_shared_queue(std::vector<vectorized::BlockUPtr>& blocks) override {
+        int local_used_bytes = 0;
+        for (auto& b : blocks) {
+            local_used_bytes += b->allocated_bytes();
+        }
+        shared_queue->_shared_current_used_bytes += local_used_bytes;
+
+        const int queue_size = shared_queue->_shared_queue_mutexs.size();
+        const int block_size = blocks.size();
+        int queue = shared_queue->_shared_next_queue_to_feed.fetch_add(1) % queue_size;
+        for (int i = 0; i < queue_size && i < block_size; ++i) {
+            {
+                std::lock_guard<std::mutex> l(*(shared_queue->_shared_queue_mutexs[queue]));
+                for (int j = i; j < block_size; j += queue_size) {
+                    shared_queue->_shared_blocks_queues[queue].emplace_back(std::move(blocks[j]));
+                }
+            }
+            queue = queue + 1 < queue_size ? queue + 1 : 0;
+        }
+    }
+
+    Status get_block_from_shared_queue(RuntimeState* state, vectorized::BlockUPtr* block, bool* eos,
+                                       int id) override {
+        {
+            std::unique_lock<std::mutex> l(_transfer_lock);
+            if (state->is_cancelled()) {
+                _process_status = Status::Cancelled("cancelled");
+            }
+
+            if (!_process_status.ok()) {
+                return _process_status;
+            }
+        }
+
+        {
+            std::unique_lock<std::mutex> l(*(shared_queue->_shared_queue_mutexs[id]));
+            if (!shared_queue->_shared_blocks_queues[id].empty()) {
+                *block = std::move(shared_queue->_shared_blocks_queues[id].front());
+                shared_queue->_shared_blocks_queues[id].pop_front();
+            } else {
+                *eos = _is_finished || _should_stop;
+                return Status::OK();
+            }
+        }
+        shared_queue->_shared_current_used_bytes -= (*block)->allocated_bytes();
+        return Status::OK();
+    }
+
     // We should make those method lock free.
     bool done() override { return _is_finished || _should_stop || _status_error; }
 
@@ -122,8 +170,8 @@ public:
     }
 
     bool empty_in_queue(int id) override {
-        std::unique_lock<std::mutex> l(*_queue_mutexs[id]);
-        return _blocks_queues[id].empty();
+        std::unique_lock<std::mutex> l(*(shared_queue->_shared_queue_mutexs[id]));
+        return shared_queue->_shared_blocks_queues[id].empty();
     }
 
     void set_max_queue_size(const int max_queue_size) override {
@@ -150,11 +198,12 @@ public:
     }
 
     bool has_enough_space_in_blocks_queue() const override {
-        return _current_used_bytes < _max_bytes_in_queue / 2 * _max_queue_size;
+        return shared_queue->_shared_current_used_bytes < _max_bytes_in_queue / 2 * shared_queue->_shared_max_queue_size;
     }
 
     virtual void _dispose_coloate_blocks_not_in_queue() override {
         if (_need_colocate_distribute) {
+            std::cout << "_need_colocate_distribute goes?" << std::endl;
             for (int i = 0; i < _max_queue_size; ++i) {
                 std::scoped_lock s(*_colocate_block_mutexs[i], *_queue_mutexs[i]);
                 if (_colocate_blocks[i] && !_colocate_blocks[i]->empty()) {

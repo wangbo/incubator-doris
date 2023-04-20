@@ -181,6 +181,7 @@ protected:
     virtual bool _is_key_column(const std::string& col_name) { return false; }
 
     Status _prepare_scanners();
+    Status _prepare_and_get_scanner_list(std::list<VScanner*>* scanners);
 
 protected:
     RuntimeState* _state;
@@ -221,6 +222,7 @@ protected:
     std::shared_ptr<ScannerContext> _scanner_ctx;
     // Save all scanner objects.
     ObjectPool _scanner_pool;
+    ObjectPool* _shared_scanner_pool;
 
     // indicate this scan node has no more data to return
     bool _eos = false;

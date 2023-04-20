@@ -27,6 +27,7 @@
 #include "util/runtime_profile.h"
 #include "util/uid_util.h"
 #include "vec/core/block.h"
+#include "vec/runtime/shared_hash_table_controller.h"
 
 namespace doris {
 
@@ -39,6 +40,7 @@ namespace vectorized {
 class VScanner;
 class VScanNode;
 class ScannerScheduler;
+class SharedQueue;
 
 // ScannerContext is responsible for recording the execution status
 // of a group of Scanners corresponding to a ScanNode.
@@ -137,6 +139,17 @@ public:
     int32_t queue_idx = -1;
     ThreadPoolToken* thread_token;
     std::vector<bthread_t> _btids;
+
+    // for POC
+    SharedQueue* shared_queue;
+    virtual void append_blocks_to_shared_queue(std::vector<vectorized::BlockUPtr>& blocks) {
+        std::cout << "virtual goes?" << std::endl;
+    };
+    virtual Status get_block_from_shared_queue(RuntimeState* state, vectorized::BlockUPtr* block,
+                                               bool* eos, int id) {
+        std::cout << "virtual goes?" << std::endl;
+        return Status::OK();
+    };
 
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);

@@ -699,9 +699,9 @@ void PipelineFragmentContext::_close_action() {
 
 void PipelineFragmentContext::close_a_pipeline() {
     ++_closed_tasks;
-    if (_closed_tasks == _total_tasks) {
-        std::call_once(_close_once_flag, [this] { _close_action(); });
-    }
+    // if (_closed_tasks == _total_tasks) {
+    //     std::call_once(_close_once_flag, [this] { _close_action(); });
+    // }
 }
 
 void PipelineFragmentContext::send_report(bool done) {

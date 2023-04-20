@@ -64,7 +64,10 @@ Status ScannerContext::init() {
     if (_parent->should_run_serial()) {
         _max_thread_num = 1;
     }
-
+    if (_scanners.size() == 0) {
+        std::cout << "catch 0 scanners here" << std::endl;
+    }
+    // std::cout << "max thread num = " << _max_thread_num << ",scanner size=" << _scanners.size() << std::endl;
     _scanner_profile = _parent->_scanner_profile;
     _scanner_sched_counter = _parent->_scanner_sched_counter;
     _scanner_ctx_sched_counter = _parent->_scanner_ctx_sched_counter;
