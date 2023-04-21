@@ -1626,7 +1626,7 @@ public class Coordinator {
                 bucketShuffleJoinController.computeInstanceParam(fragment.getFragmentId(),
                         parallelExecInstanceNum, params);
             } else {
-                params.sharedScanOpt = true;
+//                params.sharedScanOpt = true;
                 // case A
                 for (Entry<TNetworkAddress, Map<Integer, List<TScanRangeParams>>> entry : fragmentExecParamsMap.get(
                         fragment.getFragmentId()).scanRangeAssignment.entrySet()) {
@@ -1636,23 +1636,23 @@ public class Coordinator {
                     for (Integer planNodeId : value.keySet()) {
                         List<TScanRangeParams> perNodeScanRanges = value.get(planNodeId);
                         List<List<TScanRangeParams>> perInstanceScanRanges = Lists.newArrayList();
-                        if (!enablePipelineEngine) {
-                            int expectedInstanceNum = 1;
-                            if (parallelExecInstanceNum > 1) {
-                                //the scan instance num should not larger than the tablets num
-                                expectedInstanceNum = Math.min(perNodeScanRanges.size(), parallelExecInstanceNum);
-                            }
-                            perInstanceScanRanges = ListUtil.splitBySize(perNodeScanRanges,
-                                    expectedInstanceNum);
-                        } else {
-                            int expectedInstanceNum = Math.min(parallelExecInstanceNum,
-                                    leftMostNode.getNumInstances());
-                            for (int j = 0; j < Math.max(expectedInstanceNum, 1); j++) {
-                                perInstanceScanRanges.add(perNodeScanRanges);
-                            }
+//                        if (!enablePipelineEngine) {
+                        int expectedInstanceNum = 1;
+                        if (parallelExecInstanceNum > 1) {
+                            //the scan instance num should not larger than the tablets num
+                            expectedInstanceNum = Math.min(perNodeScanRanges.size(), parallelExecInstanceNum);
                         }
+                        perInstanceScanRanges = ListUtil.splitBySize(perNodeScanRanges,
+                            expectedInstanceNum);
+//                        } else {
+//                            int expectedInstanceNum = Math.min(parallelExecInstanceNum,
+//                                    leftMostNode.getNumInstances());
+//                            for (int j = 0; j < Math.max(expectedInstanceNum, 1); j++) {
+//                                perInstanceScanRanges.add(perNodeScanRanges);
+//                            }
+//                        }
 
-                        LOG.debug("scan range number per instance is: {}", perInstanceScanRanges.size());
+                        LOG.info("scan range number per instance is: {}", perInstanceScanRanges.size());
 
                         for (List<TScanRangeParams> scanRangeParams : perInstanceScanRanges) {
                             FInstanceExecParam instanceParam = new FInstanceExecParam(null, key, 0, params);
