@@ -102,9 +102,12 @@ Status VScanNode::prepare(RuntimeState* state) {
                     _shared_scanner_controller->should_build_scanner_and_queue_id(id());
             _should_create_scanner = should_create_scanner;
             _context_queue_id = queue_id;
+            std::cout << "_shared_scan_opt ???" << std::endl;
         } else {
+            _shared_scanner_controller =
+                    state->get_query_fragments_ctx()->get_shared_scanner_controller();
+            _context_queue_id = _shared_scanner_controller->shared_queue->get_shared_scan_queue_id(id());
             _should_create_scanner = true;
-            _context_queue_id = 0;
         }
     }
 
@@ -148,6 +151,14 @@ Status VScanNode::alloc_resource(RuntimeState* state) {
                 DCHECK(!_eos && _num_scanners->value() > 0);
                 _scanner_ctx->set_max_queue_size(
                         _shared_scan_opt ? std::max(state->query_parallel_instance_num(), 1) : 1);
+
+                // set shared queue for scan ctx;_state->query_options().mem_limit / 20
+                int parrallel = state->query_parallel_instance_num();
+                int max_bytes = parrallel * (state->query_options().mem_limit / 20);
+                auto* ptr = reinterpret_cast<pipeline::PipScannerContext*>(_scanner_ctx.get());
+                ptr->shared_queue_ctx = _shared_scanner_controller->shared_queue->get_queue_context(
+                        id(), parrallel, max_bytes);
+
                 RETURN_IF_ERROR(
                         _state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
             }
@@ -209,7 +220,7 @@ Status VScanNode::get_next(RuntimeState* state, vectorized::Block* block, bool* 
     }
 
     vectorized::BlockUPtr scan_block = nullptr;
-    RETURN_IF_ERROR(_scanner_ctx->get_block_from_queue(state, &scan_block, eos, _context_queue_id));
+    RETURN_IF_ERROR(_scanner_ctx->get_block_from_shared_queue(state, &scan_block, eos, _context_queue_id));
     if (*eos) {
         DCHECK(scan_block == nullptr);
         return Status::OK();
@@ -273,6 +284,7 @@ Status VScanNode::_start_scanners(const std::list<VScanner*>& scanners) {
                 _state, this, _input_tuple_desc, _output_tuple_desc, scanners, limit(),
                 _state->query_options().mem_limit / 20, _col_distribute_ids));
     } else {
+        std::cout << "new ScannerContext ???" << std::endl;
         _scanner_ctx.reset(new ScannerContext(_state, this, _input_tuple_desc, _output_tuple_desc,
                                               scanners, limit(),
                                               _state->query_options().mem_limit / 20));

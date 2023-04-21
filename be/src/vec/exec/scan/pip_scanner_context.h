@@ -18,8 +18,11 @@
 #pragma once
 
 #include "scanner_context.h"
+// #include "vec/runtime/shared_scanner_controller.h"
 
 namespace doris {
+
+// class SharedQueueContext;
 
 namespace pipeline {
 
@@ -34,6 +37,37 @@ public:
                                          scanners, limit, max_bytes_in_blocks_queue),
               _col_distribute_ids(col_distribute_ids),
               _need_colocate_distribute(!_col_distribute_ids.empty()) {}
+
+    Status get_block_from_shared_queue(RuntimeState* state, vectorized::BlockUPtr* block,
+                                               bool* eos, int id) override {
+        {
+            std::unique_lock<std::mutex> l(_transfer_lock);
+            if (state->is_cancelled()) {
+                _process_status = Status::Cancelled("cancelled");
+            }
+
+            if (!_process_status.ok()) {
+                return _process_status;
+            }
+        }
+
+        {
+            bool get_block = false;
+            shared_queue_ctx->get_blocks(id, block, &get_block);
+            if (get_block) {
+                return Status::OK();
+            } else {
+                *eos = shared_queue_ctx->is_all_scan_finish() || _should_stop;
+                return Status::OK();
+            }
+        }
+
+        return Status::OK();
+    }
+
+    void hook_for_child() override {
+        shared_queue_ctx->update_finish_client();
+    }
 
     Status get_block_from_queue(RuntimeState* state, vectorized::BlockUPtr* block, bool* eos,
                                 int id, bool wait = false) override {
@@ -63,7 +97,13 @@ public:
     }
 
     // We should make those method lock free.
-    bool done() override { return _is_finished || _should_stop || _status_error; }
+    bool done() override {
+        return shared_queue_ctx->is_all_scan_finish() || _should_stop || _status_error;
+    }
+
+    void append_blocks_to_shared_queue(std::vector<vectorized::BlockUPtr>& blocks) override {
+        shared_queue_ctx->push_blocks(&blocks);
+    }
 
     void append_blocks_to_queue(std::vector<vectorized::BlockUPtr>& blocks) override {
         const int queue_size = _queue_mutexs.size();
@@ -122,8 +162,9 @@ public:
     }
 
     bool empty_in_queue(int id) override {
-        std::unique_lock<std::mutex> l(*_queue_mutexs[id]);
-        return _blocks_queues[id].empty();
+        // std::unique_lock<std::mutex> l(*_queue_mutexs[id]);
+        // return _blocks_queues[id].empty();
+        return shared_queue_ctx->empty_in_queue(id);
     }
 
     void set_max_queue_size(const int max_queue_size) override {
@@ -150,7 +191,8 @@ public:
     }
 
     bool has_enough_space_in_blocks_queue() const override {
-        return _current_used_bytes < _max_bytes_in_queue / 2 * _max_queue_size;
+        // return _current_used_bytes < _max_bytes_in_queue / 2 * _max_queue_size;
+        return shared_queue_ctx->has_enough_space_in_blocks_queue();
     }
 
     virtual void _dispose_coloate_blocks_not_in_queue() override {
@@ -165,6 +207,8 @@ public:
             }
         }
     }
+
+    vectorized::SharedScannerQueue::SharedQueueContext* shared_queue_ctx;
 
 private:
     int _max_queue_size = 1;

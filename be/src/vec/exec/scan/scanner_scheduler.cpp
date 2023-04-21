@@ -354,7 +354,7 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
         // No need to return blocks because of should_stop, just delete them
         blocks.clear();
     } else if (!blocks.empty()) {
-        ctx->append_blocks_to_queue(blocks);
+        ctx->append_blocks_to_shared_queue(blocks);
     }
 
     scanner->update_scan_cpu_timer();

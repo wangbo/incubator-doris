@@ -138,6 +138,20 @@ public:
     ThreadPoolToken* thread_token;
     std::vector<bthread_t> _btids;
 
+    virtual void append_blocks_to_shared_queue(std::vector<vectorized::BlockUPtr>& blocks) {
+        std::cout << "vritual goes" << std::endl;
+    }
+
+    virtual Status get_block_from_shared_queue(RuntimeState* state, vectorized::BlockUPtr* block,
+                                               bool* eos, int id) {
+        std::cout << "vritual goes" << std::endl;
+        return Status::OK();
+    }
+
+    virtual void hook_for_child() {
+        std::cout << "vritual goes" << std::endl;
+    }
+
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);
 

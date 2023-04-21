@@ -324,6 +324,7 @@ void ScannerContext::push_back_scanner_and_reschedule(VScanner* scanner) {
         (--_num_unfinished_scanners) == 0) {
         _dispose_coloate_blocks_not_in_queue();
         _is_finished = true;
+        hook_for_child();
         _blocks_queue_added_cv.notify_one();
     }
     // In pipeline engine, doris will close scanners when `no_schedule`.
