@@ -826,6 +826,7 @@ Status FragmentMgr::exec_plan_fragment(const TPipelineFragmentParams& params,
             SCOPED_RAW_TIMER(&duration_ns);
             auto prepare_st = context->prepare(params, i);
             if (!prepare_st.ok()) {
+                LOG(INFO) << "prepare failed error=" << prepare_st << ",instance id=" << print_id(fragment_instance_id);
                 context->close_if_prepare_failed();
                 return prepare_st;
             }

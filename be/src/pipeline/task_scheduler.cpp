@@ -315,6 +315,7 @@ void TaskScheduler::_try_close_task(PipelineTask* task, PipelineTaskState state)
         }
         task->fragment_context()->close_a_pipeline();
     }
+    LOG(INFO) << "instance close task" << print_id(task->fragment_context()->get_fragment_instance_id());
 }
 
 void TaskScheduler::shutdown() {

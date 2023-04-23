@@ -57,6 +57,11 @@ Status VSlotRef::prepare(doris::RuntimeState* state, const doris::RowDescriptor&
                 *_column_name, _slot_id, desc.debug_string(), slot_desc->debug_string(),
                 state->desc_tbl().debug_string());
     }
+    std::stringstream ss;
+
+    ss << "_slot_id=" << _slot_id << ", name=" << _column_name 
+        << ",instance id=" << print_id(state->fragment_instance_id()) << std::endl;
+    std::cout << ss.str();
     return Status::OK();
 }
 
