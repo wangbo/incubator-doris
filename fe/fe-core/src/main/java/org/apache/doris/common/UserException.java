@@ -26,6 +26,8 @@ public class UserException extends Exception {
     private InternalErrorCode errorCode;
     private ErrorCode mysqlErrorCode;
 
+    private boolean isCancelled = false;
+
     public UserException(String msg, Throwable cause) {
         super(Strings.nullToEmpty(msg), cause);
         errorCode = InternalErrorCode.INTERNAL_ERR;
@@ -50,6 +52,13 @@ public class UserException extends Exception {
         mysqlErrorCode = ErrorCode.ERR_UNKNOWN_ERROR;
     }
 
+    public UserException(String msg, boolean isCancelled) {
+        super(Strings.nullToEmpty(msg));
+        errorCode = InternalErrorCode.INTERNAL_ERR;
+        mysqlErrorCode = ErrorCode.ERR_UNKNOWN_ERROR;
+        this.isCancelled = isCancelled;
+    }
+
     public UserException(InternalErrorCode errCode, String msg) {
         super(Strings.nullToEmpty(msg));
         this.errorCode = errCode;
@@ -67,6 +76,10 @@ public class UserException extends Exception {
 
     public void setMysqlErrorCode(ErrorCode mysqlErrorCode) {
         this.mysqlErrorCode = mysqlErrorCode;
+    }
+
+    public boolean isCancelled() {
+        return isCancelled;
     }
 
     @Override

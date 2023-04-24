@@ -483,7 +483,7 @@ public class StmtExecutor implements ProfileWriter {
         return false;
     }
 
-    private void executeByNereids(TUniqueId queryId) {
+    private void executeByNereids(TUniqueId queryId) throws UserException {
         context.setQueryId(queryId);
         context.setStartTime();
         plannerProfile.setQueryBeginTime();
@@ -541,6 +541,8 @@ public class StmtExecutor implements ProfileWriter {
                 plannerProfile.setQueryPlanFinishTime();
                 handleQueryWithRetry(queryId);
             }
+        } catch (UserException e) {
+            throw e;
         } catch (Exception e) {
             throw new NereidsException(new AnalysisException("Unexpected exception: " + e.getMessage(), e));
         }
