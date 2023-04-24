@@ -35,6 +35,10 @@ Status VSlotRef::prepare(doris::RuntimeState* state, const doris::RowDescriptor&
                          VExprContext* context) {
     RETURN_IF_ERROR_OR_PREPARED(VExpr::prepare(state, desc, context));
     DCHECK_EQ(_children.size(), 0);
+    std::stringstream ss1;
+    ss1 << "_slot_id=" << _slot_id << ",instance id=" << print_id(state->fragment_instance_id())
+        << std::endl;
+    std::cout << ss1.str();
     if (_slot_id == -1) {
         return Status::OK();
     }
@@ -45,7 +49,17 @@ Status VSlotRef::prepare(doris::RuntimeState* state, const doris::RowDescriptor&
                 state->desc_tbl().debug_string());
     }
     _column_name = &slot_desc->col_name();
+
+    std::stringstream ss2;
+    ss2 << "_slot_id=" << _slot_id << ",name=" << *_column_name
+        << ",instance id=" << print_id(state->fragment_instance_id()) << std::endl;
+    std::cout << ss2.str();
+
     if (!slot_desc->need_materialize()) {
+        std::stringstream ss3;
+        ss3 << "not materialize _slot_id=" << _slot_id << ",name=" << *_column_name
+            << ",instance id=" << print_id(state->fragment_instance_id()) << std::endl;
+        std::cout << ss3.str();
         // slot should be ignored manually
         _column_id = -1;
         return Status::OK();
@@ -57,11 +71,6 @@ Status VSlotRef::prepare(doris::RuntimeState* state, const doris::RowDescriptor&
                 *_column_name, _slot_id, desc.debug_string(), slot_desc->debug_string(),
                 state->desc_tbl().debug_string());
     }
-    std::stringstream ss;
-
-    ss << "_slot_id=" << _slot_id << ", name=" << _column_name 
-        << ",instance id=" << print_id(state->fragment_instance_id()) << std::endl;
-    std::cout << ss.str();
     return Status::OK();
 }
 
