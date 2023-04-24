@@ -1199,7 +1199,7 @@ public class Coordinator {
                 if (hostIndex != -1) {
                     errMsg = errMsg.substring(0, hostIndex);
                 }
-                throw new UserException(errMsg);
+                throw new UserException(errMsg, copyStatus.isCancelled());
             }
         }
 
