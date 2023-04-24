@@ -214,6 +214,7 @@ Status PipelineFragmentContext::prepare(const doris::TPipelineFragmentParams& re
     auto* desc_tbl = _query_ctx->desc_tbl;
     _runtime_state->set_desc_tbl(desc_tbl);
     LOG(INFO) << "instance id" << print_id(local_params.fragment_instance_id) 
+        << ",fragment_id=" << request.fragment_id
         << ", desc string=" << _query_ctx->desc_tbl->debug_string();
 
     // 2. Create ExecNode to build pipeline with PipelineFragmentContext
