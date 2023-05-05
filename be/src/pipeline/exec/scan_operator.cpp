@@ -31,7 +31,7 @@ OPERATOR_CODE_GENERATOR(ScanOperator, SourceOperator)
 
 bool ScanOperator::can_read() {
     if (!_node->_opened) {
-        if (_node->_should_create_scanner || _node->ready_to_open()) {
+        if (_node->ready_to_open()) {
             return true;
         } else {
             return false;
@@ -44,7 +44,8 @@ bool ScanOperator::can_read() {
             return true;
         } else {
             if (_node->_scanner_ctx->get_num_running_scanners() == 0 &&
-                _node->_scanner_ctx->has_enough_space_in_blocks_queue()) {
+                _node->_scanner_ctx->has_enough_space_in_blocks_queue() &&
+                !_node->_scanner_ctx->is_current_scan_ctx_finished()) {
                 _node->_scanner_ctx->reschedule_scanner_ctx();
             }
             return _node->ready_to_read(); // there are some blocks to process

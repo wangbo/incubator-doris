@@ -154,7 +154,7 @@ void ScannerScheduler::_schedule_thread(int queue_id) {
 
 void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
     ctx->incr_num_ctx_scheduling(1);
-    if (ctx->done()) {
+    if (ctx->is_current_scan_ctx_finished() || ctx->done()) {
         ctx->update_num_running(0, -1);
         return;
     }
