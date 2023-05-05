@@ -139,7 +139,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -1655,27 +1654,14 @@ public class Coordinator {
                         List<List<TScanRangeParams>> perInstanceScanRanges = Lists.newArrayList();
                         List<Boolean> sharedScanOpts = Lists.newArrayList();
 
-                        Optional<ScanNode> node = scanNodes.stream().filter(scanNode -> {
-                            return scanNode.getId().asInt() == planNodeId;
-                        }).findFirst();
-
-                        if (!enablePipelineEngine || perNodeScanRanges.size() > parallelExecInstanceNum
-                                || (node.isPresent() && node.get().getShouldColoScan())) {
-                            int expectedInstanceNum = 1;
-                            if (parallelExecInstanceNum > 1) {
-                                //the scan instance num should not larger than the tablets num
-                                expectedInstanceNum = Math.min(perNodeScanRanges.size(), parallelExecInstanceNum);
-                            }
-                            perInstanceScanRanges = ListUtil.splitBySize(perNodeScanRanges,
-                                    expectedInstanceNum);
-                            sharedScanOpts = Collections.nCopies(perInstanceScanRanges.size(), false);
-                        } else {
-                            int expectedInstanceNum = Math.min(parallelExecInstanceNum,
-                                    leftMostNode.getNumInstances());
-                            expectedInstanceNum = Math.max(expectedInstanceNum, 1);
-                            perInstanceScanRanges = Collections.nCopies(expectedInstanceNum, perNodeScanRanges);
-                            sharedScanOpts = Collections.nCopies(perInstanceScanRanges.size(), true);
+                        int expectedInstanceNum = 1;
+                        if (parallelExecInstanceNum > 1) {
+                            //the scan instance num should not larger than the tablets num
+                            expectedInstanceNum = Math.min(perNodeScanRanges.size(), parallelExecInstanceNum);
                         }
+                        perInstanceScanRanges = ListUtil.splitBySize(perNodeScanRanges,
+                            expectedInstanceNum);
+                        sharedScanOpts = Collections.nCopies(perInstanceScanRanges.size(), false);
 
                         LOG.debug("scan range number per instance is: {}", perInstanceScanRanges.size());
 
