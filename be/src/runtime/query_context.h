@@ -37,7 +37,7 @@
 #include "util/threadpool.h"
 #include "vec/exec/scan/scanner_scheduler.h"
 #include "vec/runtime/shared_hash_table_controller.h"
-#include "vec/runtime/shared_scanner_controller.h"
+#include "vec/runtime/shared_scan_queue_controller.h"
 
 namespace doris {
 
@@ -57,7 +57,7 @@ public:
               _query_options(query_options) {
         _start_time = vectorized::VecDateTimeValue::local_time();
         _shared_hash_table_controller.reset(new vectorized::SharedHashTableController());
-        _shared_scanner_controller.reset(new vectorized::SharedScannerController());
+        _shared_scan_queue_controller.reset(new vectorized::SharedScanQueueController());
     }
 
     ~QueryContext() {
@@ -134,8 +134,8 @@ public:
         return _shared_hash_table_controller;
     }
 
-    std::shared_ptr<vectorized::SharedScannerController> get_shared_scanner_controller() {
-        return _shared_scanner_controller;
+    std::shared_ptr<vectorized::SharedScanQueueController> get_shared_scan_queue_controller() {
+        return _shared_scan_queue_controller;
     }
 
     vectorized::RuntimePredicate& get_runtime_predicate() { return _runtime_predicate; }
@@ -210,7 +210,7 @@ private:
     std::atomic<bool> _is_cancelled {false};
 
     std::shared_ptr<vectorized::SharedHashTableController> _shared_hash_table_controller;
-    std::shared_ptr<vectorized::SharedScannerController> _shared_scanner_controller;
+    std::shared_ptr<vectorized::SharedScanQueueController> _shared_scan_queue_controller;
     vectorized::RuntimePredicate _runtime_predicate;
 
     taskgroup::TaskGroupPtr _task_group;

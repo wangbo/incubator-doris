@@ -102,6 +102,10 @@ public:
         return _is_finished || _should_stop || !_process_status.ok();
     }
 
+    bool is_current_scan_ctx_finished() {
+        return _is_finished;
+    }
+
     // Update the running num of scanners and contexts
     void update_num_running(int32_t scanner_inc, int32_t sched_inc) {
         std::lock_guard l(_transfer_lock);
@@ -141,6 +145,8 @@ public:
 
     void reschedule_scanner_ctx();
 
+    virtual void hook_when_all_scanners_finish() {}
+
     // the unique id of this context
     std::string ctx_id;
     int32_t queue_idx = -1;
@@ -151,8 +157,6 @@ private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);
 
 protected:
-    virtual void _dispose_coloate_blocks_not_in_queue() {}
-
     RuntimeState* _state;
     VScanNode* _parent;
 

@@ -335,7 +335,8 @@ void ScannerContext::push_back_scanner_and_reschedule(VScannerSPtr scanner) {
     // same scanner.
     if (scanner->need_to_close() && scanner->set_counted_down() &&
         (--_num_unfinished_scanners) == 0) {
-        _dispose_coloate_blocks_not_in_queue();
+        hook_when_all_scanners_finish();
+        // std::cout << "hook_when_all_scanners_finish" << std::endl;
         _is_finished = true;
         _blocks_queue_added_cv.notify_one();
     }
