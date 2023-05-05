@@ -80,11 +80,9 @@ NewOlapScanNode::NewOlapScanNode(ObjectPool* pool, const TPlanNode& tnode,
 
 Status NewOlapScanNode::collect_query_statistics(QueryStatistics* statistics) {
     RETURN_IF_ERROR(ExecNode::collect_query_statistics(statistics));
-    if (!_is_pipeline_scan || _should_create_scanner) {
-        statistics->add_scan_bytes(_read_compressed_counter->value());
-        statistics->add_scan_rows(_raw_rows_counter->value());
-        statistics->add_cpu_ms(_scan_cpu_timer->value() / NANOS_PER_MILLIS);
-    }
+    statistics->add_scan_bytes(_read_compressed_counter->value());
+    statistics->add_scan_rows(_raw_rows_counter->value());
+    statistics->add_cpu_ms(_scan_cpu_timer->value() / NANOS_PER_MILLIS);
     return Status::OK();
 }
 
@@ -461,7 +459,7 @@ Status NewOlapScanNode::_init_scanners(std::list<VScannerSPtr>* scanners) {
     // Split tablet segment by scanner, only use in pipeline in duplicate key
     // 1. if tablet count lower than scanner thread num, count segment num of all tablet ready for scan
     // TODO: some tablet may do not have segment, may need split segment all case
-    if (_shared_scan_opt && _scan_ranges.size() < config::doris_scanner_thread_pool_thread_num) {
+    if (_scan_ranges.size() < config::doris_scanner_thread_pool_thread_num) {
         for (int i = 0; i < _scan_ranges.size(); ++i) {
             auto& scan_range = _scan_ranges[i];
             auto tablet_id = scan_range->tablet_id;

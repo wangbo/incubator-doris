@@ -82,7 +82,7 @@ public:
 
     int32_t next_operator_builder_id() { return _next_operator_builder_id++; }
 
-    Status prepare(const doris::TPipelineFragmentParams& request, const size_t idx);
+    Status prepare(const doris::TPipelineFragmentParams& request, const size_t idx, QueryContext* ctx_ptr);
 
     Status submit();
 

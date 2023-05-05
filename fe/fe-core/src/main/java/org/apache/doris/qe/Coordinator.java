@@ -1669,24 +1669,40 @@ public class Coordinator {
                             perInstanceScanRanges = ListUtil.splitBySize(perNodeScanRanges,
                                     expectedInstanceNum);
                             sharedScanOpts = Collections.nCopies(perInstanceScanRanges.size(), false);
+
+                            LOG.debug("scan range number per instance is: {}", perInstanceScanRanges.size());
+
+                            for (int j = 0; j < perInstanceScanRanges.size(); j++) {
+                                List<TScanRangeParams> scanRangeParams = perInstanceScanRanges.get(j);
+                                boolean sharedScan = sharedScanOpts.get(j);
+
+                                FInstanceExecParam instanceParam = new FInstanceExecParam(null, key, 0, params);
+                                instanceParam.perNodeScanRanges.put(planNodeId, scanRangeParams);
+                                instanceParam.perNodeSharedScans.put(planNodeId, sharedScan);
+                                params.instanceExecParams.add(instanceParam);
+                            }
                         } else {
                             int expectedInstanceNum = Math.min(parallelExecInstanceNum,
                                     leftMostNode.getNumInstances());
                             expectedInstanceNum = Math.max(expectedInstanceNum, 1);
-                            perInstanceScanRanges = Collections.nCopies(expectedInstanceNum, perNodeScanRanges);
-                            sharedScanOpts = Collections.nCopies(perInstanceScanRanges.size(), true);
-                        }
+                            perInstanceScanRanges = ListUtil.splitBySize(perNodeScanRanges,
+                                    expectedInstanceNum);
+//                            sharedScanOpts = Collections.nCopies(perInstanceScanRanges.size(), true);
 
-                        LOG.debug("scan range number per instance is: {}", perInstanceScanRanges.size());
+                            for (int j = 0; j < expectedInstanceNum; j++) {
+                                List<TScanRangeParams> scanRangeParams = null;
+                                if (j < perInstanceScanRanges.size()) {
+                                    scanRangeParams = perInstanceScanRanges.get(j);
+                                } else {
+                                    scanRangeParams = new ArrayList();
+                                }
+//                                boolean sharedScan = sharedScanOpts.get(j);
 
-                        for (int j = 0; j < perInstanceScanRanges.size(); j++) {
-                            List<TScanRangeParams> scanRangeParams = perInstanceScanRanges.get(j);
-                            boolean sharedScan = sharedScanOpts.get(j);
-
-                            FInstanceExecParam instanceParam = new FInstanceExecParam(null, key, 0, params);
-                            instanceParam.perNodeScanRanges.put(planNodeId, scanRangeParams);
-                            instanceParam.perNodeSharedScans.put(planNodeId, sharedScan);
-                            params.instanceExecParams.add(instanceParam);
+                                FInstanceExecParam instanceParam = new FInstanceExecParam(null, key, 0, params);
+                                instanceParam.perNodeScanRanges.put(planNodeId, scanRangeParams);
+//                                instanceParam.perNodeSharedScans.put(planNodeId, sharedScan);
+                                params.instanceExecParams.add(instanceParam);
+                            }
                         }
                     }
                 }

@@ -127,25 +127,11 @@ Status VScanNode::prepare(RuntimeState* state) {
     _runtime_profile->add_info_string("RuntimeFilters: ", ss.str());
 
     if (_is_pipeline_scan) {
-        if (_shared_scan_opt) {
-            _shared_scanner_controller = state->get_query_ctx()->get_shared_scanner_controller();
-            auto [should_create_scanner, queue_id] =
-                    _shared_scanner_controller->should_build_scanner_and_queue_id(id());
-            _should_create_scanner = should_create_scanner;
-            _context_queue_id = queue_id;
-        } else {
-            _should_create_scanner = true;
-            _context_queue_id = 0;
-        }
+        _shared_scan_queue_controller = state->get_query_ctx()->get_shared_scan_queue_controller();
+        _context_queue_id = _shared_scan_queue_controller->get_shared_scan_queue_id(id());
     }
 
-    // 1: running at not pipeline mode will init profile.
-    // 2: the scan node should create scanner at pipeline mode will init profile.
-    // during pipeline mode with more instances, olap scan node maybe not new VScanner object,
-    // so the profile of VScanner and SegmentIterator infos are always empty, could not init those.
-    if (!_is_pipeline_scan || _should_create_scanner) {
-        RETURN_IF_ERROR(_init_profile());
-    }
+    RETURN_IF_ERROR(_init_profile());
     // if you want to add some profile in scan node, even it have not new VScanner object
     // could add here, not in the _init_profile() function
     _get_next_timer = ADD_TIMER(_runtime_profile, "GetNextTime");
@@ -173,27 +159,31 @@ Status VScanNode::alloc_resource(RuntimeState* state) {
     RETURN_IF_ERROR(_process_conjuncts());
 
     if (_is_pipeline_scan) {
-        if (_should_create_scanner) {
-            auto status = !_eos ? _prepare_scanners() : Status::OK();
-            if (_scanner_ctx) {
-                DCHECK(!_eos && _num_scanners->value() > 0);
-                _scanner_ctx->set_max_queue_size(
-                        _shared_scan_opt ? std::max(state->query_parallel_instance_num(), 1) : 1);
-                RETURN_IF_ERROR(
-                        _state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
-            }
-            if (_shared_scan_opt) {
-                _shared_scanner_controller->set_scanner_context(id(),
-                                                                _eos ? nullptr : _scanner_ctx);
-            }
-            RETURN_IF_ERROR(status);
-        } else if (_shared_scanner_controller->scanner_context_is_ready(id())) {
-            _scanner_ctx = _shared_scanner_controller->get_scanner_context(id());
-            if (!_scanner_ctx) {
-                _eos = true;
-            }
+        auto status = !_eos ? _prepare_scanners() : Status::OK();
+        RETURN_IF_ERROR(status);
+        if (_scanner_ctx) {
+            DCHECK(!_eos && _num_scanners->value() > 0);
         } else {
-            return Status::WaitForScannerContext("Need wait for scanner context create");
+            return Status::InternalError("init scanner ctx failed");
+        }
+
+        int parallel = 0;
+        int64_t query_mem_limit = state->query_options().mem_limit;
+
+        // std::cout << "mem limit=" << query_mem_limit << ", /20" << (query_mem_limit / 20) << ", origin=" << state->query_options().mem_limit << std::endl;
+        auto shared_scan_queue_ptr =
+                _shared_scan_queue_controller->get_scan_queue_ctx(id(), parallel, query_mem_limit / 20);
+        
+        _scanner_ctx->set_max_queue_size(parallel);
+        _scanner_ctx->_shared_scan_queue_ctx = shared_scan_queue_ptr;
+        // std::cout << "scanners=" << _num_scanners->value() << ",queue_id=" << _context_queue_id << std::endl;
+
+        if (!_scanner_ctx->is_current_scan_ctx_finished()) {
+            RETURN_IF_ERROR(_scanner_ctx->init());
+            RETURN_IF_ERROR(_state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
+        } else {
+            // empty scanner means finish now, and then just get block
+            shared_scan_queue_ptr->inc_finish_parallel_num();
         }
     } else {
         RETURN_IF_ERROR(!_eos ? _prepare_scanners() : Status::OK());
@@ -308,7 +298,7 @@ Status VScanNode::_start_scanners(const std::list<VScannerSPtr>& scanners) {
                                                      _output_tuple_desc, scanners, limit(),
                                                      _state->query_options().mem_limit / 20);
     }
-    RETURN_IF_ERROR(_scanner_ctx->init());
+    // RETURN_IF_ERROR(_scanner_ctx->init());
     return Status::OK();
 }
 
@@ -454,12 +444,10 @@ Status VScanNode::close(RuntimeState* state) {
 void VScanNode::release_resource(RuntimeState* state) {
     START_AND_SCOPE_SPAN(state->get_tracer(), span, "VScanNode::release_resource");
     if (_scanner_ctx.get()) {
-        if (!state->enable_pipeline_exec() || _should_create_scanner) {
-            // stop and wait the scanner scheduler to be done
-            // _scanner_ctx may not be created for some short circuit case.
-            _scanner_ctx->set_should_stop();
-            _scanner_ctx->clear_and_join(this, state);
-        }
+        // stop and wait the scanner scheduler to be done
+        // _scanner_ctx may not be created for some short circuit case.
+        _scanner_ctx->set_should_stop();
+        _scanner_ctx->clear_and_join(this, state);
     }
 
     for (auto& ctx : _runtime_filter_ctxs) {
@@ -1413,7 +1401,15 @@ Status VScanNode::_prepare_scanners() {
     std::list<VScannerSPtr> scanners;
     RETURN_IF_ERROR(_init_scanners(&scanners));
     if (scanners.empty()) {
-        _eos = true;
+        if (_is_pipeline_scan) {
+            _scanner_ctx = pipeline::PipScannerContext::create_shared(
+                    _state, this, _input_tuple_desc, _output_tuple_desc, scanners, limit(),
+                    _state->query_options().mem_limit / 20, _col_distribute_ids);
+            _eos = false;
+            // RETURN_IF_ERROR(_scanner_ctx->init());
+        } else {
+            _eos = true;
+        }
     } else {
         COUNTER_SET(_num_scanners, static_cast<int64_t>(scanners.size()));
         RETURN_IF_ERROR(_start_scanners(scanners));

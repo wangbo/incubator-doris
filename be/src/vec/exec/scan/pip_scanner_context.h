@@ -51,27 +51,30 @@ public:
         }
 
         {
-            std::unique_lock<std::mutex> l(*_queue_mutexs[id]);
-            if (!_blocks_queues[id].empty()) {
-                *block = std::move(_blocks_queues[id].front());
-                _blocks_queues[id].pop_front();
+            bool get_block = false;
+            _shared_scan_queue_ctx->get_blocks(id, block, &get_block);
+            if (get_block) {
+                return Status::OK();
             } else {
-                *eos = _is_finished || _should_stop;
+                *eos = _shared_scan_queue_ctx->is_finished() || _should_stop;
                 return Status::OK();
             }
         }
-        _current_used_bytes -= (*block)->allocated_bytes();
+
         return Status::OK();
     }
 
     // We should make those method lock free.
-    bool done() override { return _is_finished || _should_stop || _status_error; }
+    bool done() override {
+        return _shared_scan_queue_ctx->is_finished() || _should_stop || _status_error;
+    }
+
+    void hook_when_all_scanners_finish() override {
+        _dispose_coloate_blocks_not_in_queue();
+        _shared_scan_queue_ctx->inc_finish_parallel_num();
+    }
 
     void append_blocks_to_queue(std::vector<vectorized::BlockUPtr>& blocks) override {
-        const int queue_size = _queue_mutexs.size();
-        const int block_size = blocks.size();
-        int64_t local_bytes = 0;
-
         if (_need_colocate_distribute) {
             std::vector<uint64_t> hash_vals;
             for (const auto& block : blocks) {
@@ -105,36 +108,18 @@ public:
                 }
             }
         } else {
-            for (const auto& block : blocks) {
-                local_bytes += block->allocated_bytes();
-            }
-
-            for (int i = 0; i < queue_size && i < block_size; ++i) {
-                int queue = _next_queue_to_feed;
-                {
-                    std::lock_guard<std::mutex> l(*_queue_mutexs[queue]);
-                    for (int j = i; j < block_size; j += queue_size) {
-                        _blocks_queues[queue].emplace_back(std::move(blocks[j]));
-                    }
-                }
-                _next_queue_to_feed = queue + 1 < queue_size ? queue + 1 : 0;
-            }
+            _shared_scan_queue_ctx->push_blocks(&blocks);
         }
-        _current_used_bytes += local_bytes;
     }
 
-    bool empty_in_queue(int id) override {
-        std::unique_lock<std::mutex> l(*_queue_mutexs[id]);
-        return _blocks_queues[id].empty();
+    bool empty_in_queue(int queue_id) override {
+        return _shared_scan_queue_ctx->empty_in_queue(queue_id);
     }
 
     void set_max_queue_size(const int max_queue_size) override {
         _max_queue_size = max_queue_size;
-        for (int i = 0; i < max_queue_size; ++i) {
-            _queue_mutexs.emplace_back(new std::mutex);
-            _blocks_queues.emplace_back(std::list<vectorized::BlockUPtr>());
-        }
         if (_need_colocate_distribute) {
+            std::cout << "a buhuiba" << std::endl;
             int real_block_size =
                     limit == -1 ? _batch_size : std::min(static_cast<int64_t>(_batch_size), limit);
             int64_t free_blocks_memory_usage = 0;
@@ -153,16 +138,15 @@ public:
     }
 
     bool has_enough_space_in_blocks_queue() const override {
-        return _current_used_bytes < _max_bytes_in_queue / 2 * _max_queue_size;
+        return _shared_scan_queue_ctx->has_enough_space_in_blocks_queue();
     }
 
-    virtual void _dispose_coloate_blocks_not_in_queue() override {
+    void _dispose_coloate_blocks_not_in_queue() {
         if (_need_colocate_distribute) {
             for (int i = 0; i < _max_queue_size; ++i) {
-                std::scoped_lock s(*_colocate_block_mutexs[i], *_queue_mutexs[i]);
+                std::lock_guard<std::mutex> l(*_colocate_block_mutexs[i]);
                 if (_colocate_blocks[i] && !_colocate_blocks[i]->empty()) {
-                    _current_used_bytes += _colocate_blocks[i]->allocated_bytes();
-                    _blocks_queues[i].emplace_back(std::move(_colocate_blocks[i]));
+                    _shared_scan_queue_ctx->push_block_with_queue_id(std::move(_colocate_blocks[i]), i);
                     _colocate_mutable_blocks[i]->clear();
                 }
             }
@@ -171,10 +155,6 @@ public:
 
 private:
     int _max_queue_size = 1;
-    int _next_queue_to_feed = 0;
-    std::vector<std::unique_ptr<std::mutex>> _queue_mutexs;
-    std::vector<std::list<vectorized::BlockUPtr>> _blocks_queues;
-    std::atomic_int64_t _current_used_bytes = 0;
 
     const std::vector<int>& _col_distribute_ids;
     const bool _need_colocate_distribute;
@@ -203,11 +183,7 @@ private:
             begin += row_add;
 
             if (row_add == max_add) {
-                _current_used_bytes += _colocate_blocks[loc]->allocated_bytes();
-                {
-                    std::lock_guard<std::mutex> queue_l(*_queue_mutexs[loc]);
-                    _blocks_queues[loc].emplace_back(std::move(_colocate_blocks[loc]));
-                }
+                _shared_scan_queue_ctx->push_block_with_queue_id(std::move(_colocate_blocks[loc]), loc);
                 bool get_block_not_empty = true;
                 _colocate_blocks[loc] = get_free_block(&get_block_not_empty, get_block_not_empty);
                 _colocate_mutable_blocks[loc]->set_muatable_columns(

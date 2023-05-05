@@ -182,7 +182,7 @@ PipelinePtr PipelineFragmentContext::add_pipeline() {
 }
 
 Status PipelineFragmentContext::prepare(const doris::TPipelineFragmentParams& request,
-                                        const size_t idx) {
+                                        const size_t idx, QueryContext* ctx_ptr) {
     if (_prepared) {
         return Status::InternalError("Already prepared");
     }
@@ -280,10 +280,8 @@ Status PipelineFragmentContext::prepare(const doris::TPipelineFragmentParams& re
             auto* scan_node = static_cast<vectorized::VScanNode*>(scan_nodes[i]);
             const std::vector<TScanRangeParams>& scan_ranges = find_with_default(
                     local_params.per_node_scan_ranges, scan_node->id(), no_scan_ranges);
-            const bool shared_scan =
-                    find_with_default(local_params.per_node_shared_scans, scan_node->id(), false);
             scan_node->set_scan_ranges(scan_ranges);
-            scan_node->set_shared_scan(_runtime_state.get(), shared_scan);
+            ctx_ptr->get_shared_scan_queue_controller()->insert_real_parallel(scan_node->id(), request.local_params.size());
         } else {
             ScanNode* scan_node = static_cast<ScanNode*>(node);
             const std::vector<TScanRangeParams>& scan_ranges = find_with_default(
