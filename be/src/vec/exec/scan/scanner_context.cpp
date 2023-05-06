@@ -151,7 +151,7 @@ vectorized::BlockUPtr ScannerContext::get_free_block(bool* has_free_block,
 
 void ScannerContext::return_free_block(std::unique_ptr<vectorized::Block> block) {
     block->clear_column_data();
-    _free_blocks_memory_usage->add(block->allocated_bytes());
+    // _free_blocks_memory_usage->add(block->allocated_bytes());
     std::lock_guard l(_free_blocks_lock);
     _free_blocks.emplace_back(std::move(block));
 }

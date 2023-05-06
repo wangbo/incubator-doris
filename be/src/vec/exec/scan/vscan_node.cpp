@@ -179,7 +179,12 @@ Status VScanNode::alloc_resource(RuntimeState* state) {
         ptr->set_shared_scan_queue(shared_scan_queue_ptr);
         // std::cout << "scanners=" << _num_scanners->value() << ",queue_id=" << _context_queue_id << std::endl;
 
-        RETURN_IF_ERROR(_state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
+        if (!_scanner_ctx->is_current_scan_ctx_finished()) {
+            RETURN_IF_ERROR(_state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
+        } else {
+            // empty scanner means finish now, and then just get block
+            shared_scan_queue_ptr->inc_finish_parallel_num();
+        }
     } else {
         RETURN_IF_ERROR(!_eos ? _prepare_scanners() : Status::OK());
         if (_scanner_ctx) {
@@ -1396,7 +1401,15 @@ Status VScanNode::_prepare_scanners() {
     std::list<VScannerSPtr> scanners;
     RETURN_IF_ERROR(_init_scanners(&scanners));
     if (scanners.empty()) {
-        _eos = true;
+        if (_is_pipeline_scan) {
+            _scanner_ctx = pipeline::PipScannerContext::create_shared(
+                    _state, this, _input_tuple_desc, _output_tuple_desc, scanners, limit(),
+                    _state->query_options().mem_limit / 20, _col_distribute_ids);
+            _eos = false;
+            // RETURN_IF_ERROR(_scanner_ctx->init());
+        } else {
+            _eos = true;
+        }
     } else {
         COUNTER_SET(_num_scanners, static_cast<int64_t>(scanners.size()));
         RETURN_IF_ERROR(_start_scanners(scanners));
