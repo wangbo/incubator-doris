@@ -102,6 +102,10 @@ public:
         this->_max_bytes_limit = max_bytes_limit;
     }
 
+    doris::Mutex _free_blocks_lock;
+    std::vector<vectorized::BlockUPtr> _free_blocks;
+
+
 private:
     std::atomic_int32_t _next_queue_to_feed = 0;
     std::vector<std::unique_ptr<std::mutex>> _queue_mutexs;
@@ -120,7 +124,7 @@ private:
 class SharedScanQueueController {
 
 public:
-    SharedQueueContext* get_scan_queue_ctx(int node_id, int& parallel, int64_t query_mem_limit) {
+    std::shared_ptr<SharedQueueContext> get_scan_queue_ctx(int node_id, int& parallel, int64_t query_mem_limit) {
         std::lock_guard<std::mutex> lock(_mutex);
         auto it = _node_queue_map.find(node_id);
         auto it_2 = _node_id_real_paral_map.find(node_id);
@@ -141,13 +145,11 @@ public:
 
             shared_queue_ctx->set_max_bytes_limit(query_mem_limit * parallel);
             shared_queue_ctx->set_total_parallel(parallel);
-            SharedQueueContext* ret = shared_queue_ctx.get();
             // std::cout << "parallel=" << parallel << ", max mem limit=" << (query_mem_limit * parallel) << std::endl;
-            _node_queue_map.insert({node_id, std::move(shared_queue_ctx)});
-            return ret;
+            _node_queue_map.insert({node_id, shared_queue_ctx});
+            return shared_queue_ctx;
         } else {
-            auto* ret = it->second.get();
-            return ret;
+            return it->second;
         }
     }
 

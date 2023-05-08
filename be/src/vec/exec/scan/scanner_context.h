@@ -34,6 +34,8 @@
 #include "vec/core/block.h"
 #include "vec/exec/scan/vscanner.h"
 
+#include "vec/runtime/shared_scan_queue_controller.h"
+
 namespace doris {
 
 class ThreadPoolToken;
@@ -152,6 +154,8 @@ public:
     int32_t queue_idx = -1;
     ThreadPoolToken* thread_token;
     std::vector<bthread_t> _btids;
+
+    std::shared_ptr<doris::vectorized::SharedQueueContext> _shared_scan_queue_ctx;
 
 private:
     Status _close_and_clear_scanners(VScanNode* node, RuntimeState* state);

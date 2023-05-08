@@ -171,15 +171,15 @@ Status VScanNode::alloc_resource(RuntimeState* state) {
         int64_t query_mem_limit = state->query_options().mem_limit;
 
         // std::cout << "mem limit=" << query_mem_limit << ", /20" << (query_mem_limit / 20) << ", origin=" << state->query_options().mem_limit << std::endl;
-        auto* shared_scan_queue_ptr =
+        auto shared_scan_queue_ptr =
                 _shared_scan_queue_controller->get_scan_queue_ctx(id(), parallel, query_mem_limit / 20);
         
         _scanner_ctx->set_max_queue_size(parallel);
-        auto* ptr = reinterpret_cast<pipeline::PipScannerContext*>(_scanner_ctx.get());        
-        ptr->set_shared_scan_queue(shared_scan_queue_ptr);
+        _scanner_ctx->_shared_scan_queue_ctx = shared_scan_queue_ptr;
         // std::cout << "scanners=" << _num_scanners->value() << ",queue_id=" << _context_queue_id << std::endl;
 
         if (!_scanner_ctx->is_current_scan_ctx_finished()) {
+            RETURN_IF_ERROR(_scanner_ctx->init());
             RETURN_IF_ERROR(_state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
         } else {
             // empty scanner means finish now, and then just get block
@@ -298,7 +298,7 @@ Status VScanNode::_start_scanners(const std::list<VScannerSPtr>& scanners) {
                                                      _output_tuple_desc, scanners, limit(),
                                                      _state->query_options().mem_limit / 20);
     }
-    RETURN_IF_ERROR(_scanner_ctx->init());
+    // RETURN_IF_ERROR(_scanner_ctx->init());
     return Status::OK();
 }
 

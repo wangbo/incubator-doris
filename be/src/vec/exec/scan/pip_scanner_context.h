@@ -153,11 +153,6 @@ public:
         }
     }
 
-    //todo(wb) used shared ptr
-    void set_shared_scan_queue(vectorized::SharedQueueContext* shared_scan_queue_ctx) {
-        this->_shared_scan_queue_ctx = shared_scan_queue_ctx;
-    }
-
 private:
     int _max_queue_size = 1;
 
@@ -166,8 +161,6 @@ private:
     std::vector<vectorized::BlockUPtr> _colocate_blocks;
     std::vector<std::unique_ptr<vectorized::MutableBlock>> _colocate_mutable_blocks;
     std::vector<std::unique_ptr<std::mutex>> _colocate_block_mutexs;
-
-    doris::vectorized::SharedQueueContext* _shared_scan_queue_ctx;
 
     void _add_rows_colocate_blocks(vectorized::Block* block, int loc,
                                    const std::vector<int>& rows) {

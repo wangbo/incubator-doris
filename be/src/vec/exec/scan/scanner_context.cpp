@@ -107,7 +107,7 @@ Status ScannerContext::init() {
         auto block = vectorized::Block::create_unique(_output_tuple_desc->slots(), real_block_size,
                                                       true /*ignore invalid slots*/);
         free_blocks_memory_usage += block->allocated_bytes();
-        _free_blocks.emplace_back(std::move(block));
+        _shared_scan_queue_ctx->_free_blocks.emplace_back(std::move(block));
     }
     _free_blocks_memory_usage->add(free_blocks_memory_usage);
 
@@ -133,11 +133,11 @@ Status ScannerContext::init() {
 vectorized::BlockUPtr ScannerContext::get_free_block(bool* has_free_block,
                                                      bool get_block_not_empty) {
     {
-        std::lock_guard l(_free_blocks_lock);
-        if (!_free_blocks.empty()) {
-            if (!get_block_not_empty || _free_blocks.back()->mem_reuse()) {
-                auto block = std::move(_free_blocks.back());
-                _free_blocks.pop_back();
+        std::lock_guard l(_shared_scan_queue_ctx->_free_blocks_lock);
+        if (!_shared_scan_queue_ctx->_free_blocks.empty()) {
+            if (!get_block_not_empty || _shared_scan_queue_ctx->_free_blocks.back()->mem_reuse()) {
+                auto block = std::move(_shared_scan_queue_ctx->_free_blocks.back());
+                _shared_scan_queue_ctx->_free_blocks.pop_back();
                 _free_blocks_memory_usage->add(-block->allocated_bytes());
                 return block;
             }
@@ -153,8 +153,10 @@ vectorized::BlockUPtr ScannerContext::get_free_block(bool* has_free_block,
 void ScannerContext::return_free_block(std::unique_ptr<vectorized::Block> block) {
     block->clear_column_data();
     // _free_blocks_memory_usage->add(block->allocated_bytes());
-    std::lock_guard l(_free_blocks_lock);
-    _free_blocks.emplace_back(std::move(block));
+    // std::lock_guard l(_free_blocks_lock);
+    // _free_blocks.emplace_back(std::move(block));
+    std::lock_guard l(_shared_scan_queue_ctx->_free_blocks_lock);
+    _shared_scan_queue_ctx->_free_blocks.emplace_back(std::move(block));
 }
 
 void ScannerContext::append_blocks_to_queue(std::vector<vectorized::BlockUPtr>& blocks) {
@@ -350,11 +352,9 @@ void ScannerContext::get_next_batch_of_scanners(std::list<VScannerSPtr>* current
     // 1. Calculate how many scanners should be scheduled at this run.
     int thread_slot_num = 0;
     {
-        // If there are enough space in blocks queue,
-        // the scanner number depends on the _free_blocks numbers
-        std::lock_guard f(_free_blocks_lock);
-        thread_slot_num = _free_blocks.size() / _block_per_scanner;
-        thread_slot_num += (_free_blocks.size() % _block_per_scanner != 0);
+        std::lock_guard f(_shared_scan_queue_ctx->_free_blocks_lock);
+        thread_slot_num = _shared_scan_queue_ctx->_free_blocks.size() / _block_per_scanner;
+        thread_slot_num += (_shared_scan_queue_ctx->_free_blocks.size() % _block_per_scanner != 0);
         thread_slot_num = std::min(thread_slot_num, _max_thread_num - _num_running_scanners);
         if (thread_slot_num <= 0) {
             thread_slot_num = 1;
