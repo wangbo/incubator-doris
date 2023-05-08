@@ -66,8 +66,10 @@ public:
     virtual ~ScannerContext() = default;
     Status init();
 
-    vectorized::BlockUPtr get_free_block(bool* has_free_block, bool get_not_empty_block = false);
-    void return_free_block(std::unique_ptr<vectorized::Block> block);
+    virtual vectorized::BlockUPtr get_free_block(bool* has_free_block,
+                                                 bool get_not_empty_block = false,
+                                                 int scanner_id = -1);
+    virtual void return_free_block(std::unique_ptr<vectorized::Block> block, int scanner_id = -1);
 
     // Append blocks from scanners to the blocks queue.
     virtual void append_blocks_to_queue(std::vector<vectorized::BlockUPtr>& blocks);
@@ -139,6 +141,20 @@ public:
         return _cur_bytes_in_queue < _max_bytes_in_queue / 2;
     }
 
+    virtual int cal_thread_slot_num_by_free_block_num() {
+        int thread_slot_num = 0;
+        std::lock_guard f(_free_blocks_lock);
+        thread_slot_num = _free_blocks.size() / _block_per_scanner;
+        thread_slot_num += (_free_blocks.size() % _block_per_scanner != 0);
+        thread_slot_num = std::min(thread_slot_num, _max_thread_num - _num_running_scanners);
+        if (thread_slot_num <= 0) {
+            thread_slot_num = 1;
+        }
+        return thread_slot_num;
+    }
+
+    virtual void set_scan_producer_group_num(int scan_producer_group_num) {}
+
     void reschedule_scanner_ctx();
 
     // the unique id of this context
@@ -152,6 +168,8 @@ private:
 
 protected:
     virtual void _dispose_coloate_blocks_not_in_queue() {}
+
+    virtual void _init_free_block(int pre_alloc_block_count, int real_block_size);
 
     RuntimeState* _state;
     VScanNode* _parent;
@@ -197,6 +215,9 @@ protected:
     // Pre-allocated blocks for all scanners to share, for memory reuse.
     doris::Mutex _free_blocks_lock;
     std::vector<vectorized::BlockUPtr> _free_blocks;
+
+    // used to calculate pip_scan_ctx's free block num
+    std::atomic_int32_t _total_free_block_num = 0;
 
     int _batch_size;
     // The limit from SQL's limit clause

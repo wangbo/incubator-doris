@@ -177,8 +177,20 @@ Status VScanNode::alloc_resource(RuntimeState* state) {
             auto status = !_eos ? _prepare_scanners() : Status::OK();
             if (_scanner_ctx) {
                 DCHECK(!_eos && _num_scanners->value() > 0);
-                _scanner_ctx->set_max_queue_size(
-                        _shared_scan_opt ? std::max(state->query_parallel_instance_num(), 1) : 1);
+                int max_queue_size =
+                        _shared_scan_opt ? std::max(state->query_parallel_instance_num(), 1) : 1;
+                // step 1: set group num
+                if (_shared_scan_opt) {
+                    // when using shared scan, we should split the shared variables
+                    _scanner_ctx->set_scan_producer_group_num(_scan_producer_group_num);
+                } else {
+                    // just keep the same with origin logic
+                    _scanner_ctx->set_scan_producer_group_num(1);
+                }
+                // step 2: init queues, including free block queue and data queue
+                _scanner_ctx->set_max_queue_size(max_queue_size);
+                // step 3: pre allocate sth
+                RETURN_IF_ERROR(_scanner_ctx->init());
                 RETURN_IF_ERROR(
                         _state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
             }
@@ -198,6 +210,7 @@ Status VScanNode::alloc_resource(RuntimeState* state) {
     } else {
         RETURN_IF_ERROR(!_eos ? _prepare_scanners() : Status::OK());
         if (_scanner_ctx) {
+            RETURN_IF_ERROR(_scanner_ctx->init());
             RETURN_IF_ERROR(_state->exec_env()->scanner_scheduler()->submit(_scanner_ctx.get()));
         }
     }
@@ -248,7 +261,10 @@ Status VScanNode::get_next(RuntimeState* state, vectorized::Block* block, bool* 
 
     // get scanner's block memory
     block->swap(*scan_block);
-    _scanner_ctx->return_free_block(std::move(scan_block));
+    // todo(wb) it should be use scanner_id instead of _context_queue_id to return block
+    // but in clickbench, it make no difference.
+    // For the sake of simple implementation, use _context_queue_id here
+    _scanner_ctx->return_free_block(std::move(scan_block), _context_queue_id);
 
     reached_limit(block, eos);
     if (*eos) {
@@ -308,7 +324,6 @@ Status VScanNode::_start_scanners(const std::list<VScannerSPtr>& scanners) {
                                                      _output_tuple_desc, scanners, limit(),
                                                      _state->query_options().mem_limit / 20);
     }
-    RETURN_IF_ERROR(_scanner_ctx->init());
     return Status::OK();
 }
 

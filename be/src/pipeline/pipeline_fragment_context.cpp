@@ -284,6 +284,8 @@ Status PipelineFragmentContext::prepare(const doris::TPipelineFragmentParams& re
                     find_with_default(local_params.per_node_shared_scans, scan_node->id(), false);
             scan_node->set_scan_ranges(scan_ranges);
             scan_node->set_shared_scan(_runtime_state.get(), shared_scan);
+            scan_node->set_scan_producer_group_num(scan_ranges.size(),
+                                                   _runtime_state->query_parallel_instance_num());
         } else {
             ScanNode* scan_node = static_cast<ScanNode*>(node);
             const std::vector<TScanRangeParams>& scan_ranges = find_with_default(
