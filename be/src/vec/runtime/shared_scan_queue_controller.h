@@ -96,7 +96,7 @@ public:
         return _blocks_queues[queue_id].empty();
     }
 
-    bool has_enough_space_in_blocks_queue() { return _current_used_bytes < _max_bytes_limit; }
+    bool has_enough_space_in_blocks_queue() { return _current_used_bytes < (_max_bytes_limit / 2); }
 
     void set_max_bytes_limit(int64_t max_bytes_limit) {
         this->_max_bytes_limit = max_bytes_limit;
