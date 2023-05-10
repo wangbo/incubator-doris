@@ -199,7 +199,7 @@ private:
 
     // Like cfs rb tree in sched_entity
     struct TaskGroupSchedEntityComparator {
-        bool operator()(const taskgroup::TGEntityPtr&, const taskgroup::TGEntityPtr&) const;
+        bool operator()(const taskgroup::TGEntityPtr, const taskgroup::TGEntityPtr) const;
     };
     using ResouceGroupSet = std::set<taskgroup::TGEntityPtr, TaskGroupSchedEntityComparator>;
     ResouceGroupSet _group_entities;

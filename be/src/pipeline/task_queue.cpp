@@ -204,7 +204,8 @@ Status MultiCoreTaskQueue::push_back(PipelineTask* task, size_t core_id) {
 }
 
 bool TaskGroupTaskQueue::TaskGroupSchedEntityComparator::operator()(
-        const taskgroup::TGEntityPtr& lhs_ptr, const taskgroup::TGEntityPtr& rhs_ptr) const {
+        const taskgroup::TGEntityPtr lhs_ptr, const taskgroup::TGEntityPtr rhs_ptr) const {
+    // return lhs_ptr->_tg->id() < rhs_ptr->_tg->id();
     int64_t lhs_val = lhs_ptr->vruntime_ns();
     int64_t rhs_val = rhs_ptr->vruntime_ns();
     if (lhs_val != rhs_val) {
@@ -215,7 +216,7 @@ bool TaskGroupTaskQueue::TaskGroupSchedEntityComparator::operator()(
         if (l_share != r_share) {
             return l_share < rhs_val;
         } else {
-            return lhs_ptr < rhs_ptr;
+            return lhs_ptr->_tg->id() < rhs_ptr->_tg->id();
         }
     }
 }
@@ -243,9 +244,21 @@ Status TaskGroupTaskQueue::_push_back(PipelineTask* task) {
     auto* entity = task->get_task_group()->task_entity();
     std::unique_lock<std::mutex> lock(_rs_mutex);
     entity->push_back(task);
+    int before_size = _group_entities.size();
     if (_group_entities.find(entity) == _group_entities.end()) {
         _enqueue_task_group<from_executor>(entity);
     }
+    if (_group_entities.size() > 2) {
+        int i = 0;
+        for (auto& entry:  _group_entities) {
+            LOG(INFO) << "print entry, id = " << i << ", size= "<< _group_entities.size() 
+                << ", " << entry->debug_string() << ", addr=" << entry << std::endl;
+            i++;
+        }
+    }
+    LOG(INFO) << "push task group=" << task->get_task_group()->_name
+              << ",cpu share=" << task->get_task_group()->_cpu_share
+              << ",_group_entities after size=" << _group_entities.size() << ", before=" << before_size;
     _wait_task.notify_one();
     return Status::OK();
 }
@@ -268,10 +281,18 @@ PipelineTask* TaskGroupTaskQueue::take(size_t core_id) {
         }
     }
     DCHECK(entity->task_size() > 0);
+    int before_size = _group_entities.size();
     if (entity->task_size() == 1) {
         _dequeue_task_group(entity);
     }
-    return entity->take();
+    auto* task = entity->take();
+    if (task) {
+        LOG(INFO) << "get task group=" << task->get_task_group()->_name
+                  << ",cpu share=" << task->get_task_group()->_cpu_share
+                  << ",_group_entities after size=" << _group_entities.size()
+                  << ", before=" << before_size;
+    }
+    return task;
 }
 
 template <bool from_worker>

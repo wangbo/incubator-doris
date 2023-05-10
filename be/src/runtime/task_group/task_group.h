@@ -61,7 +61,7 @@ public:
 
     std::string debug_string() const;
 
-private:
+public:
     // TODO pipeline use MLFQ
     std::queue<pipeline::PipelineTask*> _queue;
     taskgroup::TaskGroup* _tg;
@@ -86,7 +86,7 @@ public:
 
     void check_and_update(const TaskGroupInfo& tg_info);
 
-private:
+public:
     mutable std::shared_mutex mutex;
     const uint64_t _id;
     std::string _name;
