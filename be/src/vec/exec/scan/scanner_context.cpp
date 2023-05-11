@@ -143,10 +143,11 @@ vectorized::BlockUPtr ScannerContext::get_free_block(bool* has_free_block,
         }
     }
     *has_free_block = false;
+    return nullptr;
 
-    COUNTER_UPDATE(_newly_create_free_blocks_num, 1);
-    return vectorized::Block::create_unique(_real_tuple_desc->slots(), _batch_size,
-                                            true /*ignore invalid slots*/);
+    // COUNTER_UPDATE(_newly_create_free_blocks_num, 1);
+    // return vectorized::Block::create_unique(_real_tuple_desc->slots(), _batch_size,
+    //                                         true /*ignore invalid slots*/);
 }
 
 void ScannerContext::return_free_block(std::unique_ptr<vectorized::Block> block) {
