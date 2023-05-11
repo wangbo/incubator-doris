@@ -351,6 +351,9 @@ void ScannerContext::get_next_batch_of_scanners(std::list<VScannerSPtr>* current
         // If there are enough space in blocks queue,
         // the scanner number depends on the _free_blocks numbers
         std::lock_guard f(_free_blocks_lock);
+        if (_free_blocks.size() == 0) {
+            return;
+        }
         thread_slot_num = _free_blocks.size() / _block_per_scanner;
         thread_slot_num += (_free_blocks.size() % _block_per_scanner != 0);
         thread_slot_num = std::min(thread_slot_num, _max_thread_num - _num_running_scanners);
