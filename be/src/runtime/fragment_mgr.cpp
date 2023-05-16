@@ -644,6 +644,7 @@ Status FragmentMgr::_get_query_ctx(const Params& params, TUniqueId query_id, boo
         // Create the query fragments context.
         query_ctx = QueryContext::create_shared(params.fragment_num_on_host, _exec_env,
                                                 params.query_options);
+        LOG(INFO) << "finish create query ctx,query_id: " << UniqueId(query_ctx->query_id.hi, query_ctx->query_id.lo);
         query_ctx->query_id = query_id;
         RETURN_IF_ERROR(DescriptorTbl::create(&(query_ctx->obj_pool), params.desc_tbl,
                                               &(query_ctx->desc_tbl)));
@@ -722,6 +723,7 @@ Status FragmentMgr::exec_plan_fragment(const TExecPlanFragmentParams& params,
              << apache::thrift::ThriftDebugString(params.query_options).c_str();
     START_AND_SCOPE_SPAN(tracer, span, "FragmentMgr::exec_plan_fragment");
     const TUniqueId& fragment_instance_id = params.params.fragment_instance_id;
+    LOG(INFO) << "try find fragment, id=" << print_id(fragment_instance_id);
     {
         std::lock_guard<std::mutex> lock(_lock);
         auto iter = _fragment_map.find(fragment_instance_id);
@@ -735,6 +737,7 @@ Status FragmentMgr::exec_plan_fragment(const TExecPlanFragmentParams& params,
     std::shared_ptr<QueryContext> query_ctx;
     bool pipeline_engine_enabled = params.query_options.__isset.enable_pipeline_engine &&
                                    params.query_options.enable_pipeline_engine;
+    LOG(INFO) << "begin _get_query_ctx, id=" << print_id(fragment_instance_id);
     RETURN_IF_ERROR(
             _get_query_ctx(params, params.params.query_id, pipeline_engine_enabled, query_ctx));
     query_ctx->fragment_ids.push_back(fragment_instance_id);
@@ -801,6 +804,7 @@ Status FragmentMgr::exec_plan_fragment(const TPipelineFragmentParams& params,
 
     std::shared_ptr<FragmentExecState> exec_state;
     std::shared_ptr<QueryContext> query_ctx;
+    LOG(INFO) << "begin _get_query_ctx, id=" << print_id(params.query_id);
     RETURN_IF_ERROR(_get_query_ctx(params, params.query_id, true, query_ctx));
 
     if (params.__isset.resource_groups && !params.resource_groups.empty()) {

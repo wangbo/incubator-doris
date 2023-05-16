@@ -290,9 +290,11 @@ void PInternalServiceImpl::exec_plan_fragment_prepare(google::protobuf::RpcContr
                                                       const PExecPlanFragmentRequest* request,
                                                       PExecPlanFragmentResult* response,
                                                       google::protobuf::Closure* done) {
+    LOG(INFO) << "request arrive be";
     bool ret = _light_work_pool.try_offer([this, controller, request, response, done]() {
         exec_plan_fragment(controller, request, response, done);
     });
+    LOG(INFO) << "request finish in be";
     if (!ret) {
         LOG(WARNING) << "fail to offer request to the work pool";
         brpc::ClosureGuard closure_guard(done);
@@ -428,34 +430,44 @@ Status PInternalServiceImpl::_exec_plan_fragment(const std::string& ser_request,
     if (version == PFragmentRequestVersion::VERSION_1) {
         // VERSION_1 should be removed in v1.2
         TExecPlanFragmentParams t_request;
+        LOG(INFO) << "begin desr v1";
         {
             const uint8_t* buf = (const uint8_t*)ser_request.data();
             uint32_t len = ser_request.size();
             RETURN_IF_ERROR(deserialize_thrift_msg(buf, &len, compact, &t_request));
         }
+        LOG(INFO) << "finish desr v1";
         return _exec_env->fragment_mgr()->exec_plan_fragment(t_request);
     } else if (version == PFragmentRequestVersion::VERSION_2) {
         TExecPlanFragmentParamsList t_request;
+        LOG(INFO) << "begin desr v2";
         {
             const uint8_t* buf = (const uint8_t*)ser_request.data();
             uint32_t len = ser_request.size();
             RETURN_IF_ERROR(deserialize_thrift_msg(buf, &len, compact, &t_request));
         }
-
+        LOG(INFO) << "finish desr v2";
+        int idx = 0;
         for (const TExecPlanFragmentParams& params : t_request.paramsList) {
+            LOG(INFO) << "v2: begin exec idx=" << idx << ", total=" << t_request.paramsList.size();
             RETURN_IF_ERROR(_exec_env->fragment_mgr()->exec_plan_fragment(params));
+            idx++;
         }
         return Status::OK();
     } else if (version == PFragmentRequestVersion::VERSION_3) {
         TPipelineFragmentParamsList t_request;
+        LOG(INFO) << "begin desr v3";
         {
             const uint8_t* buf = (const uint8_t*)ser_request.data();
             uint32_t len = ser_request.size();
             RETURN_IF_ERROR(deserialize_thrift_msg(buf, &len, compact, &t_request));
         }
-
+        LOG(INFO) << "finish desr v3";
+        int idx = 0;
         for (const TPipelineFragmentParams& params : t_request.params_list) {
+            LOG(INFO) << "v3: begin exec idx=" << idx << ", total=" << t_request.params_list.size();
             RETURN_IF_ERROR(_exec_env->fragment_mgr()->exec_plan_fragment(params));
+            idx++;
         }
         return Status::OK();
     } else {
