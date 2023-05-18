@@ -241,6 +241,8 @@ public class Coordinator {
 
     private boolean enablePipelineEngine = false;
 
+    private boolean enableSharedScan = false;
+
     // Runtime filter merge instance address and ID
     public TNetworkAddress runtimeFilterMergeAddr;
     public TUniqueId runtimeFilterMergeInstanceId;
@@ -327,6 +329,7 @@ public class Coordinator {
         this.returnedAllResults = false;
         this.enableShareHashTableForBroadcastJoin = context.getSessionVariable().enableShareHashTableForBroadcastJoin;
         this.enablePipelineEngine = context.getSessionVariable().enablePipelineEngine;
+        this.enableSharedScan = context.getSessionVariable().enableSharedScan;
         initQueryOptions(context);
 
         setFromUserProperty(context);
@@ -1626,7 +1629,7 @@ public class Coordinator {
                             return scanNode.getId().asInt() == planNodeId;
                         }).findFirst();
 
-                        if (!enablePipelineEngine || perNodeScanRanges.size() > parallelExecInstanceNum
+                        if (!enableSharedScan || !enablePipelineEngine || perNodeScanRanges.size() > parallelExecInstanceNum
                                 || (node.isPresent() && node.get().getShouldColoScan())) {
                             int expectedInstanceNum = 1;
                             if (parallelExecInstanceNum > 1) {
