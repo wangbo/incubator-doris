@@ -126,7 +126,9 @@ public:
               _cur_state(PipelineTaskState::NOT_READY),
               _data_state(SourceState::DEPEND_ON_SOURCE),
               _fragment_context(fragment_context),
-              _parent_profile(parent_profile) {}
+              _parent_profile(parent_profile) {
+        _pipeline_task_watcher.start();
+    }
 
     Status prepare(RuntimeState* state);
 
@@ -146,6 +148,8 @@ public:
     void pop_out_runnable_queue() { _wait_worker_watcher.stop(); }
     void start_schedule_watcher() { _wait_schedule_watcher.start(); }
     void stop_schedule_watcher() { _wait_schedule_watcher.stop(); }
+    void start_wait_block_watcher() { _wait_block_watcher.start(); }
+    void stop_wait_block_watcher() { _wait_block_watcher.stop(); }
     PipelineTaskState get_state() { return _cur_state; }
     void set_state(PipelineTaskState state);
 
@@ -214,6 +218,28 @@ public:
     void set_core_id(int core_id) { this->_core_id = core_id; }
     int get_core_id() const { return this->_core_id; }
 
+    void set_first_exec_timer() {
+        if (!_is_set_first_exec_time) {
+            _first_exec_time = _pipeline_task_watcher.elapsed_time();
+            _is_set_first_exec_time = true;
+        }
+    }
+
+    void set_eos_timer() {
+        if (!_is_set_eos_time) {
+            _eos_time = _pipeline_task_watcher.elapsed_time();
+            _is_set_eos_time = true;
+        }
+    }
+
+    void set_finish_timer() {
+        if (!_is_set_finish_time) {
+            _finish_time = _pipeline_task_watcher.elapsed_time();
+            _is_set_finish_time = true;
+            COUNTER_UPDATE(_finish_timer, _finish_time);
+        }
+    }
+
 private:
     Status _open();
     void _init_profile();
@@ -249,6 +275,14 @@ private:
     int _queue_level = 0;
     int _core_id = 0;
 
+    MonotonicStopWatch _pipeline_task_watcher;
+    uint64_t _first_exec_time = 0;
+    bool _is_set_first_exec_time = false;
+    uint64_t _eos_time = 0;
+    bool _is_set_eos_time = false;
+    uint64_t _finish_time = 0;
+    bool _is_set_finish_time = false;
+
     RuntimeProfile* _parent_profile;
     std::unique_ptr<RuntimeProfile> _task_profile;
     RuntimeProfile::Counter* _task_cpu_timer;
@@ -274,5 +308,10 @@ private:
     RuntimeProfile::Counter* _wait_schedule_timer;
     RuntimeProfile::Counter* _yield_counts;
     RuntimeProfile::Counter* _core_change_times;
+    MonotonicStopWatch _wait_block_watcher;
+    RuntimeProfile::Counter* _wait_block_timer;
+    RuntimeProfile::Counter* _first_exec_timer;
+    RuntimeProfile::Counter* _eos_timer;
+    RuntimeProfile::Counter* _finish_timer;
 };
 } // namespace doris::pipeline

@@ -70,6 +70,11 @@ void PipelineTask::_init_profile() {
     _schedule_counts = ADD_COUNTER(_task_profile, "NumScheduleTimes", TUnit::UNIT);
     _yield_counts = ADD_COUNTER(_task_profile, "NumYieldTimes", TUnit::UNIT);
     _core_change_times = ADD_COUNTER(_task_profile, "CoreChangeTimes", TUnit::UNIT);
+
+    _wait_block_timer = ADD_TIMER(_task_profile, "WaitBlockTime");
+    _first_exec_timer = ADD_TIMER(_task_profile, "FirstExecTime");
+    _eos_timer = ADD_TIMER(_task_profile, "EosTime");
+    _finish_timer = ADD_TIMER(_task_profile, "FinishTime");
 }
 
 Status PipelineTask::prepare(RuntimeState* state) {
@@ -262,6 +267,9 @@ Status PipelineTask::close() {
         COUNTER_UPDATE(_wait_schedule_timer, _wait_schedule_watcher.elapsed_time());
         COUNTER_UPDATE(_close_timer, close_ns);
         COUNTER_UPDATE(_task_profile->total_time_counter(), close_ns);
+        COUNTER_UPDATE(_wait_block_timer, _wait_block_watcher.elapsed_time());
+        COUNTER_UPDATE(_first_exec_timer, _first_exec_time);
+        COUNTER_UPDATE(_eos_timer, _eos_time);
     }
     return s;
 }

@@ -74,6 +74,7 @@ Status BlockedTaskScheduler::add_blocked_task(PipelineTask* task) {
     if (this->_shutdown) {
         return Status::InternalError("BlockedTaskScheduler shutdown");
     }
+    task->start_wait_block_watcher();
     std::unique_lock<std::mutex> lock(_task_mutex);
     _blocked_tasks.push_back(task);
     _task_cond.notify_one();
@@ -173,6 +174,7 @@ void BlockedTaskScheduler::_schedule() {
             empty_times = 0;
             for (auto& task : ready_tasks) {
                 task->stop_schedule_watcher();
+                task->stop_wait_block_watcher();
                 _task_queue->push_back(task);
             }
             ready_tasks.clear();
@@ -239,6 +241,7 @@ void TaskScheduler::_do_work(size_t index) {
         if (!task) {
             continue;
         }
+        task->set_first_exec_timer();
         task->set_task_queue(_task_queue.get());
         auto* fragment_ctx = task->fragment_context();
         doris::signal::query_id_hi = fragment_ctx->get_query_id().hi;
@@ -279,6 +282,7 @@ void TaskScheduler::_do_work(size_t index) {
         }
 
         if (eos) {
+            task->set_eos_timer();
             // TODO: pipeline parallel need to wait the last task finish to call finalize
             //  and find_p_dependency
             status = task->finalize();
@@ -333,6 +337,7 @@ void TaskScheduler::_try_close_task(PipelineTask* task, PipelineTaskState state)
         if (state == PipelineTaskState::CANCELED) {
             task->finish_p_dependency();
         }
+        task->set_finish_timer();
         task->fragment_context()->close_a_pipeline();
     }
 }
