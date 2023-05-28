@@ -75,6 +75,8 @@ void PipelineTask::_init_profile() {
     _first_exec_timer = ADD_TIMER(_task_profile, "FirstExecTime");
     _eos_timer = ADD_TIMER(_task_profile, "EosTime");
     _finish_timer = ADD_TIMER(_task_profile, "FinishTime");
+    _src_pending_finish_timer = ADD_TIMER(_task_profile, "SrcPendingFinishTime");
+    _dst_pending_finish_timer = ADD_TIMER(_task_profile, "DstPendingFinishTime");
 }
 
 Status PipelineTask::prepare(RuntimeState* state) {

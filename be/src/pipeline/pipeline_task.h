@@ -153,7 +153,19 @@ public:
     PipelineTaskState get_state() { return _cur_state; }
     void set_state(PipelineTaskState state);
 
-    bool is_pending_finish() { return _source->is_pending_finish() || _sink->is_pending_finish(); }
+    bool is_pending_finish() {
+        bool ret1 = _source->is_pending_finish();
+        bool ret2 = _sink->is_pending_finish();
+        if (!ret1 && !_is_set_src_pending_finish_time) {
+            _is_set_src_pending_finish_time = true;
+            COUNTER_UPDATE(_src_pending_finish_timer, _pipeline_task_watcher.elapsed_time());
+        }
+        if (!ret2 && !_is_set_dst_pending_finish_time) {
+            _is_set_dst_pending_finish_time = true;
+            COUNTER_UPDATE(_dst_pending_finish_timer, _pipeline_task_watcher.elapsed_time());
+        }
+        return ret1 || ret2; 
+    }
 
     bool source_can_read() { return _source->can_read(); }
 
@@ -283,6 +295,9 @@ private:
     uint64_t _finish_time = 0;
     bool _is_set_finish_time = false;
 
+    bool _is_set_src_pending_finish_time = false;
+    bool _is_set_dst_pending_finish_time = false;
+
     RuntimeProfile* _parent_profile;
     std::unique_ptr<RuntimeProfile> _task_profile;
     RuntimeProfile::Counter* _task_cpu_timer;
@@ -313,5 +328,7 @@ private:
     RuntimeProfile::Counter* _first_exec_timer;
     RuntimeProfile::Counter* _eos_timer;
     RuntimeProfile::Counter* _finish_timer;
+    RuntimeProfile::Counter* _src_pending_finish_timer;
+    RuntimeProfile::Counter* _dst_pending_finish_timer;
 };
 } // namespace doris::pipeline
