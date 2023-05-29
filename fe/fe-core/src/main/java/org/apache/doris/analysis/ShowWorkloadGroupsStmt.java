@@ -22,11 +22,11 @@ import org.apache.doris.catalog.ScalarType;
 import org.apache.doris.common.UserException;
 import org.apache.doris.qe.ConnectContext;
 import org.apache.doris.qe.ShowResultSetMetaData;
-import org.apache.doris.resource.resourcegroup.ResourceGroupMgr;
+import org.apache.doris.workload.WorkloadGroupMgr;
 
-public class ShowResourceGroupsStmt extends ShowStmt {
+public class ShowWorkloadGroupsStmt extends ShowStmt {
 
-    public ShowResourceGroupsStmt() {}
+    public ShowWorkloadGroupsStmt() {}
 
     @Override
     public void analyze(Analyzer analyzer) throws UserException {
@@ -35,7 +35,7 @@ public class ShowResourceGroupsStmt extends ShowStmt {
 
     @Override
     public String toSql() {
-        return "SHOW RESOURCE GROUPS";
+        return "SHOW WORKLOAD GROUPS";
     }
 
     @Override
@@ -46,7 +46,7 @@ public class ShowResourceGroupsStmt extends ShowStmt {
     @Override
     public ShowResultSetMetaData getMetaData() {
         ShowResultSetMetaData.Builder builder = ShowResultSetMetaData.builder();
-        for (String title : ResourceGroupMgr.RESOURCE_GROUP_PROC_NODE_TITLE_NAMES) {
+        for (String title : WorkloadGroupMgr.WORKLOAD_GROUP_PROC_NODE_TITLE_NAMES) {
             builder.addColumn(new Column(title, ScalarType.createVarchar(30)));
         }
         return builder.build();

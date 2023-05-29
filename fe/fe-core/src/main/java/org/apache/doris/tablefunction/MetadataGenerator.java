@@ -230,8 +230,8 @@ public class MetadataGenerator {
     }
 
     private static TFetchSchemaTableDataResult resourceGroupsMetadataResult(TMetadataTableRequestParams params) {
-        List<List<String>> resourceGroupsInfo = Env.getCurrentEnv().getResourceGroupMgr()
-                .getResourcesInfo();
+        List<List<String>> resourceGroupsInfo = Env.getCurrentEnv().getWorkloadGroupMgr()
+                .getWorkloadGroupInfo();
         TFetchSchemaTableDataResult result = new TFetchSchemaTableDataResult();
         List<TRow> dataBatch = Lists.newArrayList();
         for (List<String> rGroupsInfo : resourceGroupsInfo) {

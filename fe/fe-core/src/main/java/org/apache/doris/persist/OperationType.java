@@ -285,9 +285,9 @@ public class OperationType {
     public static final short OP_ALTER_LIGHT_SCHEMA_CHANGE = 403;
 
     // resource group 410 ~ 419
-    public static final short OP_CREATE_RESOURCE_GROUP = 410;
-    public static final short OP_DROP_RESOURCE_GROUP = 411;
-    public static final short OP_ALTER_RESOURCE_GROUP = 412;
+    public static final short OP_CREATE_WORKLOAD_GROUP = 410;
+    public static final short OP_DROP_WORKLOAD_GROUP = 411;
+    public static final short OP_ALTER_WORKLOAD_GROUP = 412;
 
     // query stats 440 ~ 424
     public static final short OP_CLEAN_QUERY_STATS = 420;

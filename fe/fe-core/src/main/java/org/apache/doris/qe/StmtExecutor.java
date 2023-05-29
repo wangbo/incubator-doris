@@ -1068,10 +1068,10 @@ public class StmtExecutor {
                     parsedStmt.setIsExplain(explainOptions);
                 }
             }
-            if (parsedStmt instanceof QueryStmt && Config.enable_resource_group
+            if (parsedStmt instanceof QueryStmt && Config.enable_workload_group
                     && context.sessionVariable.enablePipelineEngine()) {
-                analyzer.setResourceGroups(analyzer.getEnv().getResourceGroupMgr()
-                        .getResourceGroup(context.sessionVariable.resourceGroup));
+                analyzer.setResourceGroups(analyzer.getEnv().getWorkloadGroupMgr()
+                        .getWorkloadGroup(context.sessionVariable.resourceGroup));
             }
         }
         profile.getSummaryProfile().setQueryAnalysisFinishTime();
