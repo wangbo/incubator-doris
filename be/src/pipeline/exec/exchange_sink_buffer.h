@@ -31,6 +31,7 @@
 
 #include "common/global_types.h"
 #include "common/status.h"
+#include "util/runtime_profile.h"
 
 namespace doris {
 class PTransmitDataParams;
@@ -60,7 +61,7 @@ class PipelineFragmentContext;
 // Each ExchangeSinkOperator have one ExchangeSinkBuffer
 class ExchangeSinkBuffer {
 public:
-    ExchangeSinkBuffer(PUniqueId, int, PlanNodeId, int, PipelineFragmentContext*);
+    ExchangeSinkBuffer(PUniqueId, int, PlanNodeId, int, PipelineFragmentContext*, RuntimeProfile*);
     ~ExchangeSinkBuffer();
     void register_sink(TUniqueId);
     Status add_block(TransmitInfo&& request);
@@ -94,7 +95,10 @@ private:
     int _be_number;
 
     PipelineFragmentContext* _context;
-
+    RuntimeProfile::Counter* _rpc_eos_timer;
+    RuntimeProfile::Counter* _rpc_sent_counter;
+    RuntimeProfile::Counter* _rpc_sent_timer;
+    RuntimeProfile::Counter* _rpc_before_callback_timer;
     Status _send_rpc(InstanceLoId);
     // must hold the _instance_to_package_queue_mutex[id] mutex to opera
     void _construct_request(InstanceLoId id);
