@@ -332,6 +332,10 @@ VDataStreamRecvr::VDataStreamRecvr(
     _first_batch_wait_total_timer = ADD_TIMER(_profile, "FirstBatchArrivalWaitTime");
     _decompress_timer = ADD_TIMER(_profile, "DecompressTime");
     _decompress_bytes = ADD_COUNTER(_profile, "DecompressBytes", TUnit::BYTES);
+
+    _find_rec_timer = ADD_TIMER(_profile, "FindRecTime");
+    _add_block_timer = ADD_TIMER(_profile, "addBlockTime");
+    _remove_sender_timer = ADD_TIMER(_profile, "RemoveSenderTime");
 }
 
 VDataStreamRecvr::~VDataStreamRecvr() {

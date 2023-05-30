@@ -154,6 +154,11 @@ private:
     RuntimeProfile::Counter* _decompress_bytes;
     RuntimeProfile::HighWaterMarkCounter* _blocks_memory_usage;
 
+public:
+    RuntimeProfile::Counter* _find_rec_timer;
+    RuntimeProfile::Counter* _add_block_timer;
+    RuntimeProfile::Counter* _remove_sender_timer;
+
     std::shared_ptr<QueryStatisticsRecvr> _sub_plan_query_statistics_recvr;
 
     bool _enable_pipeline;

@@ -95,7 +95,10 @@ Status VDataStreamMgr::transmit_block(const PTransmitDataParams* request,
     TUniqueId t_finst_id;
     t_finst_id.hi = finst_id.hi();
     t_finst_id.lo = finst_id.lo();
+    MonotonicStopWatch _local_watcher;
+    _local_watcher.start();
     auto recvr = find_recvr(t_finst_id, request->node_id());
+    COUNTER_UPDATE(recvr->_find_rec_timer, _local_watcher.elapsed_time());
     if (recvr == nullptr) {
         // The receiver may remove itself from the receiver map via deregister_recvr()
         // at any time without considering the remaining number of senders.
@@ -116,11 +119,13 @@ Status VDataStreamMgr::transmit_block(const PTransmitDataParams* request,
 
     bool eos = request->eos();
     if (request->has_block()) {
+        SCOPED_TIMER(recvr->_add_block_timer);
         recvr->add_block(request->block(), request->sender_id(), request->be_number(),
                          request->packet_seq(), eos ? nullptr : done);
     }
 
     if (eos) {
+        SCOPED_TIMER(recvr->_remove_sender_timer);
         recvr->remove_sender(request->sender_id(), request->be_number());
     }
     return Status::OK();
