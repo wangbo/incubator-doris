@@ -271,6 +271,9 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
                                                     *brpc_request,
                                                     request.channel->_brpc_dest_addr));
             } else {
+                LOG(INFO) << "client send block: fragment_instance_id="
+                          << print_id(brpc_request->finst_id()) << " query_id=" << brpc_request->query_id()
+                          << " node=" << brpc_request->node_id();
                 transmit_block(*request.channel->_brpc_stub, _closure, *brpc_request);
             }
         }
@@ -314,6 +317,9 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
                                                     *brpc_request,
                                                     request.channel->_brpc_dest_addr));
             } else {
+                LOG(INFO) << "client send block: fragment_instance_id="
+                          << print_id(brpc_request->finst_id()) << " query_id=" << brpc_request->query_id()
+                          << " node=" << brpc_request->node_id();
                 transmit_block(*request.channel->_brpc_stub, _closure, *brpc_request);
             }
         }

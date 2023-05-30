@@ -1063,7 +1063,7 @@ void PInternalServiceImpl::_transmit_block(google::protobuf::RpcController* cont
         finst_id.__set_hi(request->finst_id().hi());
         finst_id.__set_lo(request->finst_id().lo());
     }
-    VLOG_ROW << "transmit block: fragment_instance_id=" << print_id(request->finst_id())
+    LOG(INFO) << "transmit block: fragment_instance_id=" << print_id(request->finst_id())
              << " query_id=" << query_id << " node=" << request->node_id();
     // The response is accessed when done->Run is called in transmit_block(),
     // give response a default value to avoid null pointers in high concurrency.
@@ -1083,6 +1083,8 @@ void PInternalServiceImpl::_transmit_block(google::protobuf::RpcController* cont
         st.to_protobuf(response->mutable_status());
         done->Run();
     }
+    LOG(INFO) << "transmit block finish: fragment_instance_id=" << print_id(request->finst_id())
+             << " query_id=" << query_id << " node=" << request->node_id();
 }
 
 void PInternalServiceImpl::check_rpc_channel(google::protobuf::RpcController* controller,
