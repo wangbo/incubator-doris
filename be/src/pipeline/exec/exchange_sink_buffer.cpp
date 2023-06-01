@@ -40,6 +40,7 @@
 #include "runtime/thread_context.h"
 #include "service/backend_options.h"
 #include "util/proto_util.h"
+#include "util/time.h"
 #include "vec/sink/vdata_stream_sender.h"
 
 namespace doris::pipeline {
@@ -225,10 +226,12 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         }
         auto* _closure = new SelfDeleteClosure<PTransmitDataResult>(id, request.eos, nullptr);
         _closure->cntl.set_timeout_ms(request.channel->_brpc_timeout_ms);
+        int64_t start_rpc_time = GetCurrentTimeNanos();
         _closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
+            set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
             if (!s.ok()) {
                 _failed(id,
@@ -270,8 +273,10 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         _closure->cntl.set_timeout_ms(request.channel->_brpc_timeout_ms);
         _closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
+        int64_t start_rpc_time = GetCurrentTimeNanos();
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
+            set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
             if (!s.ok()) {
                 _failed(id,
@@ -312,6 +317,7 @@ void ExchangeSinkBuffer::_construct_request(InstanceLoId id) {
     _instance_to_request[id]->set_node_id(_dest_node_id);
     _instance_to_request[id]->set_sender_id(_sender_id);
     _instance_to_request[id]->set_be_number(_be_number);
+    _instance_to_rpc_time[id] = 0;
 }
 
 void ExchangeSinkBuffer::_ended(InstanceLoId id) {
@@ -324,5 +330,32 @@ void ExchangeSinkBuffer::_failed(InstanceLoId id, const std::string& err) {
     _context->cancel(PPlanFragmentCancelReason::INTERNAL_ERROR, err);
     _ended(id);
 };
+
+void ExchangeSinkBuffer::get_max_min_rpc_time(int64_t* max_time, int64_t* min_time) {
+    int64_t local_max_time = 0;
+    int64_t local_min_time = 0;
+    auto iter = _instance_to_rpc_time.begin();
+    if (iter != _instance_to_rpc_time.end()) {
+        local_max_time = iter->second;
+        local_min_time = iter->second;
+        iter++;
+    }
+    while (iter != _instance_to_rpc_time.end()) {
+        int64_t cur_val = iter->second;
+        local_max_time = cur_val > local_max_time ? cur_val : local_max_time;
+        local_min_time = cur_val < local_min_time ? cur_val : local_min_time;
+        iter++;
+    }
+    *max_time = local_max_time;
+    *min_time = local_min_time;
+}
+
+void ExchangeSinkBuffer::set_rpc_time(InstanceLoId id, int64_t start_rpc_time,
+                                      int64_t receive_rpc_time) {
+    int64_t rpc_spend_time = receive_rpc_time - start_rpc_time;
+    if (rpc_spend_time > 0) {
+        _instance_to_rpc_time[id] += rpc_spend_time;
+    }
+}
 
 } // namespace doris::pipeline
