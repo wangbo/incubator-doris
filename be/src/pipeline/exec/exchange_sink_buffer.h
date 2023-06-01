@@ -68,6 +68,8 @@ public:
     bool can_write() const;
     bool is_pending_finish() const;
     void close();
+    void get_max_min_rpc_time(int64_t* max_time, int64_t* min_time);
+    void set_rpc_time(InstanceLoId id, int64_t start_rpc_time, int64_t receive_rpc_time);
 
 private:
     phmap::flat_hash_map<InstanceLoId, std::unique_ptr<std::mutex>>
@@ -85,6 +87,7 @@ private:
     phmap::flat_hash_map<InstanceLoId, PTransmitDataParams*> _instance_to_request;
     phmap::flat_hash_map<InstanceLoId, PUniqueId> _instance_to_finst_id;
     phmap::flat_hash_map<InstanceLoId, bool> _instance_to_sending_by_pipeline;
+    phmap::flat_hash_map<InstanceLoId, int64_t> _instance_to_rpc_time;
 
     std::atomic<bool> _is_finishing;
     PUniqueId _query_id;
