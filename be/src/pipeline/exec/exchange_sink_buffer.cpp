@@ -55,7 +55,7 @@ public:
     void addFailedHandler(std::function<void(const InstanceLoId&, const std::string&)> fail_fn) {
         _fail_fn = std::move(fail_fn);
     }
-    void addSuccessHandler(std::function<void(const InstanceLoId&, const bool&, const T&)> suc_fn) {
+    void addSuccessHandler(std::function<void(const InstanceLoId&, const bool&, const T&, const PUniqueId&, const InstanceLoId&, const int64_t&)> suc_fn) {
         _suc_fn = suc_fn;
     }
 
@@ -73,7 +73,7 @@ public:
                         cntl.latency_us());
                 _fail_fn(_id, err);
             } else {
-                _suc_fn(_id, _eos, result);
+                _suc_fn(_id, _eos, result, query_id, ins_id, start_time);
             }
         } catch (const std::exception& exp) {
             LOG(FATAL) << "brpc callback error: " << exp.what();
@@ -85,9 +85,13 @@ public:
     brpc::Controller cntl;
     T result;
 
+    int64_t start_time = 0;
+    PUniqueId query_id;
+    InstanceLoId ins_id;
+
 private:
     std::function<void(const InstanceLoId&, const std::string&)> _fail_fn;
-    std::function<void(const InstanceLoId&, const bool&, const T&)> _suc_fn;
+    std::function<void(const InstanceLoId&, const bool&, const T&, const PUniqueId&, const InstanceLoId&, const int64_t&)> _suc_fn;
     InstanceLoId _id;
     bool _eos;
     vectorized::BroadcastPBlockHolder* _data;
@@ -232,18 +236,21 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         PUniqueId qid = brpc_request->query_id();
         InstanceLoId current_insid = id;
         LOG(INFO) << "log1 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << current_insid << ", size=" << _instance_to_rpc_time.size() << ", orgid=" << id;
+        _closure->query_id = qid;
+        _closure->ins_id = current_insid;
+        _closure->start_time = start_rpc_time;
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
-                                        const PTransmitDataResult& result) {
-            int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
-            if (_instance_to_rpc_time.find(current_insid) == _instance_to_rpc_time.end()) {
-                _instance_to_rpc_time[current_insid] = 0;
+                                        const PTransmitDataResult& result, const PUniqueId& cur_qid, const InstanceLoId& cur_insid, const int64_t& cur_start_time) {
+            int64_t rpc_spend_time = result.receive_time() - cur_start_time;
+            if (_instance_to_rpc_time.find(cur_insid) == _instance_to_rpc_time.end()) {
+                _instance_to_rpc_time[cur_insid] = 0;
             }
             if (rpc_spend_time > 0) {
-                _instance_to_rpc_time[current_insid] += rpc_spend_time;
+                _instance_to_rpc_time[cur_insid] += rpc_spend_time;
             }
             LOG(INFO) << "log1 in client resonse recie time=" << result.receive_time()
-                      << ", qid=" << qid << ",insid=" << current_insid << ", time spend=" << rpc_spend_time
-                      << ", result=" << _instance_to_rpc_time[current_insid] << ", size=" << _instance_to_rpc_time.size() << ", start time=" << start_rpc_time;
+                      << ", qid=" << cur_qid << ",insid=" << cur_insid << ", time spend=" << rpc_spend_time
+                      << ", result=" << _instance_to_rpc_time[cur_insid] << ", size=" << _instance_to_rpc_time.size() << ", start time=" << cur_start_time;
 
             // set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
@@ -292,7 +299,7 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         InstanceLoId current_insid = id;
         LOG(INFO) << "log2 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << current_insid << ", size=" << _instance_to_rpc_time.size() << ", orgid=" << id;
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
-                                        const PTransmitDataResult& result) {
+                                        const PTransmitDataResult& result,  const PUniqueId& cur_qid, const InstanceLoId& cur_insid, const int64_t& cur_start_time) {
             int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
             if (_instance_to_rpc_time.find(current_insid) == _instance_to_rpc_time.end()) {
                 _instance_to_rpc_time[current_insid] = 0;
