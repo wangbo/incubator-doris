@@ -226,12 +226,12 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         }
         auto* _closure = new SelfDeleteClosure<PTransmitDataResult>(id, request.eos, nullptr);
         _closure->cntl.set_timeout_ms(request.channel->_brpc_timeout_ms);
+        _closure->addFailedHandler(
+                [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         int64_t start_rpc_time = GetCurrentTimeNanos();
         PUniqueId qid = brpc_request->query_id();
         InstanceLoId current_insid = id;
-        LOG(INFO) << "log1 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id << ", size=" << _instance_to_rpc_time.size();
-        _closure->addFailedHandler(
-                [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
+        LOG(INFO) << "log1 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << current_insid << ", size=" << _instance_to_rpc_time.size() << ", orgid=" << id;
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
             int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
@@ -290,7 +290,7 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         int64_t start_rpc_time = GetCurrentTimeNanos();
         PUniqueId qid = brpc_request->query_id();
         InstanceLoId current_insid = id;
-        LOG(INFO) << "log2 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << current_insid << ", size=" << _instance_to_rpc_time.size();
+        LOG(INFO) << "log2 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << current_insid << ", size=" << _instance_to_rpc_time.size() << ", orgid=" << id;
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
             int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
