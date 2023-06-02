@@ -242,7 +242,7 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
             }
             LOG(INFO) << "log1 in client resonse recie time=" << result.receive_time()
                       << ", qid=" << qid << ",insid=" << id << ", time spend=" << rpc_spend_time
-                      << ", result=" << _instance_to_rpc_time[id] << ", size=" << _instance_to_rpc_time.size();
+                      << ", result=" << _instance_to_rpc_time[id] << ", size=" << _instance_to_rpc_time.size() << ", start time=" << start_rpc_time;
 
             // set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
@@ -300,7 +300,7 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
             }
             LOG(INFO) << "log2 in client resonse recie time=" << result.receive_time()
                       << ", qid=" << qid << ",insid=" << id << ", time spend=" << rpc_spend_time
-                      << ", result=" << _instance_to_rpc_time[id] << ", size=" << _instance_to_rpc_time.size();
+                      << ", result=" << _instance_to_rpc_time[id] << ", size=" << _instance_to_rpc_time.size() << ", start time=" << start_rpc_time;
 
             // set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
