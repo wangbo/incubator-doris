@@ -228,13 +228,13 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         _closure->cntl.set_timeout_ms(request.channel->_brpc_timeout_ms);
         int64_t start_rpc_time = GetCurrentTimeNanos();
         auto qid = brpc_request->query_id();
-        LOG(INFO) << "log start time=" << start_rpc_time << " query_id=" << qid;
+        LOG(INFO) << "log start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id;
         _closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
             LOG(INFO) << "log in client resonse recie time=" << result.receive_time()
-                      << ", qid=" << qid;
+                      << ", qid=" << qid << ",insid=" << id;
             set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
             if (!s.ok()) {
@@ -279,11 +279,11 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         int64_t start_rpc_time = GetCurrentTimeNanos();
         auto qid = brpc_request->query_id();
-        LOG(INFO) << "log start time=" << start_rpc_time << " query_id=" << qid;
+        LOG(INFO) << "log start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id;
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
             LOG(INFO) << "log in client resonse recie time=" << result.receive_time()
-                      << ", qid=" << qid;
+                      << ", qid=" << qid << ",insid=" << id;
             set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
             if (!s.ok()) {
