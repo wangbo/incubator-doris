@@ -233,9 +233,15 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
+            int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
+            if (rpc_spend_time > 0) {
+                _instance_to_rpc_time[id] += rpc_spend_time;
+            }
             LOG(INFO) << "log in client resonse recie time=" << result.receive_time()
-                      << ", qid=" << qid << ",insid=" << id;
-            set_rpc_time(id, start_rpc_time, result.receive_time());
+                      << ", qid=" << qid << ",insid=" << id << ", time spend=" << rpc_spend_time
+                      << ", result=" << _instance_to_rpc_time[id];
+
+            // set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
             if (!s.ok()) {
                 _failed(id,
@@ -282,9 +288,15 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         LOG(INFO) << "log start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id;
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
+            int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
+            if (rpc_spend_time > 0) {
+                _instance_to_rpc_time[id] += rpc_spend_time;
+            }
             LOG(INFO) << "log in client resonse recie time=" << result.receive_time()
-                      << ", qid=" << qid << ",insid=" << id;
-            set_rpc_time(id, start_rpc_time, result.receive_time());
+                      << ", qid=" << qid << ",insid=" << id << ", time spend=" << rpc_spend_time
+                      << ", result=" << _instance_to_rpc_time[id];
+
+            // set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
             if (!s.ok()) {
                 _failed(id,
@@ -346,10 +358,12 @@ void ExchangeSinkBuffer::get_max_min_rpc_time(int64_t* max_time, int64_t* min_ti
     if (iter != _instance_to_rpc_time.end()) {
         local_max_time = iter->second;
         local_min_time = iter->second;
+        LOG(INFO) << "instance id=" << iter->first << ", value=" << iter->second;
         iter++;
     }
     while (iter != _instance_to_rpc_time.end()) {
         int64_t cur_val = iter->second;
+        LOG(INFO) << "instance id=" << iter->first << ", value=" << cur_val;
         local_max_time = cur_val > local_max_time ? cur_val : local_max_time;
         local_min_time = cur_val < local_min_time ? cur_val : local_min_time;
         iter++;
