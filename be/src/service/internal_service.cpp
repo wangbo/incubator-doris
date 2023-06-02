@@ -1016,6 +1016,15 @@ void PInternalServiceImpl::transmit_block(google::protobuf::RpcController* contr
                                           google::protobuf::Closure* done) {
     int64_t receive_time = GetCurrentTimeNanos();
     response->set_receive_time(receive_time);
+
+    std::string query_id;
+    TUniqueId finst_id;
+    if (request->has_query_id()) {
+        query_id = print_id(request->query_id());
+    }
+
+    LOG(INFO) << "recei time=" << receive_time
+              << ", transmit block: fragment_instance_id=" << " query_id=" << query_id;
     bool ret = _heavy_work_pool.try_offer([this, controller, request, response, done]() {
         // TODO(zxy) delete in 1.2 version
         google::protobuf::Closure* new_done = new NewHttpClosure<PTransmitDataParams>(done);
