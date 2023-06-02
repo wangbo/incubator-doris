@@ -228,13 +228,13 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         _closure->cntl.set_timeout_ms(request.channel->_brpc_timeout_ms);
         int64_t start_rpc_time = GetCurrentTimeNanos();
         auto qid = brpc_request->query_id();
-        LOG(INFO) << "log1 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id;
+        LOG(INFO) << "log1 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id << ", size=" << _instance_to_rpc_time.size();
         _closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
             int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
-            if (!_instance_to_rpc_time[id]) {
+            if (_instance_to_rpc_time.find(id) == _instance_to_rpc_time.end()) {
                 _instance_to_rpc_time[id] = 0;
             }
             if (rpc_spend_time > 0) {
@@ -242,7 +242,7 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
             }
             LOG(INFO) << "log1 in client resonse recie time=" << result.receive_time()
                       << ", qid=" << qid << ",insid=" << id << ", time spend=" << rpc_spend_time
-                      << ", result=" << _instance_to_rpc_time[id];
+                      << ", result=" << _instance_to_rpc_time[id] << ", size=" << _instance_to_rpc_time.size();
 
             // set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
@@ -288,11 +288,11 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         int64_t start_rpc_time = GetCurrentTimeNanos();
         auto qid = brpc_request->query_id();
-        LOG(INFO) << "log2 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id;
+        LOG(INFO) << "log2 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id << ", size=" << _instance_to_rpc_time.size();
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
             int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
-            if (!_instance_to_rpc_time[id]) {
+            if (_instance_to_rpc_time.find(id) == _instance_to_rpc_time.end()) {
                 _instance_to_rpc_time[id] = 0;
             }
             if (rpc_spend_time > 0) {
@@ -300,7 +300,7 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
             }
             LOG(INFO) << "log2 in client resonse recie time=" << result.receive_time()
                       << ", qid=" << qid << ",insid=" << id << ", time spend=" << rpc_spend_time
-                      << ", result=" << _instance_to_rpc_time[id];
+                      << ", result=" << _instance_to_rpc_time[id] << ", size=" << _instance_to_rpc_time.size();
 
             // set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
@@ -343,7 +343,7 @@ void ExchangeSinkBuffer::_construct_request(InstanceLoId id) {
     _instance_to_request[id]->set_node_id(_dest_node_id);
     _instance_to_request[id]->set_sender_id(_sender_id);
     _instance_to_request[id]->set_be_number(_be_number);
-    _instance_to_rpc_time[id] = 0;
+    // _instance_to_rpc_time[id] = 0;
 }
 
 void ExchangeSinkBuffer::_ended(InstanceLoId id) {
