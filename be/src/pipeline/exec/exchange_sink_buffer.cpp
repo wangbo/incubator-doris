@@ -227,22 +227,23 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         auto* _closure = new SelfDeleteClosure<PTransmitDataResult>(id, request.eos, nullptr);
         _closure->cntl.set_timeout_ms(request.channel->_brpc_timeout_ms);
         int64_t start_rpc_time = GetCurrentTimeNanos();
-        auto qid = brpc_request->query_id();
+        PUniqueId qid = brpc_request->query_id();
+        InstanceLoId current_insid = id;
         LOG(INFO) << "log1 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id << ", size=" << _instance_to_rpc_time.size();
         _closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
             int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
-            if (_instance_to_rpc_time.find(id) == _instance_to_rpc_time.end()) {
-                _instance_to_rpc_time[id] = 0;
+            if (_instance_to_rpc_time.find(current_insid) == _instance_to_rpc_time.end()) {
+                _instance_to_rpc_time[current_insid] = 0;
             }
             if (rpc_spend_time > 0) {
-                _instance_to_rpc_time[id] += rpc_spend_time;
+                _instance_to_rpc_time[current_insid] += rpc_spend_time;
             }
             LOG(INFO) << "log1 in client resonse recie time=" << result.receive_time()
-                      << ", qid=" << qid << ",insid=" << id << ", time spend=" << rpc_spend_time
-                      << ", result=" << _instance_to_rpc_time[id] << ", size=" << _instance_to_rpc_time.size() << ", start time=" << start_rpc_time;
+                      << ", qid=" << qid << ",insid=" << current_insid << ", time spend=" << rpc_spend_time
+                      << ", result=" << _instance_to_rpc_time[current_insid] << ", size=" << _instance_to_rpc_time.size() << ", start time=" << start_rpc_time;
 
             // set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
@@ -287,20 +288,21 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         _closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         int64_t start_rpc_time = GetCurrentTimeNanos();
-        auto qid = brpc_request->query_id();
-        LOG(INFO) << "log2 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << id << ", size=" << _instance_to_rpc_time.size();
+        PUniqueId qid = brpc_request->query_id();
+        InstanceLoId current_insid = id;
+        LOG(INFO) << "log2 start time=" << start_rpc_time << " query_id=" << qid << ",insid=" << current_insid << ", size=" << _instance_to_rpc_time.size();
         _closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                         const PTransmitDataResult& result) {
             int64_t rpc_spend_time = result.receive_time() - start_rpc_time;
-            if (_instance_to_rpc_time.find(id) == _instance_to_rpc_time.end()) {
-                _instance_to_rpc_time[id] = 0;
+            if (_instance_to_rpc_time.find(current_insid) == _instance_to_rpc_time.end()) {
+                _instance_to_rpc_time[current_insid] = 0;
             }
             if (rpc_spend_time > 0) {
-                _instance_to_rpc_time[id] += rpc_spend_time;
+                _instance_to_rpc_time[current_insid] += rpc_spend_time;
             }
             LOG(INFO) << "log2 in client resonse recie time=" << result.receive_time()
-                      << ", qid=" << qid << ",insid=" << id << ", time spend=" << rpc_spend_time
-                      << ", result=" << _instance_to_rpc_time[id] << ", size=" << _instance_to_rpc_time.size() << ", start time=" << start_rpc_time;
+                      << ", qid=" << qid << ",insid=" << current_insid << ", time spend=" << rpc_spend_time
+                      << ", result=" << _instance_to_rpc_time[current_insid] << ", size=" << _instance_to_rpc_time.size() << ", start time=" << start_rpc_time;
 
             // set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s = Status(result.status());
