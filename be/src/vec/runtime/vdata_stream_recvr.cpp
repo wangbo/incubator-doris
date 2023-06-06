@@ -230,7 +230,7 @@ void VDataStreamRecvr::SenderQueue::decrement_senders(int be_number) {
     _sender_eos_set.insert(be_number);
     DCHECK_GT(_num_remaining_senders, 0);
     _num_remaining_senders--;
-    VLOG_FILE << "decremented senders: fragment_instance_id=" << _recvr->fragment_instance_id()
+    LOG(INFO) << "decremented senders: fragment_instance_id=" << print_id(_recvr->fragment_instance_id())
               << " node_id=" << _recvr->dest_node_id() << " #senders=" << _num_remaining_senders;
     if (_num_remaining_senders == 0) {
         _data_arrival_cv.notify_one();
@@ -309,6 +309,7 @@ VDataStreamRecvr::VDataStreamRecvr(
     int num_queues = is_merging ? num_senders : 1;
     _sender_queues.reserve(num_queues);
     int num_sender_per_queue = is_merging ? 1 : num_senders;
+    LOG(INFO) << print_id(_fragment_instance_id) << " num_senders=" << num_senders;
     for (int i = 0; i < num_queues; ++i) {
         SenderQueue* queue = nullptr;
         if (_enable_pipeline) {
@@ -378,9 +379,11 @@ bool VDataStreamRecvr::sender_queue_empty(int sender_id) {
 bool VDataStreamRecvr::ready_to_read() {
     for (size_t i = 0; i < _sender_queues.size(); i++) {
         if (_sender_queues[i]->should_wait()) {
+            // LOG(INFO) << print_id(fragment_instance_id()) << " not read to read ";
             return false;
         }
     }
+    LOG(INFO) << print_id(fragment_instance_id()) << " ready to read ";
     return true;
 }
 
