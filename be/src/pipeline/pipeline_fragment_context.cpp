@@ -801,6 +801,7 @@ Status PipelineFragmentContext::_create_sink(int sender_id, const TDataSink& thr
 
 void PipelineFragmentContext::_close_action() {
     _runtime_profile->total_time_counter()->update(_fragment_watcher.elapsed_time());
+    _root_plan->close(_runtime_state.get());
     send_report(true);
     _stop_report_thread();
     // all submitted tasks done
