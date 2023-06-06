@@ -71,6 +71,9 @@ Status VExchangeNode::prepare(RuntimeState* state) {
     if (_is_merging) {
         RETURN_IF_ERROR(_vsort_exec_exprs.prepare(state, _row_descriptor, _row_descriptor));
     }
+    _ins_id = print_id(state->fragment_instance_id());
+    LOG(INFO) << "VExchangeNode::prepare for fragment=" << _ins_id
+              << ", node=" << _id;
     return Status::OK();
 }
 
@@ -131,7 +134,9 @@ Status VExchangeNode::get_next(RuntimeState* state, Block* block, bool* eos) {
 }
 
 void VExchangeNode::release_resource(RuntimeState* state) {
+    LOG(INFO) << "VExchangeNode::release_resource for fragment=" << _ins_id;
     if (_stream_recvr != nullptr) {
+        LOG(INFO) << "VExchangeNode::release_resource call close for fragment=" << _ins_id;
         _stream_recvr->close();
     }
     if (_is_merging) {

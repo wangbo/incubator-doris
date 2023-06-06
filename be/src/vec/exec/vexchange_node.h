@@ -69,6 +69,8 @@ private:
     RowDescriptor _input_row_desc;
     std::shared_ptr<QueryStatisticsRecvr> _sub_plan_query_statistics_recvr;
 
+    std::string _ins_id;
+
     // use in merge sort
     size_t _offset;
     int64_t _num_rows_skipped;

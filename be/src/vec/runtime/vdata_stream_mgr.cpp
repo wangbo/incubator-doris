@@ -54,7 +54,7 @@ std::shared_ptr<VDataStreamRecvr> VDataStreamMgr::create_recvr(
         PlanNodeId dest_node_id, int num_senders, RuntimeProfile* profile, bool is_merging,
         std::shared_ptr<QueryStatisticsRecvr> sub_plan_query_statistics_recvr) {
     DCHECK(profile != nullptr);
-    VLOG_FILE << "creating receiver for fragment=" << fragment_instance_id
+    LOG(INFO) << "creating receiver for fragment=" << print_id(fragment_instance_id)
               << ", node=" << dest_node_id;
     std::shared_ptr<VDataStreamRecvr> recvr(new VDataStreamRecvr(
             this, state, row_desc, fragment_instance_id, dest_node_id, num_senders, is_merging,
@@ -132,7 +132,7 @@ Status VDataStreamMgr::transmit_block(const PTransmitDataParams* request,
 
 Status VDataStreamMgr::deregister_recvr(const TUniqueId& fragment_instance_id, PlanNodeId node_id) {
     std::shared_ptr<VDataStreamRecvr> targert_recvr;
-    VLOG_QUERY << "deregister_recvr(): fragment_instance_id=" << fragment_instance_id
+    LOG(INFO) << "deregister_recvr(): fragment_instance_id=" << print_id(fragment_instance_id)
                << ", node=" << node_id;
     size_t hash_value = get_hash_value(fragment_instance_id, node_id);
     {
