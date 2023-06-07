@@ -105,6 +105,7 @@ public class TabletStatMgr extends MasterDaemon {
                     continue;
                 }
                 try {
+                    int cardAfterUpdate = 0;
                     for (Partition partition : olapTable.getAllPartitions()) {
                         long version = partition.getVisibleVersion();
                         for (MaterializedIndex index : partition.getMaterializedIndices(IndexExtState.VISIBLE)) {
@@ -118,12 +119,13 @@ public class TabletStatMgr extends MasterDaemon {
                                     }
                                 }
                                 indexRowCount += tabletRowCount;
+                                cardAfterUpdate += tabletRowCount;
                             } // end for tablets
                             index.setRowCount(indexRowCount);
                         } // end for indices
                     } // end for partitions
-                    LOG.debug("finished to set row num for table: {} in database: {}",
-                             table.getName(), db.getFullName());
+                    LOG.info("finished to set row num for table: {} in database: {}, rows: {}",
+                             table.getName(), db.getFullName(), cardAfterUpdate);
                 } finally {
                     table.writeUnlock();
                 }
