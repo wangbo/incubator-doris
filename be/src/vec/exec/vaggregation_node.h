@@ -944,6 +944,10 @@ private:
     RuntimeProfile::Counter* _hash_table_input_counter;
     RuntimeProfile::Counter* _max_row_size_counter;
 
+    RuntimeProfile::Counter* _pre_serialize_timer = nullptr;
+    RuntimeProfile::Counter* _compute_hash_timer = nullptr;
+    RuntimeProfile::Counter* _emplace_hash_table_timer = nullptr;
+
     RuntimeProfile::Counter* _hash_table_memory_usage;
     RuntimeProfile::HighWaterMarkCounter* _serialize_key_arena_memory_usage;
 

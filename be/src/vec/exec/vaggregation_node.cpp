@@ -352,6 +352,10 @@ Status AggregationNode::prepare_profile(RuntimeState* state) {
     DCHECK_EQ(_intermediate_tuple_desc->slots().size(), _output_tuple_desc->slots().size());
     RETURN_IF_ERROR(VExpr::prepare(_probe_expr_ctxs, state, child(0)->row_desc()));
 
+    _pre_serialize_timer = ADD_TIMER(runtime_profile(), "PreSerializeTime");
+    _compute_hash_timer = ADD_TIMER(runtime_profile(), "ComputeHashTime");
+    _emplace_hash_table_timer = ADD_TIMER(runtime_profile(), "EmplaceHashTableTime");
+
     _agg_profile_arena = std::make_unique<Arena>();
 
     int j = _probe_expr_ctxs.size();
@@ -946,9 +950,13 @@ void AggregationNode::_emplace_into_hash_table(AggregateDataPtr* places, ColumnR
                 using AggState = typename HashMethodType::State;
                 AggState state(key_columns, _probe_key_sz, nullptr);
 
-                _pre_serialize_key_if_need(state, agg_method, key_columns, num_rows);
+                {
+                    SCOPED_TIMER(_pre_serialize_timer);
+                    _pre_serialize_key_if_need(state, agg_method, key_columns, num_rows);
+                }
 
                 if constexpr (HashTableTraits<HashTableType>::is_phmap) {
+                    SCOPED_TIMER(_compute_hash_timer);
                     if (_hash_values.size() < num_rows) _hash_values.resize(num_rows);
                     if constexpr (ColumnsHashing::IsPreSerializedKeysHashMethodTraits<
                                           AggState>::value) {
@@ -986,6 +994,7 @@ void AggregationNode::_emplace_into_hash_table(AggregateDataPtr* places, ColumnR
                     _create_agg_status(mapped);
                 };
 
+                SCOPED_TIMER(_emplace_hash_table_timer);
                 /// For all rows.
                 COUNTER_UPDATE(_hash_table_input_counter, num_rows);
                 for (size_t i = 0; i < num_rows; ++i) {
