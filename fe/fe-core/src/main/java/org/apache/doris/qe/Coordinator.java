@@ -1213,6 +1213,7 @@ public class Coordinator {
                 }
                 if (backendIdRef.getRef() != null) {
                     // backendIdRef can be null is we call getHostByCurrentBackend() before
+                    LOG.info("put2,beid=" + backendIdRef.getRef() + ", queryid=" + ConnectContext.get().getQueryIdentifier());
                     this.addressToBackendID.put(execHostport, backendIdRef.getRef());
                 }
                 FInstanceExecParam instanceParam = new FInstanceExecParam(null, execHostport,
@@ -1352,6 +1353,8 @@ public class Coordinator {
                 }
                 if (backendIdRef.getRef() != null) {
                     // backendIdRef can be null is we call getHostByCurrentBackend() before
+                    LOG.info("put3,beid=" + backendIdRef.getRef() + ", queryid=" + ConnectContext.get().getQueryIdentifier() + ", rs tag="
+                            + ConnectContext.get().isResourceTagsSet() + ", add2beid=" + addressToBackendID.values());
                     this.addressToBackendID.put(execHostport, backendIdRef.getRef());
                 }
                 FInstanceExecParam instanceParam = new FInstanceExecParam(null, execHostport,
@@ -1588,6 +1591,7 @@ public class Coordinator {
         }
         Map<Integer, TNetworkAddress> bucketSeqToAddress = fragmentIdToSeqToAddressMap.get(scanNode.getFragmentId());
         BucketSeqToScanRange bucketSeqToScanRange = fragmentIdTobucketSeqToScanRangeMap.get(scanNode.getFragmentId());
+        LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier() + ", size=" + scanNode.bucketSeq2locations.size());
         for (Integer bucketSeq : scanNode.bucketSeq2locations.keySet()) {
             //fill scanRangeParamsList
             List<TScanRangeLocations> locations = scanNode.bucketSeq2locations.get(bucketSeq);
@@ -1621,6 +1625,7 @@ public class Coordinator {
         Backend backend = this.idToBackend.get(backendIdRef.getRef());
         TNetworkAddress execHostPort = new TNetworkAddress(backend.getHost(), backend.getBePort());
         this.addressToBackendID.put(execHostPort, backendIdRef.getRef());
+        LOG.info("put4,beid=" + backendIdRef.getRef() + ", queryid=" + ConnectContext.get().getQueryIdentifier());
         this.fragmentIdToSeqToAddressMap.get(fragmentId).put(bucketSeq, execHostPort);
     }
 
@@ -1686,12 +1691,14 @@ public class Coordinator {
             FragmentScanRangeAssignment assignment,
             Map<TNetworkAddress, Long> assignedBytesPerHost,
             Map<TNetworkAddress, Long> replicaNumPerHost) throws Exception {
+        LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier() + ", size=" + locations.size());
         for (TScanRangeLocations scanRangeLocations : locations) {
             Reference<Long> backendIdRef = new Reference<Long>();
             TScanRangeLocation minLocation = selectBackendsByRoundRobin(scanRangeLocations,
                     assignedBytesPerHost, replicaNumPerHost, backendIdRef);
             Backend backend = this.idToBackend.get(backendIdRef.getRef());
             TNetworkAddress execHostPort = new TNetworkAddress(backend.getHost(), backend.getBePort());
+            LOG.info("put5,beid=" + backendIdRef.getRef() + ", queryid=" + ConnectContext.get().getQueryIdentifier());
             this.addressToBackendID.put(execHostPort, backendIdRef.getRef());
 
             Map<Integer, List<TScanRangeParams>> scanRanges = findOrInsert(assignment, execHostPort,
@@ -1956,6 +1963,7 @@ public class Coordinator {
             for (TScanRangeLocation location : seqLocation.locations) {
                 replicaNumPerHost.put(location.server, replicaNumPerHost.get(location.server) - 1);
             }
+            LOG.info("put1,beid=" + backendIdRef.getRef() + ", queryid=" + ConnectContext.get().getQueryIdentifier());
             addressToBackendID.put(execHostPort, backendIdRef.getRef());
             this.fragmentIdToSeqToAddressMap.get(fragmentId).put(bucketSeq, execHostPort);
         }
@@ -1987,6 +1995,7 @@ public class Coordinator {
                     = fragmentIdToSeqToAddressMap.get(scanNode.getFragmentId());
             BucketSeqToScanRange bucketSeqToScanRange = fragmentIdBucketSeqToScanRangeMap.get(scanNode.getFragmentId());
 
+            LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier() + ", size=" + scanNode.bucketSeq2locations.size());
             for (Integer bucketSeq : scanNode.bucketSeq2locations.keySet()) {
                 //fill scanRangeParamsList
                 List<TScanRangeLocations> locations = scanNode.bucketSeq2locations.get(bucketSeq);

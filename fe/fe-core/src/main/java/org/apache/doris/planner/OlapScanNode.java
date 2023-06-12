@@ -655,6 +655,7 @@ public class OlapScanNode extends ScanNode {
             paloRange.setVersion(visibleVersionStr);
             paloRange.setVersionHash("");
             paloRange.setTabletId(tabletId);
+            Set<String> ip_set = new HashSet<>();
 
             // random shuffle List && only collect one copy
             List<Replica> replicas = tablet.getQueryableReplicas(visibleVersion);
@@ -714,6 +715,7 @@ public class OlapScanNode extends ScanNode {
                 scanRangeLocations.addToLocations(scanRangeLocation);
                 paloRange.addToHosts(new TNetworkAddress(ip, port));
                 tabletIsNull = false;
+                ip_set.add(ip);
 
                 // for CBO
                 if (!collectedStat && replica.getRowCount() != -1) {
@@ -737,6 +739,8 @@ public class OlapScanNode extends ScanNode {
             bucketSeq2locations.put(tabletId2BucketSeq.get(tabletId), scanRangeLocations);
 
             result.add(scanRangeLocations);
+            LOG.info("query id=" + ConnectContext.get().getQueryIdentifier() + " , ip=" + ip_set
+                    + ", tags=" + allowedTags + ", needcheck=" + needCheckTags);
         }
 
         if (tablets.size() == 0) {
