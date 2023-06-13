@@ -31,6 +31,7 @@ import org.apache.doris.ldap.LdapAuthenticate;
 import org.apache.doris.mysql.privilege.PaloAuth;
 import org.apache.doris.mysql.privilege.UserResource;
 import org.apache.doris.qe.ConnectContext;
+import org.apache.doris.resource.Tag;
 import org.apache.doris.system.SystemInfoService;
 
 import com.google.common.base.Strings;
@@ -41,6 +42,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Set;
 
 // MySQL protocol util
 public class MysqlProto {
@@ -377,7 +379,9 @@ public class MysqlProto {
         }
 
         // set resource tag if has
-        context.setResourceTags(Env.getCurrentEnv().getAuth().getResourceTags(qualifiedUser));
+        Set<Tag> tagSet = Env.getCurrentEnv().getAuth().getResourceTags(qualifiedUser);
+        context.setResourceTags(tagSet);
+        LOG.info("setResourceTags user=" + qualifiedUser + ", tag=" + tagSet);
         return true;
     }
 

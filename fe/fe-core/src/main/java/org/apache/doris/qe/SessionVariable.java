@@ -123,6 +123,8 @@ public class SessionVariable implements Serializable, Writable {
     // when true, the partition column must be set to NOT NULL.
     public static final String ALLOW_PARTITION_COLUMN_NULLABLE = "allow_partition_column_nullable";
 
+    public static final String ENABLE_TAG_LOG = "enable_tag_log";
+
     // runtime filter run mode
     public static final String RUNTIME_FILTER_MODE = "runtime_filter_mode";
     // Size in bytes of Bloom Filters used for runtime filters. Actual size of filter will
@@ -465,6 +467,9 @@ public class SessionVariable implements Serializable, Writable {
 
     @VariableMgr.VarAttr(name = ALLOW_PARTITION_COLUMN_NULLABLE)
     public boolean allowPartitionColumnNullable = true;
+
+    @VariableMgr.VarAttr(name = ENABLE_TAG_LOG)
+    public boolean enableTagLog = false;
 
     @VariableMgr.VarAttr(name = DELETE_WITHOUT_PARTITION, needForward = true)
     public boolean deleteWithoutPartition = false;

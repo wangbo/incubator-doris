@@ -1186,6 +1186,7 @@ public class Coordinator {
     // For each fragment in fragments, computes hosts on which to run the instances
     // and stores result in fragmentExecParams.hosts.
     private void computeFragmentHosts() throws Exception {
+        boolean enableTagLog = ConnectContext.get().getSessionVariable().enableTagLog;
         // compute hosts of producer fragment before those of consumer fragment(s),
         // the latter might inherit the set of hosts from the former
         // compute hosts *bottom up*.
@@ -1214,6 +1215,10 @@ public class Coordinator {
                 if (backendIdRef.getRef() != null) {
                     // backendIdRef can be null is we call getHostByCurrentBackend() before
                     this.addressToBackendID.put(execHostport, backendIdRef.getRef());
+                    if (enableTagLog) {
+                        LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier()
+                                + ", put1 be id=" + backendIdRef.getRef());
+                    }
                 }
                 FInstanceExecParam instanceParam = new FInstanceExecParam(null, execHostport,
                         0, params);
@@ -1353,6 +1358,10 @@ public class Coordinator {
                 if (backendIdRef.getRef() != null) {
                     // backendIdRef can be null is we call getHostByCurrentBackend() before
                     this.addressToBackendID.put(execHostport, backendIdRef.getRef());
+                    if (enableTagLog) {
+                        LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier()
+                                + ", put2 be id=" + backendIdRef.getRef());
+                    }
                 }
                 FInstanceExecParam instanceParam = new FInstanceExecParam(null, execHostport,
                         0, params);
@@ -1568,8 +1577,17 @@ public class Coordinator {
                 computeScanRangeAssignmentByColocate((OlapScanNode) scanNode, assignedBytesPerHost, replicaNumPerHost);
             }
             if (fragmentContainsBucketShuffleJoin) {
+                boolean enableTagLog = ConnectContext.get().getSessionVariable().enableTagLog;
+                if (enableTagLog) {
+                    LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier()
+                            + ", be id before set=" + addressToBackendID.values());
+                }
                 bucketShuffleJoinController.computeScanRangeAssignmentByBucket((OlapScanNode) scanNode,
                         idToBackend, addressToBackendID, replicaNumPerHost);
+                if (enableTagLog) {
+                    LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier()
+                            + ", be id after set=" + addressToBackendID.values());
+                }
             }
             if (!(fragmentContainsColocateJoin || fragmentContainsBucketShuffleJoin)) {
                 computeScanRangeAssignmentByScheduler(scanNode, locations, assignment, assignedBytesPerHost,
@@ -1621,6 +1639,10 @@ public class Coordinator {
         Backend backend = this.idToBackend.get(backendIdRef.getRef());
         TNetworkAddress execHostPort = new TNetworkAddress(backend.getHost(), backend.getBePort());
         this.addressToBackendID.put(execHostPort, backendIdRef.getRef());
+        if (ConnectContext.get().getSessionVariable().enableTagLog) {
+            LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier()
+                    + ", put3 be id=" + backendIdRef.getRef());
+        }
         this.fragmentIdToSeqToAddressMap.get(fragmentId).put(bucketSeq, execHostPort);
     }
 
@@ -1686,6 +1708,9 @@ public class Coordinator {
             FragmentScanRangeAssignment assignment,
             Map<TNetworkAddress, Long> assignedBytesPerHost,
             Map<TNetworkAddress, Long> replicaNumPerHost) throws Exception {
+        boolean enableTagLog = ConnectContext.get().getSessionVariable().enableTagLog;
+        Set<String> ipSet = new HashSet<>();
+
         for (TScanRangeLocations scanRangeLocations : locations) {
             Reference<Long> backendIdRef = new Reference<Long>();
             TScanRangeLocation minLocation = selectBackendsByRoundRobin(scanRangeLocations,
@@ -1693,6 +1718,7 @@ public class Coordinator {
             Backend backend = this.idToBackend.get(backendIdRef.getRef());
             TNetworkAddress execHostPort = new TNetworkAddress(backend.getHost(), backend.getBePort());
             this.addressToBackendID.put(execHostPort, backendIdRef.getRef());
+            ipSet.add(backend.getHost());
 
             Map<Integer, List<TScanRangeParams>> scanRanges = findOrInsert(assignment, execHostPort,
                     new HashMap<Integer, List<TScanRangeParams>>());
@@ -1704,6 +1730,12 @@ public class Coordinator {
             // Volume is optional, so we need to set the value and the is-set bit
             scanRangeParams.setVolumeId(minLocation.volume_id);
             scanRangeParamsList.add(scanRangeParams);
+        }
+
+        if (enableTagLog) {
+            LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier()
+                    + "node id=" + scanNode.getId().asInt()
+                    + ", put4 be ipset=" + ipSet.toString());
         }
     }
 
