@@ -632,6 +632,8 @@ public class OlapScanNode extends ScanNode {
             allowedTags = ConnectContext.get().getResourceTags();
             needCheckTags = ConnectContext.get().isResourceTagsSet();
         }
+        boolean enableTagLog = ConnectContext.get().getSessionVariable().enableTagLog;
+        Set<String> selectedIpSet = new HashSet<>();
         for (Tablet tablet : tablets) {
             long tabletId = tablet.getId();
             if (!Config.recover_with_skip_missing_version.equalsIgnoreCase("disable")) {
@@ -714,6 +716,7 @@ public class OlapScanNode extends ScanNode {
                 scanRangeLocations.addToLocations(scanRangeLocation);
                 paloRange.addToHosts(new TNetworkAddress(ip, port));
                 tabletIsNull = false;
+                selectedIpSet.add(ip);
 
                 // for CBO
                 if (!collectedStat && replica.getRowCount() != -1) {
@@ -737,6 +740,24 @@ public class OlapScanNode extends ScanNode {
             bucketSeq2locations.put(tabletId2BucketSeq.get(tabletId), scanRangeLocations);
 
             result.add(scanRangeLocations);
+            if (enableTagLog) {
+                LOG.info("queryid=" + ConnectContext.get().getQueryIdentifier() + ", nodeid=" + id + ", tabletid="
+                        + tabletId + ", ipset=" + selectedIpSet);
+            }
+        }
+        if (enableTagLog) {
+            String username = ConnectContext.get().getQualifiedUser();
+            String queryid = ConnectContext.get().getQueryIdentifier();
+            LOG.info("queryid=" + queryid + ", nodeid=" + id
+                    + ", bucketSeq2locations.size=" + bucketSeq2locations.size()
+                    + ", allowedTags=" + allowedTags
+                    + ", needCheckTags=" + needCheckTags
+                    + ", result.size=" + result.size()
+                    + ", username=" + username);
+            if (allowedTags.isEmpty()) {
+                LOG.info("queryid=" + queryid + ", username=" + username + ", tag=" + Env.getCurrentEnv().getAuth()
+                        .getResourceTags(username));
+            }
         }
 
         if (tablets.size() == 0) {
