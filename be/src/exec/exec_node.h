@@ -285,6 +285,7 @@ protected:
     // Account for peak memory used by this node
     RuntimeProfile::Counter* _memory_used_counter;
     RuntimeProfile::Counter* _projection_timer;
+    RuntimeProfile::Counter* _real_projection_timer;
 
     //
     OpentelemetrySpan _span;
