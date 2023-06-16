@@ -50,7 +50,7 @@ public:
     using iterator_impl = typename HashMapImpl::iterator;
 
     // PHHashMap() = default;
-    PHHashMap() { _hash_map.reserve(1000000); }
+    PHHashMap() { _hash_map.reserve(7000000); }
 
     PHHashMap(size_t reserve_for_num_elements) { _hash_map.reserve(reserve_for_num_elements); }
 
