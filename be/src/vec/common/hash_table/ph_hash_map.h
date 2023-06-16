@@ -49,7 +49,8 @@ public:
     using const_iterator_impl = typename HashMapImpl::const_iterator;
     using iterator_impl = typename HashMapImpl::iterator;
 
-    PHHashMap() = default;
+    // PHHashMap() = default;
+    PHHashMap() { _hash_map.reserve(1000000); }
 
     PHHashMap(size_t reserve_for_num_elements) { _hash_map.reserve(reserve_for_num_elements); }
 
