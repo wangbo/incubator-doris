@@ -548,7 +548,9 @@ Status SegmentIterator::_extract_common_expr_columns(const vectorized::VExprSPtr
     if (node_type == TExprNodeType::SLOT_REF) {
         auto slot_expr = std::dynamic_pointer_cast<doris::vectorized::VSlotRef>(expr);
         _is_common_expr_column[_schema->column_id(slot_expr->column_id())] = true;
-        _common_expr_columns.insert(_schema->column_id(slot_expr->column_id()));
+        auto idd = _schema->column_id(slot_expr->column_id());
+        std::cout << "expr col id=" << idd << std::endl;
+        _common_expr_columns.insert(idd);
     }
 
     return Status::OK();
@@ -1257,9 +1259,11 @@ Status SegmentIterator::_vec_init_lazy_materialization() {
 
             // check pred using short eval or vec eval
             if (_can_evaluated_by_vectorized(predicate)) {
+                std::cout << "pred col id=" << predicate->column_id() << std::endl;
                 vec_pred_col_id_set.insert(predicate->column_id());
                 _pre_eval_block_predicate.push_back(predicate);
             } else {
+                std::cout << "short col id=" << predicate->column_id() << std::endl;
                 short_cir_pred_col_id_set.insert(cid);
                 _short_cir_eval_predicate.push_back(predicate);
                 if (predicate->get_filter_id() != -1) {
