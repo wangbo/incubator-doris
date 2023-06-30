@@ -128,6 +128,7 @@ Status ExecNode::prepare(RuntimeState* state) {
     OpentelemetryScope scope {_span};
     _rows_returned_counter = ADD_COUNTER(_runtime_profile, "RowsReturned", TUnit::UNIT);
     _projection_timer = ADD_TIMER(_runtime_profile, "ProjectionTime");
+    _proj_exec_timer = ADD_TIMER(_runtime_profile, "ProjectionExecTime");
     _rows_returned_rate = runtime_profile()->add_derived_counter(
             ROW_THROUGHPUT_COUNTER, TUnit::UNIT_PER_SECOND,
             std::bind<int64_t>(&RuntimeProfile::units_per_second, _rows_returned_counter,
@@ -572,7 +573,10 @@ Status ExecNode::do_projections(vectorized::Block* origin_block, vectorized::Blo
         DCHECK(mutable_columns.size() == _projections.size());
         for (int i = 0; i < mutable_columns.size(); ++i) {
             auto result_column_id = -1;
-            RETURN_IF_ERROR(_projections[i]->execute(origin_block, &result_column_id));
+            {
+                SCOPED_TIMER(_proj_exec_timer);
+                RETURN_IF_ERROR(_projections[i]->execute(origin_block, &result_column_id));
+            }
             auto column_ptr = origin_block->get_by_position(result_column_id)
                                       .column->convert_to_full_column_if_const();
             //TODO: this is a quick fix, we need a new function like "change_to_nullable" to do it
