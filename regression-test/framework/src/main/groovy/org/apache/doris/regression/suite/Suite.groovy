@@ -195,7 +195,7 @@ class Suite implements GroovyInterceptable {
     }
 
     List<List<Object>> sql(String sqlStr, boolean isOrder = false) {
-        logger.info("Execute ${isOrder ? "order_" : ""}sql: ${sqlStr}".toString())
+//        logger.info("Execute ${isOrder ? "order_" : ""}sql: ${sqlStr}".toString())
         def (result, meta) = JdbcUtils.executeToList(context.getConnection(), sqlStr)
         if (isOrder) {
             result = DataUtils.sortByToString(result)
