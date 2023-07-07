@@ -327,7 +327,7 @@ public class HiveMetaStoreCache {
                 throw e;
             }
         }
-        result.setPartitionValues(partitionValues);
+        result.setPartitionValues(Lists.newArrayList(partitionValues));
         return result;
     }
 

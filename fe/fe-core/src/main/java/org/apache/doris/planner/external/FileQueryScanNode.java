@@ -163,6 +163,10 @@ public abstract class FileQueryScanNode extends FileScanNode {
     @Override
     public void updateRequiredSlots(PlanTranslatorContext planTranslatorContext,
             Set<SlotId> requiredByProjectSlotIdSet) throws UserException {
+        updateRequiredSlots();
+    }
+
+    private void updateRequiredSlots() throws UserException {
         params.unsetRequiredSlots();
         for (SlotDescriptor slot : desc.getSlots()) {
             if (!slot.isMaterialized()) {
@@ -196,6 +200,7 @@ public abstract class FileQueryScanNode extends FileScanNode {
     // Create scan range locations and the statistics.
     protected void doFinalize() throws UserException {
         createScanRangeLocations();
+        updateRequiredSlots();
     }
 
     private void setColumnPositionMapping()
