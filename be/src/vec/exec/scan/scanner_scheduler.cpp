@@ -430,7 +430,7 @@ void ScannerScheduler::_task_group_scanner_scan(ScannerScheduler* scheduler,
                 SCOPED_RAW_TIMER(&time_spent);
                 scan_task.scan_func();
             }
-            sleep(2);
+            sleep(1);
             scan_queue->update_statistics(scan_task, time_spent);
         }
     }
