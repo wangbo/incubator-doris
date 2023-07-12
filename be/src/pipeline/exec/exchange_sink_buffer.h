@@ -34,6 +34,7 @@
 #include "common/status.h"
 #include "runtime/runtime_state.h"
 #include "service/backend_options.h"
+#include "util/threadpool.h"
 
 namespace doris {
 class PTransmitDataParams;
@@ -194,6 +195,7 @@ private:
     int _be_number;
     std::atomic<int64_t> _rpc_count = 0;
     PipelineFragmentContext* _context;
+    ThreadPool* _send_rpc_pool;
 
     Status _send_rpc(InstanceLoId);
     // must hold the _instance_to_package_queue_mutex[id] mutex to opera

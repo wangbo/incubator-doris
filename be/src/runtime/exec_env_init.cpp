@@ -146,6 +146,12 @@ Status ExecEnv::_init(const std::vector<StorePath>& store_paths) {
             .set_max_queue_size(config::fragment_pool_queue_size)
             .build(&_join_node_thread_pool);
 
+    ThreadPoolBuilder("SendRpcThreadPool")
+            .set_min_threads(config::fragment_pool_thread_num_min)
+            .set_max_threads(std::numeric_limits<int>::max())
+            .set_max_queue_size(config::fragment_pool_queue_size)
+            .build(&_send_rpc_pool);
+
     RETURN_IF_ERROR(init_pipeline_task_scheduler());
     _scanner_scheduler = new doris::vectorized::ScannerScheduler();
     _fragment_mgr = new FragmentMgr(this);
@@ -421,6 +427,7 @@ void ExecEnv::_destroy() {
     _join_node_thread_pool.reset(nullptr);
     _serial_download_cache_thread_token.reset(nullptr);
     _download_cache_thread_pool.reset(nullptr);
+    _send_rpc_pool.reset(nullptr);
 
     _is_init = false;
 }

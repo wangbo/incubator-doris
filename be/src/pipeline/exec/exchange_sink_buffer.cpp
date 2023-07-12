@@ -53,7 +53,9 @@ ExchangeSinkBuffer::ExchangeSinkBuffer(PUniqueId query_id, PlanNodeId dest_node_
           _dest_node_id(dest_node_id),
           _sender_id(send_id),
           _be_number(be_number),
-          _context(context) {}
+          _context(context) {
+    _send_rpc_pool = _context->get_exec_env()->send_rpc_thread_pool();
+}
 
 ExchangeSinkBuffer::~ExchangeSinkBuffer() = default;
 
@@ -184,18 +186,20 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                        const PTransmitDataResult& result,
                                        const int64_t& start_rpc_time) {
-            set_rpc_time(id, start_rpc_time, result.receive_time());
-            Status s = Status(result.status());
-            if (s.is<ErrorCode::END_OF_FILE>()) {
-                _set_receiver_eof(id);
-            } else if (!s.ok()) {
-                _failed(id,
-                        fmt::format("exchange req success but status isn't ok: {}", s.to_string()));
-            } else if (eos) {
-                _ended(id);
-            } else {
-                _send_rpc(id);
-            }
+            _send_rpc_pool->submit_func([this, id, eos, result, start_rpc_time] {
+                set_rpc_time(id, start_rpc_time, result.receive_time());
+                Status s = Status(result.status());
+                if (s.is<ErrorCode::END_OF_FILE>()) {
+                    _set_receiver_eof(id);
+                } else if (!s.ok()) {
+                    _failed(id, fmt::format("exchange req success but status isn't ok: {}",
+                                            s.to_string()));
+                } else if (eos) {
+                    _ended(id);
+                } else {
+                    _send_rpc(id);
+                }
+            });
         });
         {
             SCOPED_SWITCH_THREAD_MEM_TRACKER_LIMITER(ExecEnv::GetInstance()->orphan_mem_tracker());
@@ -228,18 +232,20 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                        const PTransmitDataResult& result,
                                        const int64_t& start_rpc_time) {
-            set_rpc_time(id, start_rpc_time, result.receive_time());
-            Status s = Status(result.status());
-            if (s.is<ErrorCode::END_OF_FILE>()) {
-                _set_receiver_eof(id);
-            } else if (!s.ok()) {
-                _failed(id,
-                        fmt::format("exchange req success but status isn't ok: {}", s.to_string()));
-            } else if (eos) {
-                _ended(id);
-            } else {
-                _send_rpc(id);
-            }
+            _send_rpc_pool->submit_func([this, id, eos, result, start_rpc_time] {
+                set_rpc_time(id, start_rpc_time, result.receive_time());
+                Status s = Status(result.status());
+                if (s.is<ErrorCode::END_OF_FILE>()) {
+                    _set_receiver_eof(id);
+                } else if (!s.ok()) {
+                    _failed(id, fmt::format("exchange req success but status isn't ok: {}",
+                                            s.to_string()));
+                } else if (eos) {
+                    _ended(id);
+                } else {
+                    _send_rpc(id);
+                }
+            });
         });
         {
             SCOPED_SWITCH_THREAD_MEM_TRACKER_LIMITER(ExecEnv::GetInstance()->orphan_mem_tracker());

@@ -122,6 +122,8 @@ public:
 
     taskgroup::TaskGroup* get_task_group() const { return _query_ctx->get_task_group(); }
 
+    ExecEnv* get_exec_env() { return _exec_env; }
+
 private:
     Status _create_sink(int sender_id, const TDataSink& t_data_sink, RuntimeState* state);
     Status _build_pipelines(ExecNode*, PipelinePtr);
