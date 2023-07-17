@@ -157,7 +157,7 @@ public:
             _request = nullptr;
         }
         if (_done != nullptr) {
-            _done->Run();
+            // _done->Run();
         }
         delete this;
     }
@@ -1057,7 +1057,7 @@ void PInternalServiceImpl::transmit_block(google::protobuf::RpcController* contr
     });
     if (!ret) {
         LOG(WARNING) << "fail to offer request to the work pool";
-        brpc::ClosureGuard closure_guard(done);
+        // brpc::ClosureGuard closure_guard(done);
         response->mutable_status()->set_status_code(TStatusCode::CANCELLED);
         response->mutable_status()->add_error_msgs("fail to offer request to the work pool");
     }
