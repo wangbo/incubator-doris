@@ -306,7 +306,7 @@ protected:
         return false;
     }
 
-    Status _wait_last_brpc() {
+    virtual Status _wait_last_brpc() {
         SCOPED_TIMER(_parent->_brpc_wait_timer);
         if (_closure == nullptr) {
             return Status::OK();
@@ -503,6 +503,27 @@ public:
     }
 
 private:
+    Status _wait_last_brpc() override {
+        SCOPED_TIMER(_parent->_brpc_wait_timer);
+        if (_closure == nullptr) {
+            return Status::OK();
+        }
+        auto cntl = &_closure->cntl;
+        auto call_id = _closure->cntl.call_id();
+        brpc::Join(call_id);
+        receiver_status_ = Status::create(_closure->result.status());
+        if (cntl->Failed()) {
+            std::string err = fmt::format(
+                    "failed to send brpc batch, error={}, error_text={}, client: {}, "
+                    "latency = {}",
+                    berror(cntl->ErrorCode()), cntl->ErrorText(), BackendOptions::get_localhost(),
+                    cntl->latency_us());
+            LOG(WARNING) << err;
+            return Status::RpcError(err);
+        }
+        return receiver_status_;
+    }
+
     friend class VDataStreamSender;
 
     pipeline::ExchangeSinkBuffer* _buffer = nullptr;
