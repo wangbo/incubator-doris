@@ -15,25 +15,25 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include "runtime/string_value.hpp"
+
+#include <gtest/gtest.h>
 
 #include <string>
 
-#include "gtest/gtest_pred_impl.h"
-#include "vec/common/string_ref.h"
+#include "util/cpu_info.h"
 
 using std::string;
 
-namespace doris {
+namespace starrocks {
 
-StringRef FromStdString(const string& str) {
+StringValue FromStdString(const string& str) {
     char* ptr = const_cast<char*>(str.c_str());
     int len = str.size();
-    return StringRef(ptr, len);
+    return {ptr, static_cast<size_t>(len)};
 }
 
-TEST(StringRefTest, TestCompare) {
+TEST(StringValueTest, TestCompare) {
     std::string empty_str = "";
     std::string str1_str = "abc";
     std::string str2_str = "abcdef";
@@ -42,7 +42,7 @@ TEST(StringRefTest, TestCompare) {
     const int NUM_STRINGS = 4;
 
     // Must be in lexical order
-    StringRef svs[NUM_STRINGS];
+    StringValue svs[NUM_STRINGS];
     svs[0] = FromStdString(empty_str);
     svs[1] = FromStdString(str1_str);
     svs[2] = FromStdString(str2_str);
@@ -82,4 +82,4 @@ TEST(StringRefTest, TestCompare) {
     }
 }
 
-} // namespace doris
+} // namespace starrocks

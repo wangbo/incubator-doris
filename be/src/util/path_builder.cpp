@@ -14,44 +14,40 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/path-builder.cc
-// and modified by Doris
 
 #include "util/path_builder.h"
 
-#include <stdlib.h>
-
+#include <cstdlib>
 #include <sstream>
 
-namespace doris {
+namespace starrocks {
 
-const char* PathBuilder::_s_doris_home;
+const char* PathBuilder::_s_starrocks_home;
 
-void PathBuilder::load_doris_home() {
-    if (_s_doris_home != nullptr) {
+void PathBuilder::load_starrocks_home() {
+    if (_s_starrocks_home != nullptr) {
         return;
     }
 
-    _s_doris_home = getenv("DORIS_HOME");
+    _s_starrocks_home = getenv("STARROCKS_HOME");
 }
 
 void PathBuilder::get_full_path(const std::string& path, std::string* full_path) {
-    load_doris_home();
+    load_starrocks_home();
     std::stringstream s;
-    s << _s_doris_home << "/" << path;
+    s << _s_starrocks_home << "/" << path;
     *full_path = s.str();
 }
 
 void PathBuilder::get_full_build_path(const std::string& path, std::string* full_path) {
-    load_doris_home();
+    load_starrocks_home();
     std::stringstream s;
 #ifdef NDEBUG
-    s << _s_doris_home << "/be/build/release/" << path;
+    s << _s_starrocks_home << "/be/build/release/" << path;
 #else
-    s << _s_doris_home << "/be/build/debug/" << path;
+    s << _s_starrocks_home << "/be/build/debug/" << path;
 #endif
     *full_path = s.str();
 }
 
-} // namespace doris
+} // namespace starrocks

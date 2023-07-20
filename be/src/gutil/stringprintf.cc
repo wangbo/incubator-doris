@@ -2,16 +2,13 @@
 
 #include "gutil/stringprintf.h"
 
-#include <stdarg.h> // For va_list and related operations
-#include <stdio.h>  // MSVC requires this for _vsnprintf
+#include <cstdarg> // For va_list and related operations
+#include <cstdio>  // MSVC requires this for _vsnprintf
 #include <vector>
-#include <ostream>
-
 using std::vector;
-#include "common/logging.h"
+#include <common/logging.h>
 
-// IWYU pragma: no_include <butil/macros.h>
-#include "gutil/macros.h" // IWYU pragma: keep
+#include "gutil/macros.h"
 
 #ifdef _MSC_VER
 enum { IS__MSC_VER = 1 };
@@ -105,8 +102,7 @@ static const char string_printf_empty_block[256] = {'\0'};
 
 string StringPrintfVector(const char* format, const vector<string>& v) {
     CHECK_LE(v.size(), kStringPrintfVectorMaxArgs)
-            << "StringPrintfVector currently only supports up to " << kStringPrintfVectorMaxArgs
-            << " arguments. "
+            << "StringPrintfVector currently only supports up to " << kStringPrintfVectorMaxArgs << " arguments. "
             << "Feel free to add support for more if you need it.";
 
     // Add filler arguments so that bogus format+args have a harder time
@@ -127,9 +123,8 @@ string StringPrintfVector(const char* format, const vector<string>& v) {
     // this COMPILE_ASSERT right next to the actual statement.
 
     COMPILE_ASSERT(kStringPrintfVectorMaxArgs == 32, arg_count_mismatch);
-    return StringPrintf(format, cstr[0], cstr[1], cstr[2], cstr[3], cstr[4], cstr[5], cstr[6],
-                        cstr[7], cstr[8], cstr[9], cstr[10], cstr[11], cstr[12], cstr[13], cstr[14],
-                        cstr[15], cstr[16], cstr[17], cstr[18], cstr[19], cstr[20], cstr[21],
-                        cstr[22], cstr[23], cstr[24], cstr[25], cstr[26], cstr[27], cstr[28],
-                        cstr[29], cstr[30], cstr[31]);
+    return StringPrintf(format, cstr[0], cstr[1], cstr[2], cstr[3], cstr[4], cstr[5], cstr[6], cstr[7], cstr[8],
+                        cstr[9], cstr[10], cstr[11], cstr[12], cstr[13], cstr[14], cstr[15], cstr[16], cstr[17],
+                        cstr[18], cstr[19], cstr[20], cstr[21], cstr[22], cstr[23], cstr[24], cstr[25], cstr[26],
+                        cstr[27], cstr[28], cstr[29], cstr[30], cstr[31]);
 }

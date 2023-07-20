@@ -1,12 +1,15 @@
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Use of this source code is governed by a BSD-style license.
+// (https://developers.google.com/open-source/licenses/bsd)
+
+#pragma once
+
 // Macro with the boilerplate that makes a type move-only in C++03.
 //
 // USAGE
 //
-// This macro should be used instead of DISALLOW_COPY_AND_ASSIGN to create
-// a "move-only" type.  Unlike DISALLOW_COPY_AND_ASSIGN, this macro should be
+// This macro should be used instead of DISALLOW_COPY to create
+// a "move-only" type.  Unlike DISALLOW_COPY, this macro should be
 // the first line in a class declaration.
 //
 // A class using this macro must call .Pass() (or somehow be an r-value already)
@@ -55,7 +58,7 @@
 // by declaring private version of them with a non-const reference parameter.
 //
 // For l-values, direct initialization still fails like in
-// DISALLOW_COPY_AND_ASSIGN because the copy constructor and assignment
+// DISALLOW_COPY because the copy constructor and assignment
 // operators are private.
 //
 // For r-values, the situation is different. The copy constructor and
@@ -114,7 +117,7 @@
 // It is tempting to want to use the RValue type in function parameters, but
 // excluding the limited usage here for the move constructor and move
 // operator=, doing so would mean that the function could take both r-values
-// and l-values equally which is unexpected.  See COMPARED To Boost.Move for
+// and l-values equially which is unexpected.  See COMPARED To Boost.Move for
 // more details.
 //
 // An alternate, and incorrect, implementation of the RValue class used by
@@ -197,9 +200,6 @@
 //
 // The workaround is to explicitly declare your copy constructor.
 //
-
-#pragma once
-
 #define MOVE_ONLY_TYPE_FOR_CPP_03(type, rvalue_type)           \
 private:                                                       \
     struct rvalue_type {                                       \

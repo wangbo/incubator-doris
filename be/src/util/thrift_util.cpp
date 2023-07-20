@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/thrift_util.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,70 +34,50 @@
 
 #include "util/thrift_util.h"
 
-#include <gen_cpp/Types_types.h>
-#include <thrift/TOutput.h>
-#include <thrift/protocol/TBinaryProtocol.h>
+#include <thrift/Thrift.h>
+#include <thrift/concurrency/ThreadManager.h>
+#include <thrift/server/TNonblockingServer.h>
+#include <thrift/transport/TServerSocket.h>
 #include <thrift/transport/TSocket.h>
-#include <thrift/transport/TTransportException.h>
-// IWYU pragma: no_include <bits/chrono.h>
-#include <chrono> // IWYU pragma: keep
 
-// IWYU pragma: no_include <opentelemetry/common/threadlocal.h>
-#include "common/compiler_util.h" // IWYU pragma: keep
-#include "common/logging.h"
+#include "gen_cpp/Types_types.h"
+#include "util/hash_util.hpp"
+#include "util/monotime.h"
 #include "util/thrift_server.h"
 
-namespace apache {
-namespace thrift {
-namespace protocol {
-class TProtocol;
-} // namespace protocol
-} // namespace thrift
-} // namespace apache
-
-// TCompactProtocol requires some #defines to work right.  They also define UNLIKELY
+// TCompactProtocol requires some #defines to work right.  They also define UNLIKLEY
 // so we need to undef this.
 // TODO: is there a better include to use?
 #ifdef UNLIKELY
 #undef UNLIKELY
 #endif
-#ifndef SIGNED_RIGHT_SHIFT_IS
 #define SIGNED_RIGHT_SHIFT_IS 1
-#endif
-
-#ifndef ARITHMETIC_RIGHT_SHIFT
 #define ARITHMETIC_RIGHT_SHIFT 1
-#endif
-
 #include <thrift/protocol/TCompactProtocol.h>
 
-#include <sstream>
-#include <thread>
-
-namespace doris {
+namespace starrocks {
 
 ThriftSerializer::ThriftSerializer(bool compact, int initial_buffer_size)
         : _mem_buffer(new apache::thrift::transport::TMemoryBuffer(initial_buffer_size)) {
     if (compact) {
-        apache::thrift::protocol::TCompactProtocolFactoryT<apache::thrift::transport::TMemoryBuffer>
-                factory;
+        apache::thrift::protocol::TCompactProtocolFactoryT<apache::thrift::transport::TMemoryBuffer> factory;
         _protocol = factory.getProtocol(_mem_buffer);
     } else {
-        apache::thrift::protocol::TBinaryProtocolFactoryT<apache::thrift::transport::TMemoryBuffer>
-                factory;
+        apache::thrift::protocol::TBinaryProtocolFactoryT<apache::thrift::transport::TMemoryBuffer> factory;
         _protocol = factory.getProtocol(_mem_buffer);
     }
 }
 
 std::shared_ptr<apache::thrift::protocol::TProtocol> create_deserialize_protocol(
-        std::shared_ptr<apache::thrift::transport::TMemoryBuffer> mem, bool compact) {
-    if (compact) {
-        apache::thrift::protocol::TCompactProtocolFactoryT<apache::thrift::transport::TMemoryBuffer>
-                tproto_factory;
+        const std::shared_ptr<apache::thrift::transport::TMemoryBuffer>& mem, TProtocolType type) {
+    if (type == TProtocolType::COMPACT) {
+        apache::thrift::protocol::TCompactProtocolFactoryT<apache::thrift::transport::TMemoryBuffer> tproto_factory;
+        return tproto_factory.getProtocol(mem);
+    } else if (type == TProtocolType::JSON) {
+        apache::thrift::protocol::TJSONProtocolFactory tproto_factory;
         return tproto_factory.getProtocol(mem);
     } else {
-        apache::thrift::protocol::TBinaryProtocolFactoryT<apache::thrift::transport::TMemoryBuffer>
-                tproto_factory;
+        apache::thrift::protocol::TBinaryProtocolFactoryT<apache::thrift::transport::TMemoryBuffer> tproto_factory;
         return tproto_factory.getProtocol(mem);
     }
 }
@@ -125,10 +122,9 @@ Status wait_for_server(const std::string& host, int port, int num_retries, int r
         }
 
         ++retry_count;
-        VLOG_QUERY << "Waiting " << retry_interval_ms << "ms for Thrift server at " << host << ":"
-                   << port << " to come up, failed attempt " << retry_count << " of "
-                   << num_retries;
-        std::this_thread::sleep_for(std::chrono::milliseconds(retry_interval_ms));
+        VLOG_QUERY << "Waiting " << retry_interval_ms << "ms for Thrift server at " << host << ":" << port
+                   << " to come up, failed attempt " << retry_count << " of " << num_retries;
+        SleepFor(MonoDelta::FromMilliseconds(retry_interval_ms));
     }
 
     return Status::InternalError("Server did not come up");
@@ -153,4 +149,4 @@ bool t_network_address_comparator(const TNetworkAddress& a, const TNetworkAddres
 
     return false;
 }
-} // namespace doris
+} // namespace starrocks

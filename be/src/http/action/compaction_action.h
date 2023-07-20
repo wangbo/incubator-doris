@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/http/action/compaction_action.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,59 +34,37 @@
 
 #pragma once
 
-#include <stdint.h>
-
-#include <string>
+#include <atomic>
 
 #include "common/status.h"
-#include "http/http_handler_with_auth.h"
-#include "olap/tablet.h"
+#include "http/http_handler.h"
 
-namespace doris {
-class HttpRequest;
+namespace starrocks {
 
-class ExecEnv;
+enum CompactionActionType { SHOW_INFO = 1, RUN_COMPACTION = 2, SHOW_REPAIR = 3, SUBMIT_REPAIR = 4 };
 
-enum class CompactionActionType {
-    SHOW_INFO = 1,
-    RUN_COMPACTION = 2,
-    RUN_COMPACTION_STATUS = 3,
-};
-
-const std::string PARAM_COMPACTION_TYPE = "compact_type";
-const std::string PARAM_COMPACTION_BASE = "base";
-const std::string PARAM_COMPACTION_CUMULATIVE = "cumulative";
-const std::string PARAM_COMPACTION_FULL = "full";
-
-/// This action is used for viewing the compaction status.
-/// See compaction-action.md for details.
-class CompactionAction : public HttpHandlerWithAuth {
+// This action is used for viewing the compaction status.
+// See compaction-action.md for details.
+class CompactionAction : public HttpHandler {
 public:
-    CompactionAction(CompactionActionType ctype, ExecEnv* exec_env, TPrivilegeHier::type hier,
-                     TPrivilegeType::type ptype);
+    explicit CompactionAction(CompactionActionType type) : _type(type) {}
 
     ~CompactionAction() override = default;
 
     void handle(HttpRequest* req) override;
 
+    static Status do_compaction(uint64_t tablet_id, const std::string& compaction_type,
+                                const std::string& rowset_ids_string);
+
 private:
     Status _handle_show_compaction(HttpRequest* req, std::string* json_result);
-
-    /// execute compaction request to run compaction task
-    /// param compact_type in req to distinguish the task type, base or cumulative
-    Status _handle_run_compaction(HttpRequest* req, std::string* json_result);
-
-    /// thread callback function for the tablet to do compaction
-    Status _execute_compaction_callback(TabletSharedPtr tablet, const std::string& compaction_type);
-
-    /// fetch compaction running status
-    Status _handle_run_status_compaction(HttpRequest* req, std::string* json_result);
-
-    /// check param and fetch tablet_id from req
-    Status _check_param(HttpRequest* req, uint64_t* tablet_id);
+    Status _handle_compaction(HttpRequest* req, std::string* json_result);
+    Status _handle_show_repairs(HttpRequest* req, std::string* json_result);
+    Status _handle_submit_repairs(HttpRequest* req, std::string* json_result);
 
 private:
     CompactionActionType _type;
+    static std::atomic_bool _running;
 };
 
-} // end namespace doris
+} // end namespace starrocks

@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/agent/utils.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,73 +34,42 @@
 
 #pragma once
 
-#include <butil/macros.h>
+#include "agent/status.h"
+#include "gen_cpp/FrontendService.h"
+#include "gen_cpp/FrontendService_types.h"
+#include "gen_cpp/HeartbeatService_types.h"
+#include "runtime/client_cache.h"
 
-#include <map>
-#include <string>
-
-#include "common/status.h"
-
-namespace doris {
-class TConfirmUnusedRemoteFilesRequest;
-class TConfirmUnusedRemoteFilesResult;
-class TFinishTaskRequest;
-class TMasterInfo;
-class TMasterResult;
-class TReportRequest;
+namespace starrocks {
 
 class MasterServerClient {
 public:
-    static MasterServerClient* create(const TMasterInfo& master_info);
-    static MasterServerClient* instance();
+    explicit MasterServerClient(FrontendServiceClientCache* client_cache);
+    virtual ~MasterServerClient() = default;
 
-    ~MasterServerClient() = default;
-
-    // Report finished task to the master server
+    // Reprot finished task to the master server
     //
     // Input parameters:
-    // * request: The information of finished task
+    // * request: The infomation of finished task
     //
     // Output parameters:
     // * result: The result of report task
-    Status finish_task(const TFinishTaskRequest& request, TMasterResult* result);
+    virtual AgentStatus finish_task(const TFinishTaskRequest& request, TMasterResult* result);
 
     // Report tasks/olap tablet/disk state to the master server
     //
     // Input parameters:
-    // * request: The information to report
+    // * request: The infomation to report
     //
     // Output parameters:
     // * result: The result of report task
-    Status report(const TReportRequest& request, TMasterResult* result);
+    virtual AgentStatus report(const TReportRequest& request, TMasterResult* result);
 
-    Status confirm_unused_remote_files(const TConfirmUnusedRemoteFilesRequest& request,
-                                       TConfirmUnusedRemoteFilesResult* result);
+    MasterServerClient(const MasterServerClient&) = delete;
+    const MasterServerClient& operator=(const MasterServerClient&) = delete;
 
 private:
-    MasterServerClient(const TMasterInfo& master_info);
-
-    DISALLOW_COPY_AND_ASSIGN(MasterServerClient);
-
-    // Not owner. Reference to the ExecEnv::_master_info
-    const TMasterInfo& _master_info;
+    FrontendServiceClientCache* _client_cache;
 };
 
-class AgentUtils {
-public:
-    AgentUtils() = default;
-    virtual ~AgentUtils() = default;
-
-    // Execute shell cmd
-    virtual bool exec_cmd(const std::string& command, std::string* errmsg,
-                          bool redirect_stderr = true);
-
-    // Write a map to file by json format
-    virtual bool write_json_to_file(const std::map<std::string, std::string>& info,
-                                    const std::string& path);
-
-private:
-    DISALLOW_COPY_AND_ASSIGN(AgentUtils);
-}; // class AgentUtils
-
-} // namespace doris
+} // namespace starrocks

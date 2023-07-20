@@ -20,25 +20,27 @@
 #include <cstdint>
 #include <string>
 
-#include "http/http_handler_with_auth.h"
+#include "http/http_handler.h"
 
-namespace doris {
+namespace starrocks {
 
-class HttpRequest;
+class ExecEnv;
 
 // make snapshot
 // be_host:be_http_port/api/snapshot?tablet_id=123&schema_hash=456
-class SnapshotAction : public HttpHandlerWithAuth {
+class SnapshotAction : public HttpHandler {
 public:
-    explicit SnapshotAction(ExecEnv* exec_env, TPrivilegeHier::type hier,
-                            TPrivilegeType::type type);
+    explicit SnapshotAction(ExecEnv* exec_env);
 
     ~SnapshotAction() override = default;
 
     void handle(HttpRequest* req) override;
 
 private:
-    int64_t _make_snapshot(int64_t tablet_id, int schema_hash, std::string* snapshot_path);
+    std::int64_t make_snapshot(std::int64_t tablet_id, int schema_hash, std::string* snapshot_path);
+
+    [[maybe_unused]] ExecEnv* _exec_env;
+
 }; // end class SnapshotAction
 
-} // end namespace doris
+} // end namespace starrocks

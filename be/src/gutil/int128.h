@@ -52,8 +52,8 @@ private:
     // Little-endian memory order optimizations can benefit from
     // having lo_ first, hi_ last.
     // See util/endian/endian.h and Load128/Store128 for storing a uint128.
-    uint64 lo_;
-    uint64 hi_;
+    uint64 lo_{0};
+    uint64 hi_{0};
 
     // Not implemented, just declared for catching automatic type conversions.
     uint128(uint8);
@@ -100,15 +100,11 @@ inline bool operator==(const uint128& lhs, const uint128& rhs) {
 inline bool operator!=(const uint128& lhs, const uint128& rhs) {
     return !(lhs == rhs);
 }
-inline uint128& uint128::operator=(const uint128& b) {
-    lo_ = b.lo_;
-    hi_ = b.hi_;
-    return *this;
-}
+inline uint128& uint128::operator=(const uint128& b) = default;
 
-inline uint128::uint128() : lo_(0), hi_(0) {}
+inline uint128::uint128() {}
 inline uint128::uint128(uint64 top, uint64 bottom) : lo_(bottom), hi_(top) {}
-inline uint128::uint128(const uint128& v) : lo_(v.lo_), hi_(v.hi_) {}
+inline uint128::uint128(const uint128& v) = default;
 inline uint128::uint128(const uint128_pod& v) : lo_(v.lo), hi_(v.hi) {}
 inline uint128::uint128(uint64 bottom) : lo_(bottom), hi_(0) {}
 #ifndef SWIG
@@ -126,11 +122,10 @@ inline void uint128::Initialize(uint64 top, uint64 bottom) {
 
 // Comparison operators.
 
-#define CMP128(op)                                                    \
-    inline bool operator op(const uint128& lhs, const uint128& rhs) { \
-        return (Uint128High64(lhs) == Uint128High64(rhs))             \
-                       ? (Uint128Low64(lhs) op Uint128Low64(rhs))     \
-                       : (Uint128High64(lhs) op Uint128High64(rhs));  \
+#define CMP128(op)                                                                                      \
+    inline bool operator op(const uint128& lhs, const uint128& rhs) {                                   \
+        return (Uint128High64(lhs) == Uint128High64(rhs)) ? (Uint128Low64(lhs) op Uint128Low64(rhs))    \
+                                                          : (Uint128High64(lhs) op Uint128High64(rhs)); \
     }
 
 CMP128(<)
@@ -162,10 +157,9 @@ inline uint128 operator~(const uint128& val) {
     return uint128(~Uint128High64(val), ~Uint128Low64(val));
 }
 
-#define LOGIC128(op)                                                     \
-    inline uint128 operator op(const uint128& lhs, const uint128& rhs) { \
-        return uint128(Uint128High64(lhs) op Uint128High64(rhs),         \
-                       Uint128Low64(lhs) op Uint128Low64(rhs));          \
+#define LOGIC128(op)                                                                                      \
+    inline uint128 operator op(const uint128& lhs, const uint128& rhs) {                                  \
+        return uint128(Uint128High64(lhs) op Uint128High64(rhs), Uint128Low64(lhs) op Uint128Low64(rhs)); \
     }
 
 LOGIC128(|)

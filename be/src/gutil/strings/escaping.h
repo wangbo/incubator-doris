@@ -20,14 +20,13 @@
 
 #pragma once
 
-#include <stddef.h>
-
+#include <cstddef>
 #include <string>
 using std::string;
 #include <vector>
 using std::vector;
 
-#include "common/logging.h"
+#include <common/logging.h>
 
 #include "gutil/strings/ascii_ctype.h"
 #include "gutil/strings/charset.h"
@@ -141,7 +140,7 @@ bool CUnescape(const StringPiece& source, string* dest, string* error);
 
 // A version with no error reporting.
 inline bool CUnescape(const StringPiece& source, string* dest) {
-    return CUnescape(source, dest, NULL);
+    return CUnescape(source, dest, nullptr);
 }
 
 // ----------------------------------------------------------------------
@@ -156,14 +155,13 @@ inline bool CUnescape(const StringPiece& source, string* dest) {
 //
 // ----------------------------------------------------------------------
 
-bool CUnescapeForNullTerminatedString(const StringPiece& source, char* dest, int* dest_len,
-                                      string* error);
+bool CUnescapeForNullTerminatedString(const StringPiece& source, char* dest, int* dest_len, string* error);
 
 bool CUnescapeForNullTerminatedString(const StringPiece& source, string* dest, string* error);
 
 // A version with no error reporting.
 inline bool CUnescapeForNullTerminatedString(const StringPiece& source, string* dest) {
-    return CUnescapeForNullTerminatedString(source, dest, NULL);
+    return CUnescapeForNullTerminatedString(source, dest, nullptr);
 }
 
 // ----------------------------------------------------------------------
@@ -326,8 +324,7 @@ int CalculateBase64EscapedLen(int input_len);
 //    which when set to false will prevent padding with "=".
 // ----------------------------------------------------------------------
 int Base64Escape(const unsigned char* src, int slen, char* dest, int szdest);
-int WebSafeBase64Escape(const unsigned char* src, int slen, char* dest, int szdest,
-                        bool do_padding);
+int WebSafeBase64Escape(const unsigned char* src, int slen, char* dest, int szdest, bool do_padding);
 // Encode src into dest with padding.
 void Base64Escape(const string& src, string* dest);
 // Encode src into dest web-safely without padding.

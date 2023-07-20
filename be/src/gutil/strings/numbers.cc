@@ -6,26 +6,20 @@
 
 #include "gutil/strings/numbers.h"
 
-#include <assert.h>
-#include <ctype.h>
-#include <errno.h>
-#include <float.h> // for DBL_DIG and FLT_DIG
-#include <math.h>  // for HUGE_VAL
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <inttypes.h>
-#include <sys/types.h>
+#include <cassert>
+#include <cctype>
+#include <cerrno>
+#include <cfloat> // for DBL_DIG and FLT_DIG
+#include <cmath>  // for HUGE_VAL
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
-#include <ostream>
-
 using std::numeric_limits;
 #include <string>
-
 using std::string;
 
-#include "common/logging.h"
-#include <fmt/format.h>
+#include <common/logging.h>
 
 #include "gutil/gscoped_ptr.h"
 #include "gutil/int128.h"
@@ -46,8 +40,8 @@ using std::string;
 // the last symbol seen was a '.', which will be ignored. This is
 // useful in case that an initial '-' or final '.' would have another
 // meaning (as a separator, e.g.).
-static inline bool EatADouble(const char** text, int* len, bool allow_question, double* val,
-                              bool* initial_minus, bool* final_period) {
+static inline bool EatADouble(const char** text, int* len, bool allow_question, double* val, bool* initial_minus,
+                              bool* final_period) {
     const char* pos = *text;
     int rem = *len; // remaining length, or -1 if null-terminated
 
@@ -105,11 +99,9 @@ static inline bool EatADouble(const char** text, int* len, bool allow_question, 
 // *text is null-terminated. If update is false, don't alter *text and
 // *len. If null_ok, then update must be false, and, if text has no
 // more chars, then return '\1' (arbitrary nonzero).
-static inline char EatAChar(const char** text, int* len, const char* acceptable_chars, bool update,
-                            bool null_ok) {
+static inline char EatAChar(const char** text, int* len, const char* acceptable_chars, bool update, bool null_ok) {
     assert(!(update && null_ok));
-    if ((*len == 0) || (**text == '\0'))
-        return (null_ok ? '\1' : '\0'); // if null_ok, we're in predicate mode.
+    if ((*len == 0) || (**text == '\0')) return (null_ok ? '\1' : '\0'); // if null_ok, we're in predicate mode.
 
     if (strchr(acceptable_chars, **text)) {
         char result = **text;
@@ -125,8 +117,8 @@ static inline char EatAChar(const char** text, int* len, const char* acceptable_
 
 // Parse an expression in 'text' of the form: <comparator><double> or
 // <double><sep><double> See full comments in header file.
-bool ParseDoubleRange(const char* text, int len, const char** end, double* from, double* to,
-                      bool* is_currency, const DoubleRangeOptions& opts) {
+bool ParseDoubleRange(const char* text, int len, const char** end, double* from, double* to, bool* is_currency,
+                      const DoubleRangeOptions& opts) {
     const double from_default = opts.dont_modify_unbounded ? *from : -HUGE_VAL;
 
     if (!opts.dont_modify_unbounded) {
@@ -149,11 +141,9 @@ bool ParseDoubleRange(const char* text, int len, const char** end, double* from,
             EatAChar(&text, &len, "=", true, false);
             if (opts.allow_currency && EatAChar(&text, &len, "$", true, false))
                 if (is_currency != nullptr) *is_currency = true;
-            if (!EatADouble(&text, &len, opts.allow_unbounded_markers, dest, nullptr, nullptr))
-                return false;
+            if (!EatADouble(&text, &len, opts.allow_unbounded_markers, dest, nullptr, nullptr)) return false;
             *end = text;
-            return EatAChar(&text, &len, opts.acceptable_terminators, false,
-                            opts.null_terminator_ok);
+            return EatAChar(&text, &len, opts.acceptable_terminators, false, opts.null_terminator_ok);
         }
     }
 
@@ -167,13 +157,12 @@ bool ParseDoubleRange(const char* text, int len, const char** end, double* from,
     // separator.
     bool initial_minus_sign = false;
     bool final_period = false;
-    bool* check_initial_minus =
-            (strchr(opts.separators, '-') && !seen_dollar && (opts.num_required_bounds < 2))
-                    ? (&initial_minus_sign)
-                    : nullptr;
+    bool* check_initial_minus = (strchr(opts.separators, '-') && !seen_dollar && (opts.num_required_bounds < 2))
+                                        ? (&initial_minus_sign)
+                                        : nullptr;
     bool* check_final_period = strchr(opts.separators, '.') ? (&final_period) : nullptr;
-    bool double_seen = EatADouble(&text, &len, opts.allow_unbounded_markers, from,
-                                  check_initial_minus, check_final_period);
+    bool double_seen =
+            EatADouble(&text, &len, opts.allow_unbounded_markers, from, check_initial_minus, check_final_period);
 
     // if 2 bounds required, must see a double (or '?' if allowed)
     if ((opts.num_required_bounds == 2) && !double_seen) return false;
@@ -217,10 +206,9 @@ bool ParseDoubleRange(const char* text, int len, const char** end, double* from,
     } else {
         if (initial_minus_sign && double_seen) *from = -(*from);
         // read second <double>
-        bool second_dollar_seen = (seen_dollar || (opts.allow_currency && !double_seen)) &&
-                                  EatAChar(&text, &len, "$", true, false);
-        bool second_double_seen =
-                EatADouble(&text, &len, opts.allow_unbounded_markers, to, nullptr, nullptr);
+        bool second_dollar_seen =
+                (seen_dollar || (opts.allow_currency && !double_seen)) && EatAChar(&text, &len, "$", true, false);
+        bool second_double_seen = EatADouble(&text, &len, opts.allow_unbounded_markers, to, nullptr, nullptr);
         if (opts.num_required_bounds > double_seen + second_double_seen) return false;
         if (second_dollar_seen && !second_double_seen) {
             --text;
@@ -234,8 +222,7 @@ bool ParseDoubleRange(const char* text, int len, const char** end, double* from,
     // We're done. But we have to check that the next char is a proper
     // terminator.
     *end = text;
-    char terminator =
-            EatAChar(&text, &len, opts.acceptable_terminators, false, opts.null_terminator_ok);
+    char terminator = EatAChar(&text, &len, opts.acceptable_terminators, false, opts.null_terminator_ok);
     if (terminator == '.') --(*end);
     return terminator;
 }
@@ -296,8 +283,7 @@ uint32 ParseLeadingUInt32Value(const char* str, uint32 deflt) {
         // (that should be pegged to UINT_MAX due to overflow).
         char* error = nullptr;
         int64 value = strto64(str, &error, 0);
-        if (value > numeric_limits<uint32>::max() ||
-            value < -static_cast<int64>(numeric_limits<uint32>::max())) {
+        if (value > numeric_limits<uint32>::max() || value < -static_cast<int64>(numeric_limits<uint32>::max())) {
             value = numeric_limits<uint32>::max();
         }
         // Within these limits, truncation to 32 bits handles negatives correctly.
@@ -340,8 +326,7 @@ uint32 ParseLeadingUDec32Value(const char* str, uint32 deflt) {
         // (that should be pegged to UINT_MAX due to overflow).
         char* error = nullptr;
         int64 value = strto64(str, &error, 10);
-        if (value > numeric_limits<uint32>::max() ||
-            value < -static_cast<int64>(numeric_limits<uint32>::max())) {
+        if (value > numeric_limits<uint32>::max() || value < -static_cast<int64>(numeric_limits<uint32>::max())) {
             value = numeric_limits<uint32>::max();
         }
         // Within these limits, truncation to 32 bits handles negatives correctly.
@@ -454,21 +439,21 @@ bool ParseLeadingBoolValue(const char* str, bool deflt) {
 }
 
 // ----------------------------------------------------------------------
-// Uint64ToString()
+// FpToString()
 // FloatToString()
 // IntToString()
 //    Convert various types to their string representation, possibly padded
 //    with spaces, using snprintf format specifiers.
 // ----------------------------------------------------------------------
 
-string Uint64ToString(uint64 fp) {
+string FpToString(Fprint fp) {
     char buf[17];
     snprintf(buf, sizeof(buf), "%016" PRIx64, fp);
     return string(buf);
 }
 
 // Default arguments
-string Uint128ToHexString(uint128 ui128) {
+string Uint128ToHexString(const uint128& ui128) {
     char buf[33];
     snprintf(buf, sizeof(buf), "%016" PRIx64, Uint128High64(ui128));
     snprintf(buf + 16, sizeof(buf) - 16, "%016" PRIx64, Uint128Low64(ui128));
@@ -482,17 +467,15 @@ namespace {
 // bases up to 36.
 static const int8 kAsciiToInt[256] = {
         36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, // 16 36s.
-        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
-        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  36, 36,
-        36, 36, 36, 36, 36, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-        27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 36, 36, 36, 36, 36, 10, 11, 12, 13, 14, 15, 16,
-        17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 36, 36,
-        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
-        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
-        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
-        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
-        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
-        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36};
+        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
+        36, 36, 36, 36, 36, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  36, 36, 36, 36, 36, 36, 36, 10, 11, 12, 13, 14,
+        15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 36, 36, 36, 36, 36,
+        10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
+        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
+        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
+        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
+        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36,
+        36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36};
 
 // Input format based on POSIX.1-2008 strtol
 // http://pubs.opengroup.org/onlinepubs/9699919799/functions/strtol.html
@@ -576,7 +559,7 @@ bool safe_int_internal(const char* start, const char* end, int base, IntType* va
         // loop over digits
         // loop body is interleaved for perf, not readability
         for (; start < end; ++start) {
-            unsigned char c = static_cast<unsigned char>(start[0]);
+            auto c = static_cast<unsigned char>(start[0]);
             int digit = kAsciiToInt[c];
             if (value > vmax_over_base) return false;
             value *= base;
@@ -599,7 +582,7 @@ bool safe_int_internal(const char* start, const char* end, int base, IntType* va
         // loop over digits
         // loop body is interleaved for perf, not readability
         for (; start < end; ++start) {
-            unsigned char c = static_cast<unsigned char>(start[0]);
+            auto c = static_cast<unsigned char>(start[0]);
             int digit = kAsciiToInt[c];
             if (value < vmin_over_base) return false;
             value *= base;
@@ -628,7 +611,7 @@ bool safe_strto32(const char* startptr, const int buffer_size, int32* value) {
     return safe_int_internal<int32>(startptr, startptr + buffer_size, 10, value);
 }
 
-bool safe_strto64(const char* startptr, const int buffer_size, int64* value) {
+bool safe_strto64(const char* startptr, const int64 buffer_size, int64* value) {
     return safe_int_internal<int64>(startptr, startptr + buffer_size, 10, value);
 }
 
@@ -710,11 +693,9 @@ size_t u64tostr_base36(uint64 number, size_t buf_size, char* buffer) {
 }
 
 // Generate functions that wrap safe_strtoXXX_base.
-#define GEN_SAFE_STRTO(name, type)                                                  \
-    bool name##_base(const string& str, type* value, int base) {                    \
-        return name##_base(str.c_str(), value, base);                               \
-    }                                                                               \
-    bool name(const char* str, type* value) { return name##_base(str, value, 10); } \
+#define GEN_SAFE_STRTO(name, type)                                                                               \
+    bool name##_base(const string& str, type* value, int base) { return name##_base(str.c_str(), value, base); } \
+    bool name(const char* str, type* value) { return name##_base(str, value, 10); }                              \
     bool name(const string& str, type* value) { return name##_base(str.c_str(), value, 10); }
 GEN_SAFE_STRTO(safe_strto32, int32);
 GEN_SAFE_STRTO(safe_strtou32, uint32);
@@ -973,7 +954,7 @@ char* FastUInt64ToBufferLeft(uint64 u64, char* buffer) {
     uint digits;
     const char* ASCII_digits = nullptr;
 
-    uint32 u = static_cast<uint32>(u64);
+    auto u = static_cast<uint32>(u64);
     if (u == u64) return FastUInt32ToBufferLeft(u, buffer);
 
     uint64 top_11_digits = u64 / 1000000000;
@@ -1020,10 +1001,38 @@ char* FastInt64ToBufferLeft(int64 i, char* buffer) {
     return FastUInt64ToBufferLeft(u, buffer);
 }
 
+char* FastUInt128ToBufferLeft(unsigned __int128 i, char* buffer) {
+    static const unsigned __int128 TWENTY_DIGITS =
+            static_cast<unsigned __int128>(10000000000) * static_cast<unsigned __int128>(10000000000);
+
+    auto u = static_cast<uint64>(i);
+    if (u == i) return FastUInt64ToBufferLeft(u, buffer);
+
+    unsigned __int128 top_19_digits = i / TWENTY_DIGITS;
+    buffer = FastUInt64ToBufferLeft(top_19_digits, buffer);
+    unsigned __int128 rem128 = i - (top_19_digits * TWENTY_DIGITS);
+
+    unsigned __int128 middle_19_digits = rem128 / 10;
+    buffer = FastUInt64ToBufferLeft(middle_19_digits, buffer);
+    u = rem128 - (middle_19_digits * 10);
+
+    buffer = FastUInt32ToBufferLeft(u, buffer);
+
+    return buffer;
+}
+
+char* FastInt128ToBufferLeft(__int128 i, char* buffer) {
+    unsigned __int128 u = i;
+    if (i < 0) {
+        *buffer++ = '-';
+        u = ~u + 1;
+    }
+    return FastUInt128ToBufferLeft(u, buffer);
+}
+
 int HexDigitsPrefix(const char* buf, int num_digits) {
     for (int i = 0; i < num_digits; i++)
-        if (!ascii_isxdigit(buf[i]))
-            return 0; // This also detects end of string as '\0' is not xdigit.
+        if (!ascii_isxdigit(buf[i])) return 0; // This also detects end of string as '\0' is not xdigit.
     return 1;
 }
 
@@ -1274,28 +1283,6 @@ int FloatToBuffer(float value, int width, char* buffer) {
     return snprintf_result;
 }
 
-int FastDoubleToBuffer(double value, char* buffer) {
-    auto end = fmt::format_to(buffer, "{:.15g}", value);
-    *end = '\0';
-    if (strtod(buffer, nullptr) != value) {
-        end = fmt::format_to(buffer, "{:.17g}", value);
-    }
-    return end - buffer;
-}
-
-int FastFloatToBuffer(float value, char* buffer) {
-    auto end = fmt::format_to(buffer, "{:.6g}", value);
-    *end = '\0';
-#ifdef _MSC_VER // has no strtof()
-    if (strtod(buffer, nullptr) != value) {
-#else
-    if (strtof(buffer, nullptr) != value) {
-#endif
-        end = fmt::format_to(buffer, "{:.8g}", value);
-    }
-    return end - buffer;
-}
-
 // ----------------------------------------------------------------------
 // SimpleItoaWithCommas()
 //    Description: converts an integer to a string.
@@ -1362,7 +1349,28 @@ string SimpleItoaWithCommas(uint32 i) {
 string SimpleItoaWithCommas(int64 i) {
     // 19 digits, 6 commas, and sign are good for 64-bit or smaller ints.
     char local[26];
-    char* p = SimpleItoaWithCommas(i, local, sizeof(local));
+    char* p = local + sizeof(local);
+    // Need to use uint64 instead of int64 to correctly handle
+    // -9,223,372,036,854,775,808.
+    uint64 n = i;
+    if (i < 0) n = 0 - n;
+    *--p = '0' + n % 10; // this case deals with the number "0"
+    n /= 10;
+    while (n) {
+        *--p = '0' + n % 10;
+        n /= 10;
+        if (n == 0) break;
+
+        *--p = '0' + n % 10;
+        n /= 10;
+        if (n == 0) break;
+
+        *--p = ',';
+        *--p = '0' + n % 10;
+        n /= 10;
+        // For this unrolling, we check if n == 0 in the main while loop
+    }
+    if (i < 0) *--p = '-';
     return string(p, local + sizeof(local));
 }
 
@@ -1390,60 +1398,6 @@ string SimpleItoaWithCommas(uint64 i) {
         // For this unrolling, we check if i == 0 in the main while loop
     }
     return string(p, local + sizeof(local));
-}
-
-char* SimpleItoaWithCommas(int64_t i, char* buffer, int32_t buffer_size) {
-    // 19 digits, 6 commas, and sign are good for 64-bit or smaller ints.
-    char* p = buffer + buffer_size;
-    // Need to use uint64 instead of int64 to correctly handle
-    // -9,223,372,036,854,775,808.
-    uint64 n = i;
-    if (i < 0) n = 0 - n;
-    *--p = '0' + n % 10; // this case deals with the number "0"
-    n /= 10;
-    while (n) {
-        *--p = '0' + n % 10;
-        n /= 10;
-        if (n == 0) break;
-
-        *--p = '0' + n % 10;
-        n /= 10;
-        if (n == 0) break;
-
-        *--p = ',';
-        *--p = '0' + n % 10;
-        n /= 10;
-        // For this unrolling, we check if n == 0 in the main while loop
-    }
-    if (i < 0) *--p = '-';
-    return p;
-}
-
-char* SimpleItoaWithCommas(__int128_t i, char* buffer, int32_t buffer_size) {
-    // 39 digits, 12 commas, and sign are good for 128-bit or smaller ints.
-    char* p = buffer + buffer_size;
-    // Need to use uint128 instead of int128 to correctly handle
-    // -170,141,183,460,469,231,731,687,303,715,884,105,728.
-    __uint128_t n = i;
-    if (i < 0) n = 0 - n;
-    *--p = '0' + n % 10; // this case deals with the number "0"
-    n /= 10;
-    while (n) {
-        *--p = '0' + n % 10;
-        n /= 10;
-        if (n == 0) break;
-
-        *--p = '0' + n % 10;
-        n /= 10;
-        if (n == 0) break;
-
-        *--p = ',';
-        *--p = '0' + n % 10;
-        n /= 10;
-        // For this unrolling, we check if n == 0 in the main while loop
-    }
-    if (i < 0) *--p = '-';
-    return p;
 }
 
 // ----------------------------------------------------------------------
@@ -1480,49 +1434,6 @@ string ItoaKMGT(int64 i) {
     }
 
     return StringPrintf("%s%" PRId64 "%s", sign, val, suffix);
-}
-
-string AccurateItoaKMGT(int64 i) {
-    const char* sign = "";
-    if (i < 0) {
-        // We lose some accuracy if the caller passes LONG_LONG_MIN, but
-        // that's OK as this function is only for human readability
-        if (i == numeric_limits<int64>::min()) i++;
-        sign = "-";
-        i = -i;
-    }
-
-    string ret = StringPrintf("%s", sign);
-    int64 val;
-    if ((val = (i >> 40)) > 1) {
-        ret += StringPrintf("%" PRId64
-                            "%s"
-                            ",",
-                            val, "T");
-        i = i - (val << 40);
-    }
-    if ((val = (i >> 30)) > 1) {
-        ret += StringPrintf("%" PRId64
-                            "%s"
-                            ",",
-                            val, "G");
-        i = i - (val << 30);
-    }
-    if ((val = (i >> 20)) > 1) {
-        ret += StringPrintf("%" PRId64
-                            "%s"
-                            ",",
-                            val, "M");
-        i = i - (val << 20);
-    }
-    if ((val = (i >> 10)) > 1) {
-        ret += StringPrintf("%" PRId64 "%s", val, "K");
-        i = i - (val << 10);
-    } else {
-        ret += StringPrintf("%" PRId64 "%s", i, "K");
-    }
-
-    return ret;
 }
 
 // DEPRECATED(wadetregaskis).

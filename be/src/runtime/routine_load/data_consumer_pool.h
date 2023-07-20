@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/runtime/routine_load/data_consumer_pool.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,47 +34,40 @@
 
 #pragma once
 
-#include <stdint.h>
-
-#include <list>
+#include <ctime>
 #include <memory>
 #include <mutex>
+#include <thread>
 
-#include "gutil/ref_counted.h"
-#include "util/countdown_latch.h"
-#include "util/thread.h"
+#include "runtime/routine_load/data_consumer.h"
 
-namespace doris {
+namespace starrocks {
 
 class DataConsumer;
 class DataConsumerGroup;
 class Status;
-class StreamLoadContext;
 
 // DataConsumerPool saves all available data consumer
 // to be reused
 class DataConsumerPool {
 public:
     DataConsumerPool(int64_t max_pool_size)
-            : _max_pool_size(max_pool_size), _stop_background_threads_latch(1) {}
+            : _is_closed(std::make_shared<bool>(false)), _max_pool_size(max_pool_size) {}
 
     ~DataConsumerPool() {
-        _stop_background_threads_latch.count_down();
-        if (_clean_idle_consumer_thread) {
-            _clean_idle_consumer_thread->join();
-        }
+        std::unique_lock<std::mutex> l(_lock);
+        *_is_closed = true;
     }
 
     // get a already initialized consumer from cache,
     // if not found in cache, create a new one.
-    Status get_consumer(std::shared_ptr<StreamLoadContext> ctx, std::shared_ptr<DataConsumer>* ret);
+    Status get_consumer(StreamLoadContext* ctx, std::shared_ptr<DataConsumer>* ret);
 
     // get several consumers and put them into group
-    Status get_consumer_grp(std::shared_ptr<StreamLoadContext> ctx,
-                            std::shared_ptr<DataConsumerGroup>* ret);
+    Status get_consumer_grp(StreamLoadContext* ctx, std::shared_ptr<DataConsumerGroup>* ret);
 
     // return the consumer to the pool
-    void return_consumer(std::shared_ptr<DataConsumer> consumer);
+    void return_consumer(const std::shared_ptr<DataConsumer>& consumer);
     // return the consumers in consumer group to the pool
     void return_consumers(DataConsumerGroup* grp);
 
@@ -68,11 +78,11 @@ private:
 
 private:
     std::mutex _lock;
+    std::shared_ptr<bool> _is_closed;
     std::list<std::shared_ptr<DataConsumer>> _pool;
     int64_t _max_pool_size;
 
-    CountDownLatch _stop_background_threads_latch;
-    scoped_refptr<Thread> _clean_idle_consumer_thread;
+    std::thread _clean_idle_consumer_thread;
 };
 
-} // end namespace doris
+} // end namespace starrocks

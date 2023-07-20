@@ -17,7 +17,7 @@
 
 #include "util/md5.h"
 
-namespace doris {
+namespace starrocks {
 
 Md5Digest::Md5Digest() {
     MD5_Init(&_md5_ctx);
@@ -35,11 +35,11 @@ void Md5Digest::digest() {
 
     static char dig_vec_lower[] = "0123456789abcdef";
     char* to = hex_buf;
-    for (int i = 0; i < MD5_DIGEST_LENGTH; ++i) {
-        *to++ = dig_vec_lower[buf[i] >> 4];
-        *to++ = dig_vec_lower[buf[i] & 0x0F];
+    for (unsigned char i : buf) {
+        *to++ = dig_vec_lower[i >> 4];
+        *to++ = dig_vec_lower[i & 0x0F];
     }
     _hex.assign(hex_buf, 2 * MD5_DIGEST_LENGTH);
 }
 
-} // namespace doris
+} // namespace starrocks

@@ -31,7 +31,7 @@ static const uint64 MIX64 = GG_ULONGLONG(0x2b992ddfa23249d6); // more of pi
 //    overloading) and return 32 or 16 bit quantities, respectively.
 //    The basic rule of our hashing is: always mix().  Thus, even for
 //    char outputs we cast to a uint32 and mix with two arbitrary numbers.
-//    HashTo32 never returns kIllegalHash32, and similarity,
+//    HashTo32 never returns kIllegalHash32, and similary,
 //    HashTo16 never returns kIllegalHash16.
 //
 // Note that these methods avoid returning certain reserved values, while
@@ -61,8 +61,7 @@ static const uint64 MIX64 = GG_ULONGLONG(0x2b992ddfa23249d6); // more of pi
 
 HASH_TO((const char* s, uint32 slen), Hash32StringWithSeed(s, slen, MIX32))
 HASH_TO((const wchar_t* s, uint32 slen),
-        Hash32StringWithSeed(reinterpret_cast<const char*>(s),
-                             static_cast<uint32>(sizeof(wchar_t) * slen), MIX32))
+        Hash32StringWithSeed(reinterpret_cast<const char*>(s), static_cast<uint32>(sizeof(wchar_t) * slen), MIX32))
 HASH_TO((char c), Hash32NumWithSeed(static_cast<uint32>(c), MIX32))
 HASH_TO((schar c), Hash32NumWithSeed(static_cast<uint32>(c), MIX32))
 HASH_TO((uint16 c), Hash32NumWithSeed(static_cast<uint32>(c), MIX32))

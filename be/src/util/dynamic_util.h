@@ -14,29 +14,26 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/dynamic-util.h
-// and modified by Doris
 
 #pragma once
 
 #include "common/status.h"
 
-namespace doris {
+namespace starrocks {
 
-// Look up symbols in a dynamically linked library.
-// handle -- handle to the library. nullptr if loading from the current process.
+// Look up smybols in a dynamically linked library.
+// handle -- handle to the library. NULL if loading from the current process.
 // symbol -- symbol to lookup.
-// fn_ptr -- pointer tor return address of function.
+// fn_ptr -- pointer tor retun addres of function.
 Status dynamic_lookup(void* handle, const char* symbol, void** fn_ptr);
 
-// Open a dynamically loaded library.
+// Open a dynamicly loaded library.
 // library -- name of the library.  The default paths will be searched.
-//            library can be nullptr to get the handle for the current process.
+//            library can be NULL to get the handle for the current process.
 // handle -- returned handle to the library.
 Status dynamic_open(const char* library, void** handle);
 
 // Closes the handle.
 void dynamic_close(void* handle);
 
-} // namespace doris
+} // namespace starrocks

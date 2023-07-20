@@ -17,25 +17,24 @@
 
 #pragma once
 
-#include <map>
 #include <string>
 #include <vector>
 
-namespace doris {
+#include "exec/es/es_predicate.h"
+
+namespace starrocks {
 
 class ESScrollQueryBuilder {
 public:
     ESScrollQueryBuilder();
-    ~ESScrollQueryBuilder();
+    ~ESScrollQueryBuilder() = default;
     // build the query DSL for elasticsearch
-    static std::string build_next_scroll_body(const std::string& scroll_id,
-                                              const std::string& scroll);
+    static std::string build_next_scroll_body(const std::string& scroll_id, const std::string& scroll);
     static std::string build_clear_scroll_body(const std::string& scroll_id);
     // @note: predicates should processed before pass it to this method,
-    // tie breaker for predicate whether can push down es can reference the push-down filters
+    // tie breaker for predicate wheather can push down es can reference the push-down filters
     static std::string build(const std::map<std::string, std::string>& properties,
-                             const std::vector<std::string>& fields,
-                             const std::map<std::string, std::string>& docvalue_context,
-                             bool* doc_value_mode);
+                             const std::vector<std::string>& fields, std::vector<EsPredicate*>& predicates,
+                             const std::map<std::string, std::string>& docvalue_context, bool* doc_value_mode);
 };
-} // namespace doris
+} // namespace starrocks

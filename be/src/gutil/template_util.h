@@ -36,7 +36,7 @@
 // any changes here, make sure that you're not breaking any platforms.
 //
 //
-// The names chosen here reflect those used in tr1 and the boost::mpl
+// The names choosen here reflect those used in tr1 and the boost::mpl
 // library, there are similar operations used in the Loki library as
 // well.  I prefer the boost names for 2 reasons:
 // 1.  I think that portions of the Boost libraries are more likely to
@@ -109,7 +109,7 @@ struct is_void : false_type {};
 template <>
 struct is_void<void> : true_type {};
 
-// if_ is a templatize conditional statement.
+// if_ is a templatized conditional statement.
 // if_<cond, A, B> is a compile time evaluation of cond.
 // if_<>::type contains A if cond is true, B otherwise.
 template <bool cond, typename A, typename B>
@@ -147,7 +147,7 @@ struct or_ : public integral_constant<bool, (A::value || B::value)> {};
 // is_class type_trait implementation.
 struct IsClassHelper {
     template <typename C>
-    static YesType Test(void (C::*)(void));
+    static YesType Test(void (C::*)());
 
     template <typename C>
     static NoType Test(...);

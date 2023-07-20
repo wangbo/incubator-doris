@@ -30,10 +30,9 @@
 //
 // NOTE: in the case that you want to cancel the cleanup, use the more verbose
 // (non-macro) form below.
-#define SCOPED_CLEANUP(func_body) \
-    auto VARNAME_LINENUM(scoped_cleanup) = MakeScopedCleanup([&] { func_body });
+#define SCOPED_CLEANUP(func_body) auto VARNAME_LINENUM(scoped_cleanup) = MakeScopedCleanup([&] { func_body });
 
-namespace doris {
+namespace starrocks {
 
 // A scoped object which runs a cleanup function when going out of scope. Can
 // be used for scoped resource cleanup.
@@ -42,7 +41,7 @@ namespace doris {
 template <typename F>
 class ScopedCleanup {
 public:
-    explicit ScopedCleanup(F f) : cancelled_(false), f_(std::move(f)) {}
+    explicit ScopedCleanup(F f) : f_(std::move(f)) {}
     ~ScopedCleanup() {
         if (!cancelled_) {
             f_();
@@ -51,7 +50,7 @@ public:
     void cancel() { cancelled_ = true; }
 
 private:
-    bool cancelled_;
+    bool cancelled_{false};
     F f_;
 };
 
@@ -61,4 +60,4 @@ ScopedCleanup<F> MakeScopedCleanup(F f) {
     return ScopedCleanup<F>(f);
 }
 
-} // namespace doris
+} // namespace starrocks

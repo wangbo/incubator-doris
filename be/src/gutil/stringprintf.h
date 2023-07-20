@@ -9,8 +9,7 @@
 
 #pragma once
 
-#include <stdarg.h>
-
+#include <cstdarg>
 #include <string>
 using std::string;
 #include <vector>

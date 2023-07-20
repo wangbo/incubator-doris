@@ -23,7 +23,7 @@
 
 #include "http/http_status.h"
 
-namespace doris {
+namespace starrocks {
 
 class HttpResponse {
 public:
@@ -39,9 +39,7 @@ public:
     // Add one header
     void add_header(const std::string& key, const std::string& value);
 
-    const std::map<std::string, std::vector<std::string>>& headers() const {
-        return _custom_headers;
-    }
+    const std::map<std::string, std::vector<std::string>>& headers() const { return _custom_headers; }
 
     const std::string* content() const { return _content; }
 
@@ -56,4 +54,4 @@ private:
     std::map<std::string, std::vector<std::string>> _custom_headers;
 };
 
-} // namespace doris
+} // namespace starrocks

@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/bfd_parser.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,39 +34,31 @@
 
 #include "util/bfd_parser.h"
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <bfd.h>
 
-#include <algorithm>
 #include <memory>
-#include <ostream>
+#include <utility>
 
 #include "common/logging.h"
 
-namespace doris {
+namespace starrocks {
 
 struct BfdFindCtx {
-    BfdFindCtx(bfd_symbol** syms_, bfd_vma pc_)
-            : found(false),
-              syms(syms_),
-              pc(pc_),
-              file_name(nullptr),
-              func_name(nullptr),
-              lineno(0) {}
+    BfdFindCtx(bfd_symbol** syms_, bfd_vma pc_) : syms(syms_), pc(pc_) {}
 
-    bool found;
+    bool found{false};
     bfd_symbol** syms;
     bfd_vma pc;
-    const char* file_name;
-    const char* func_name;
-    unsigned int lineno;
+    const char* file_name{nullptr};
+    const char* func_name{nullptr};
+    unsigned int lineno{0};
 };
 
 std::mutex BfdParser::_bfd_mutex;
 bool BfdParser::_is_bfd_inited = false;
 
 static void find_addr_in_section(bfd* abfd, asection* sec, void* arg) {
-    BfdFindCtx* ctx = (BfdFindCtx*)arg;
+    auto* ctx = (BfdFindCtx*)arg;
     if (ctx->found) {
         return;
     }
@@ -78,12 +87,12 @@ static void find_addr_in_section(bfd* abfd, asection* sec, void* arg) {
     if (ctx->pc >= vma + size) {
         return;
     }
-    ctx->found = bfd_find_nearest_line(abfd, sec, ctx->syms, ctx->pc - vma, &ctx->file_name,
-                                       &ctx->func_name, &ctx->lineno);
+    ctx->found =
+            bfd_find_nearest_line(abfd, sec, ctx->syms, ctx->pc - vma, &ctx->file_name, &ctx->func_name, &ctx->lineno);
 }
 
 static void section_print(bfd* bfd, asection* sec, void* arg) {
-    std::string* str = (std::string*)arg;
+    auto* str = (std::string*)arg;
     str->append(sec->name);
     str->push_back('\n');
 }
@@ -107,12 +116,9 @@ BfdParser* BfdParser::create() {
     }
 
     char prog_name[1024];
-
-    if (fscanf(file, "%1023s ", prog_name) != 1) {
-        fclose(file);
-        return nullptr;
+    if (fscanf(file, "%s ", prog_name) != 1) {
+        strcpy(prog_name, "read cmdline failed");
     }
-
     fclose(file);
     std::unique_ptr<BfdParser> parser(new BfdParser(prog_name));
     if (parser->parse()) {
@@ -142,8 +148,8 @@ void BfdParser::list_targets(std::vector<std::string>* out) {
     free(targets);
 }
 
-BfdParser::BfdParser(const std::string& file_name)
-        : _file_name(file_name), _abfd(nullptr), _syms(nullptr), _num_symbols(0), _symbol_size(0) {
+BfdParser::BfdParser(std::string file_name)
+        : _file_name(std::move(file_name)), _abfd(nullptr), _syms(nullptr), _num_symbols(0), _symbol_size(0) {
     if (!_is_bfd_inited) {
         init_bfd();
     }
@@ -181,8 +187,7 @@ int BfdParser::open_bfd() {
         return -1;
     }
     if (bfd_check_format(_abfd, bfd_archive)) {
-        LOG(WARNING) << "bfd_check_format for archive failed because errmsg="
-                     << bfd_errmsg(bfd_get_error());
+        LOG(WARNING) << "bfd_check_format for archive failed because errmsg=" << bfd_errmsg(bfd_get_error());
         return -1;
     }
 
@@ -192,11 +197,10 @@ int BfdParser::open_bfd() {
             std::string message = _file_name;
             list_matching_formats(matches, &message);
             free(matches);
-            LOG(WARNING) << "bfd_check_format_matches failed because errmsg="
-                         << bfd_errmsg(bfd_get_error()) << " and " << message;
+            LOG(WARNING) << "bfd_check_format_matches failed because errmsg=" << bfd_errmsg(bfd_get_error()) << " and "
+                         << message;
         } else {
-            LOG(WARNING) << "bfd_check_format_matches failed because errmsg="
-                         << bfd_errmsg(bfd_get_error());
+            LOG(WARNING) << "bfd_check_format_matches failed because errmsg=" << bfd_errmsg(bfd_get_error());
         }
         return -1;
     }
@@ -211,8 +215,7 @@ int BfdParser::load_symbols() {
     }
     _num_symbols = bfd_read_minisymbols(_abfd, FALSE, (void**)&_syms, &_symbol_size);
     if (_num_symbols == 0) {
-        _num_symbols =
-                bfd_read_minisymbols(_abfd, TRUE /* dynamic */, (void**)&_syms, &_symbol_size);
+        _num_symbols = bfd_read_minisymbols(_abfd, TRUE /* dynamic */, (void**)&_syms, &_symbol_size);
     }
     if (_num_symbols == 0) {
         LOG(WARNING) << "Load symbols failed because errmsg=" << bfd_errmsg(bfd_get_error());
@@ -237,8 +240,8 @@ int BfdParser::parse() {
     return 0;
 }
 
-int BfdParser::decode_address(const char* str, const char** end, std::string* file_name,
-                              std::string* func_name, unsigned int* lineno) {
+int BfdParser::decode_address(const char* str, const char** end, std::string* file_name, std::string* func_name,
+                              unsigned int* lineno) {
     bfd_vma pc = bfd_scan_vma(str, end, 16);
     BfdFindCtx ctx(_syms, pc);
 
@@ -249,7 +252,7 @@ int BfdParser::decode_address(const char* str, const char** end, std::string* fi
         func_name->append("??");
         return -1;
     }
-    // demangle function
+    // demange function
     if (ctx.func_name != nullptr) {
 #define DMGL_PARAMS (1 << 0)
 #define DMGL_ANSI (1 << 1)
@@ -271,6 +274,17 @@ int BfdParser::decode_address(const char* str, const char** end, std::string* fi
     }
     *lineno = ctx.lineno;
     return 0;
+#if 0
+    bool inline_found = true;
+    while (inline_found) {
+        printf("%s\t%s:%u\n", ctx.func_name, ctx.file_name, ctx.lineno);
+        inline_found = bfd_find_inliner_info(_abfd, &ctx.file_name, &ctx.func_name, &ctx.lineno);
+        printf("inline found = %d\n", inline_found);
+        if (inline_found) {
+            printf("inline file_name=%s func_name=%s\n", ctx.file_name, ctx.func_name);
+        }
+    }
+#endif
 }
 
-} // namespace doris
+} // namespace starrocks

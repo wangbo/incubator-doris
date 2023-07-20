@@ -27,7 +27,6 @@ using std::vector;
 
 #include "gutil/port.h" // for LANG_CXX11
 #include "gutil/strings/stringpiece.h"
-#include "gutil/template_util.h" // IWYU pragma: keep
 
 #ifdef LANG_CXX11
 // This must be included after "base/port.h", which defines LANG_CXX11.
@@ -65,28 +64,17 @@ struct NoFilter {
 // The two-argument constructor is used to split the given text using the given
 // delimiter.
 template <typename Delimiter, typename Predicate = NoFilter>
-class SplitIterator {
+class SplitIterator : public std::iterator<std::input_iterator_tag, StringPiece> {
 public:
-    using iterator_category = std::input_iterator_tag;
-    using value_type = StringPiece;
-    using difference_type = ptrdiff_t;
-    using pointer = StringPiece*;
-    using reference = StringPiece&;
-
     // Two constructors for "end" iterators.
     explicit SplitIterator(Delimiter d) : delimiter_(std::move(d)), predicate_(), is_end_(true) {}
-    SplitIterator(Delimiter d, Predicate p)
-            : delimiter_(std::move(d)), predicate_(std::move(p)), is_end_(true) {}
+    SplitIterator(Delimiter d, Predicate p) : delimiter_(std::move(d)), predicate_(std::move(p)), is_end_(true) {}
     // Two constructors taking the text to iterator.
-    SplitIterator(StringPiece text, Delimiter d)
-            : text_(std::move(text)), delimiter_(std::move(d)), predicate_(), is_end_(false) {
+    SplitIterator(StringPiece text, Delimiter d) : text_(text), delimiter_(std::move(d)), predicate_(), is_end_(false) {
         ++(*this);
     }
     SplitIterator(StringPiece text, Delimiter d, Predicate p)
-            : text_(std::move(text)),
-              delimiter_(std::move(d)),
-              predicate_(std::move(p)),
-              is_end_(false) {
+            : text_(text), delimiter_(std::move(d)), predicate_(std::move(p)), is_end_(false) {
         ++(*this);
     }
 
@@ -127,9 +115,8 @@ public:
         // predicate_ fields need not be checked here because they're template
         // parameters that are already part of the SplitIterator's type.
         return (is_end_ && other.is_end_) ||
-               (is_end_ == other.is_end_ && text_ == other.text_ &&
-                text_.data() == other.text_.data() && curr_piece_ == other.curr_piece_ &&
-                curr_piece_.data() == other.curr_piece_.data());
+               (is_end_ == other.is_end_ && text_ == other.text_ && text_.data() == other.text_.data() &&
+                curr_piece_ == other.curr_piece_ && curr_piece_.data() == other.curr_piece_.data());
     }
 
     bool operator!=(const SplitIterator& other) const { return !(*this == other); }
@@ -176,7 +163,7 @@ struct IsNotInitializerList {
     typedef void type;
 };
 template <typename T>
-struct IsNotInitializerList<std::initializer_list<T>> {};
+struct IsNotInitializerList<std::initializer_list<T> > {};
 #endif // LANG_CXX11
 
 // This class implements the behavior of the split API by giving callers access
@@ -238,8 +225,7 @@ public:
     // either a vector<T> or an initializer_list<T>).
     //
     // This trick was taken from util/gtl/container_literal.h
-    template <typename Container,
-              typename IsNotInitializerListChecker = typename IsNotInitializerList<Container>::type,
+    template <typename Container, typename IsNotInitializerListChecker = typename IsNotInitializerList<Container>::type,
               typename ContainerChecker = typename Container::const_iterator>
     operator Container() {
         return SelectContainer<Container, is_map<Container>::value>()(this);
@@ -272,23 +258,19 @@ private:
         static base::big_ test(typename U::mapped_type*);
         template <typename>
         static base::small_ test(...);
-        static const bool value = (sizeof(test<T>(0)) == sizeof(base::big_));
+        static const bool value = (sizeof(test<T>(nullptr)) == sizeof(base::big_));
     };
 
     // Base template handles splitting to non-map containers
     template <typename Container, bool>
     struct SelectContainer {
-        Container operator()(Splitter* splitter) const {
-            return splitter->template ToContainer<Container>();
-        }
+        Container operator()(Splitter* splitter) const { return splitter->template ToContainer<Container>(); }
     };
 
     // Partial template specialization for splitting to map-like containers.
     template <typename Container>
     struct SelectContainer<Container, true> {
-        Container operator()(Splitter* splitter) const {
-            return splitter->template ToMap<Container>();
-        }
+        Container operator()(Splitter* splitter) const { return splitter->template ToMap<Container>(); }
     };
 
     // Inserts split results into the container. To do this the results are first
@@ -376,8 +358,7 @@ private:
     // InsertInMap overload for multimap.
     template <typename K, typename T, typename C, typename A>
     typename std::multimap<K, T, C, A>::iterator InsertInMap(
-            const typename std::multimap<K, T, C, A>::value_type& value,
-            typename std::multimap<K, T, C, A>* map) {
+            const typename std::multimap<K, T, C, A>::value_type& value, typename std::multimap<K, T, C, A>* map) {
         return map->insert(value);
     }
 

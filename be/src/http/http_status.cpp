@@ -19,9 +19,8 @@
 
 #include <map>
 #include <string>
-#include <utility>
 
-namespace doris {
+namespace starrocks {
 
 static std::map<HttpStatus, std::string> s_reason_map = {
         {HttpStatus::CONTINUE, "Continue"},
@@ -65,7 +64,7 @@ static std::map<HttpStatus, std::string> s_reason_map = {
         {HttpStatus::GATEWAY_TIMEOUT, "Gateway Time-out"},
         {HttpStatus::HTTP_VERSION_NOT_SUPPORTED, "HTTP Version not supported"}};
 
-std::string default_reason(const HttpStatus& status) {
+std::string defalut_reason(const HttpStatus& status) {
     auto iter = s_reason_map.find(status);
     if (iter != s_reason_map.end()) {
         return iter->second;
@@ -77,4 +76,4 @@ std::string to_code(const HttpStatus& status) {
     return std::to_string(status);
 }
 
-} // namespace doris
+} // namespace starrocks

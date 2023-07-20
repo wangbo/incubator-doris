@@ -22,7 +22,7 @@
 
 #include "gutil/ref_counted.h"
 
-namespace doris {
+namespace starrocks {
 
 // A wrapper around rapidjson Value objects, to simplify usage.
 // Intended solely for building json objects, not writing/parsing.
@@ -185,4 +185,4 @@ private:
     rapidjson::Value* value_;
 };
 
-} // namespace doris
+} // namespace starrocks

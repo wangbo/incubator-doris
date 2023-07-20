@@ -1,58 +1,53 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
+# Copyright 2021-present StarRocks, Inc. All rights reserved.
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-# where to put generated libraries
 set(LIBRARY_OUTPUT_PATH "${BUILD_DIR}/src/service")
 
 # where to put generated binaries
 set(EXECUTABLE_OUTPUT_PATH "${BUILD_DIR}/src/service")
 
-file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS *.cpp)
-list(REMOVE_ITEM SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/doris_main.cpp)
+add_subdirectory(service_be)
+add_subdirectory(service_cn)
 
-add_library(Service STATIC ${SRC_FILES})
+set(EXEC_FILES
+    backend_options.cpp
+    backend_base.cpp
+    internal_service.cpp
+    staros_worker.cpp
+    mem_hook.cpp
+    service.cpp
+)
 
-pch_reuse(Service)
+add_library(Service
+        ${EXEC_FILES}
+)
 
-if (${MAKE_TEST} STREQUAL "OFF")
-    add_executable(doris_be
-        doris_main.cpp
-    )
-
-    pch_reuse(doris_be)
+# only build starrocks_be when TEST is off
+if (NOT ${MAKE_TEST} STREQUAL "ON")
+    add_executable(starrocks_be
+        starrocks_main.cpp
+        )
 
     # This permits libraries loaded by dlopen to link to the symbols in the program.
-    set_target_properties(doris_be PROPERTIES ENABLE_EXPORTS 1)
+    # set_target_properties(starrocks_be PROPERTIES LINK_FLAGS -pthread)
 
-    target_link_libraries(doris_be
-        ${DORIS_LINK_LIBS}
-    )
+    target_link_libraries(starrocks_be
+        ${STARROCKS_LINK_LIBS}
+        )
 
     install(DIRECTORY DESTINATION ${OUTPUT_DIR}/lib/)
-    install(TARGETS doris_be DESTINATION ${OUTPUT_DIR}/lib/)
 
-    if ("${STRIP_DEBUG_INFO}" STREQUAL "ON")
-        add_custom_command(TARGET doris_be POST_BUILD
-            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:doris_be> $<TARGET_FILE:doris_be>.dbg
-            COMMAND ${CMAKE_STRIP} --strip-debug --strip-unneeded $<TARGET_FILE:doris_be>
-            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=$<TARGET_FILE:doris_be>.dbg $<TARGET_FILE:doris_be>
-            )
-
-        install(DIRECTORY DESTINATION ${OUTPUT_DIR}/lib/debug_info/)
-        install(FILES $<TARGET_FILE:doris_be>.dbg DESTINATION ${OUTPUT_DIR}/lib/debug_info/)
-    endif()
+    install(TARGETS starrocks_be
+        DESTINATION ${OUTPUT_DIR}/lib/)
 endif()

@@ -1,11 +1,11 @@
 # add
 ## description
 add function
-## keywords
+## keyword
 MATH
 
 # minus
 ## description
 minus function
-## keywords
+## keyword
 MATH

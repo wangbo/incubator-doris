@@ -18,17 +18,18 @@
 #pragma once
 
 #include <iostream>
+#include <memory>
 
 #include "common/status.h"
 
-// This files contains some utilities to convert Doris internal
-// data format into/from Apache Arrow format. When Doris needs
+// This files contains some utilities to convert StarRocks internal
+// data format into/from Apache Arrow format. When StarRocks needs
 // to share data with others we can leverage Arrow's ability.
 // We can convert our internal data into Arrow's memory format
 // and then convert to other format, for example Parquet. Because
 // Arrow have already implemented this functions. And what's more
 // Arrow support multiple languages, so it will make it easy to
-// handle Doris data in other languages.
+// handle StarRocks data in other languages.
 
 // Forward declaration of arrow class
 namespace arrow {
@@ -37,7 +38,7 @@ class RecordBatch;
 class Status;
 } // namespace arrow
 
-namespace doris {
+namespace starrocks {
 
 // Pretty print a arrow RecordBatch.
 Status arrow_pretty_print(const arrow::RecordBatch& rb, std::ostream* os);
@@ -45,4 +46,4 @@ Status arrow_pretty_print(const arrow::Array& rb, std::ostream* os);
 
 Status to_status(const arrow::Status& status);
 
-} // namespace doris
+} // namespace starrocks

@@ -15,27 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <event2/http.h>
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include <gtest/gtest.h>
 
-#include <string>
-
-#include "gtest/gtest_pred_impl.h"
+#include "common/logging.h"
 #include "http/http_headers.h"
 #include "http/http_request.h"
 #include "http/utils.h"
-#include "util/string_util.h"
 #include "util/url_coding.h"
 
-struct evhttp_request;
-
-namespace doris {
+namespace starrocks {
 
 class HttpUtilsTest : public testing::Test {
 public:
-    HttpUtilsTest() {}
-    virtual ~HttpUtilsTest() {}
+    HttpUtilsTest() = default;
+    ~HttpUtilsTest() override = default;
     void SetUp() override { _evhttp_req = evhttp_request_new(nullptr, nullptr); }
     void TearDown() override {
         if (_evhttp_req != nullptr) {
@@ -50,50 +43,50 @@ private:
 TEST_F(HttpUtilsTest, parse_basic_auth) {
     {
         HttpRequest req(_evhttp_req);
-        auto auth = encode_basic_auth("doris", "passwd");
+        auto auth = encode_basic_auth("starrocks", "passwd");
         req._headers.emplace(HttpHeaders::AUTHORIZATION, auth);
         std::string user;
         std::string passwd;
         auto res = parse_basic_auth(req, &user, &passwd);
-        EXPECT_TRUE(res);
-        EXPECT_STREQ("doris", user.data());
-        EXPECT_STREQ("passwd", passwd.data());
+        ASSERT_TRUE(res);
+        ASSERT_STREQ("starrocks", user.data());
+        ASSERT_STREQ("passwd", passwd.data());
     }
     {
         HttpRequest req(_evhttp_req);
         std::string auth = "Basic ";
-        std::string encoded_str = "doris:passwd";
+        std::string encoded_str = "starrocks:passwd";
         auth += encoded_str;
         req._headers.emplace(HttpHeaders::AUTHORIZATION, auth);
         std::string user;
         std::string passwd;
         auto res = parse_basic_auth(req, &user, &passwd);
-        EXPECT_FALSE(res);
+        ASSERT_FALSE(res);
     }
     {
         HttpRequest req(_evhttp_req);
         std::string auth = "Basic ";
         std::string encoded_str;
-        base64_encode("dorispasswd", &encoded_str);
+        base64_encode("starrockspasswd", &encoded_str);
         auth += encoded_str;
         req._headers.emplace(HttpHeaders::AUTHORIZATION, auth);
         std::string user;
         std::string passwd;
         auto res = parse_basic_auth(req, &user, &passwd);
-        EXPECT_FALSE(res);
+        ASSERT_FALSE(res);
     }
     {
         HttpRequest req(_evhttp_req);
         std::string auth = "Basic";
         std::string encoded_str;
-        base64_encode("doris:passwd", &encoded_str);
+        base64_encode("starrocks:passwd", &encoded_str);
         auth += encoded_str;
         req._headers.emplace(HttpHeaders::AUTHORIZATION, auth);
         std::string user;
         std::string passwd;
         auto res = parse_basic_auth(req, &user, &passwd);
-        EXPECT_FALSE(res);
+        ASSERT_FALSE(res);
     }
 }
 
-} // namespace doris
+} // namespace starrocks

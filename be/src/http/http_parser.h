@@ -17,18 +17,16 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
-
+#include <cstdint>
 #include <ostream>
 
-namespace doris {
+namespace starrocks {
 
 struct HttpChunkParseCtx {
-    int state;     // Parse state
-    size_t size;   // Chunk size
-    size_t length; // minimal length need to read
-    HttpChunkParseCtx() : state(0), size(0), length(0) {}
+    int state{0};     // Parse state
+    size_t size{0};   // Chunk size
+    size_t length{0}; // minimal length need to read
+    HttpChunkParseCtx() = default;
 };
 
 std::ostream& operator<<(std::ostream& os, const HttpChunkParseCtx& ctx);
@@ -57,9 +55,8 @@ public:
     //  PARSE_AGAIN     return this means that caller need to call this function with new data
     //                  from network
     //  PARSE_DONE      All of chunks readed
-    //  PARSE_ERROR     Error happened
-    static ParseState http_parse_chunked(const uint8_t** buf, const int64_t buf_len,
-                                         HttpChunkParseCtx* ctx);
+    //  PARSE_ERROR     Error happend
+    static ParseState http_parse_chunked(const uint8_t** buf, const int64_t buf_len, HttpChunkParseCtx* ctx);
 };
 
-} // namespace doris
+} // namespace starrocks

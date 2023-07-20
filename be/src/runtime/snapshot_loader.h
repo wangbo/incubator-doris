@@ -17,30 +17,25 @@
 
 #pragma once
 
-#include <gen_cpp/Types_types.h>
-#include <stdint.h>
-
+#include <cstdint>
 #include <map>
-#include <memory>
 #include <string>
 #include <vector>
 
 #include "common/status.h"
-#include "olap/tablet.h"
+#include "gen_cpp/Types_types.h"
+#include "runtime/client_cache.h"
+#include "storage/tablet.h"
 
-namespace doris {
-namespace io {
-class RemoteFileSystem;
-} // namespace io
+namespace starrocks {
 
-class TRemoteTabletSnapshot;
+class ExecEnv;
 
 struct FileStat {
     std::string name;
     std::string md5;
     int64_t size;
 };
-class ExecEnv;
 
 /*
  * Upload:
@@ -57,62 +52,65 @@ class ExecEnv;
  * It will also only download files which does not exist in local dir.
  *
  * Move:
- * move() is the final step of restore process. it will replace the
+ * move() is the final step of restore process. it will replace the 
  * old tablet data dir with the newly downloaded snapshot dir.
- * and reload the tablet header to take this tablet on line.
- *
+ * and reload the tablet header to take this tablet online.
+ * 
  */
 class SnapshotLoader {
 public:
     SnapshotLoader(ExecEnv* env, int64_t job_id, int64_t task_id);
-    SnapshotLoader(ExecEnv* env, int64_t job_id, int64_t task_id,
-                   const TNetworkAddress& broker_addr,
-                   const std::map<std::string, std::string>& broker_prop);
 
-    ~SnapshotLoader();
+    ~SnapshotLoader() = default;
 
-    Status init(TStorageBackendType::type type, const std::string& location);
-
-    Status upload(const std::map<std::string, std::string>& src_to_dest_path,
+    Status upload(const std::map<std::string, std::string>& src_to_dest_path, const TUploadReq& upload,
                   std::map<int64_t, std::vector<std::string>>* tablet_files);
 
-    Status download(const std::map<std::string, std::string>& src_to_dest_path,
+    Status download(const std::map<std::string, std::string>& src_to_dest_path, const TDownloadReq& download,
                     std::vector<int64_t>* downloaded_tablet_ids);
 
-    Status remote_http_download(const std::vector<TRemoteTabletSnapshot>& remote_tablets,
-                                std::vector<int64_t>* downloaded_tablet_ids);
+    Status move(const std::string& snapshot_path, const TabletSharedPtr& tablet, bool overwrite);
 
-    Status move(const std::string& snapshot_path, TabletSharedPtr tablet, bool overwrite);
+    Status primary_key_move(const std::string& snapshot_path, const TabletSharedPtr& tablet, bool overwrite);
 
 private:
-    Status _get_tablet_id_and_schema_hash_from_file_path(const std::string& src_path,
-                                                         int64_t* tablet_id, int32_t* schema_hash);
+    Status _get_tablet_id_and_schema_hash_from_file_path(const std::string& src_path, int64_t* tablet_id,
+                                                         int32_t* schema_hash);
 
-    Status _check_local_snapshot_paths(const std::map<std::string, std::string>& src_to_dest_path,
-                                       bool check_src);
+    Status _check_local_snapshot_paths(const std::map<std::string, std::string>& src_to_dest_path, bool check_src);
 
-    Status _get_existing_files_from_local(const std::string& local_path,
-                                          std::vector<std::string>* local_files);
+    Status _get_existing_files_from_local(const std::string& local_path, std::vector<std::string>* local_files);
+
+    Status _get_existing_files_from_remote(BrokerServiceConnection& client, const std::string& remote_path,
+                                           const std::map<std::string, std::string>& broker_prop,
+                                           std::map<std::string, FileStat>* files);
+
+    Status _get_existing_files_from_remote_without_broker(const std::unique_ptr<FileSystem>& fs,
+                                                          const std::string& remote_path,
+                                                          std::map<std::string, FileStat>* files);
+
+    Status _rename_remote_file(BrokerServiceConnection& client, const std::string& orig_name,
+                               const std::string& new_name, const std::map<std::string, std::string>& broker_prop);
+
+    Status _rename_remote_file_without_broker(const std::unique_ptr<FileSystem>& fs, const std::string& orig_name,
+                                              const std::string& new_name);
 
     bool _end_with(const std::string& str, const std::string& match);
 
-    Status _replace_tablet_id(const std::string& file_name, int64_t tablet_id,
-                              std::string* new_file_name);
+    void _assemble_file_name(const std::string& snapshot_path, const std::string& tablet_path, int64_t tablet_id,
+                             int64_t start_version, int64_t end_version, int64_t vesion_hash, int32_t seg_num,
+                             const std::string& suffix, std::string* snapshot_file, std::string* tablet_file);
+
+    Status _replace_tablet_id(const std::string& file_name, int64_t tablet_id, std::string* new_file_name);
 
     Status _get_tablet_id_from_remote_path(const std::string& remote_path, int64_t* tablet_id);
 
-    Status _report_every(int report_threshold, int* counter, int finished_num, int total_num,
-                         TTaskType::type type);
-
-    Status _list_with_checksum(const std::string& dir, std::map<std::string, FileStat>* md5_files);
+    Status _report_every(int report_threshold, int* counter, int finished_num, int total_num, TTaskType::type type);
 
 private:
     ExecEnv* _env;
     int64_t _job_id;
     int64_t _task_id;
-    const TNetworkAddress _broker_addr;
-    const std::map<std::string, std::string> _prop;
-    std::shared_ptr<io::RemoteFileSystem> _remote_fs;
 };
 
-} // end namespace doris
+} // end namespace starrocks

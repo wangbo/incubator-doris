@@ -2,7 +2,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -10,10 +10,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
-
 #include <sstream>
-#include <string>
 
 #include "rapidjson/document.h"
 
@@ -25,7 +22,7 @@ namespace mustache {
 // 'context'. Alternately finds a tag and then evaluates it. Returns when an error is
 // signalled (TODO: probably doesn't work in all paths), and evaluates that tag. Output is
 // accumulated in 'out'.
-bool RenderTemplate(const std::string& document, const std::string& document_root,
-                    const rapidjson::Value& context, std::stringstream* out);
+bool RenderTemplate(const std::string& document, const std::string& document_root, const rapidjson::Value& context,
+                    std::stringstream* out);
 
 } // namespace mustache

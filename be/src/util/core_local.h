@@ -17,38 +17,35 @@
 
 #pragma once
 
-#include <butil/macros.h>
-#include <sched.h>
-#include <stddef.h>
-
 #include <deque>
 #include <map>
+#include <memory>
 #include <mutex>
-#include <new>
 #include <thread>
-#include <utility>
 #include <vector>
 
-// IWYU pragma: no_include <opentelemetry/common/threadlocal.h>
-#include "common/compiler_util.h" // IWYU pragma: keep
+#include "common/compiler_util.h"
+#include "gutil/macros.h"
+#include "util/cpu_info.h"
 
-namespace doris {
+namespace starrocks {
 
 class CoreDataAllocator {
 public:
-    virtual ~CoreDataAllocator() {}
+    virtual ~CoreDataAllocator() = default;
     virtual void* get_or_create(size_t id) = 0;
 };
 
 class CoreDataAllocatorFactory {
 public:
-    CoreDataAllocatorFactory() {}
+    CoreDataAllocatorFactory() = default;
     ~CoreDataAllocatorFactory();
     CoreDataAllocator* get_allocator(size_t cpu_id, size_t data_bytes);
     static CoreDataAllocatorFactory* instance();
 
 private:
-    DISALLOW_COPY_AND_ASSIGN(CoreDataAllocatorFactory);
+    CoreDataAllocatorFactory(const CoreDataAllocatorFactory&) = delete;
+    const CoreDataAllocatorFactory& operator=(const CoreDataAllocatorFactory&) = delete;
 
 private:
     std::mutex _lock;
@@ -70,7 +67,7 @@ public:
         }
     }
 
-    ~CoreLocalValueController() {}
+    ~CoreLocalValueController() = default;
 
     int get_id() {
         std::lock_guard<std::mutex> l(_lock);
@@ -96,7 +93,8 @@ public:
     }
 
 private:
-    DISALLOW_COPY_AND_ASSIGN(CoreLocalValueController);
+    CoreLocalValueController(const CoreLocalValueController&) = delete;
+    const CoreLocalValueController& operator=(const CoreLocalValueController&) = delete;
 
 private:
     std::mutex _lock;
@@ -120,39 +118,22 @@ public:
         }
     }
 
-    ~CoreLocalValue() {
+    ~CoreLocalValue() noexcept {
         for (int i = 0; i < _size; ++i) {
             _values[i]->~T();
         }
         CoreLocalValueController<T>::instance()->reclaim_id(_id);
     }
 
-    size_t size() const { return _size; }
-    T* access() const {
-#ifdef __APPLE__
-        size_t cpu_id = 0;
-#else
+    inline size_t size() const { return _size; }
+    inline T* access() const {
         size_t cpu_id = sched_getcpu();
-#endif
         if (cpu_id >= _size) {
             cpu_id &= _size - 1;
         }
         return access_at_core(cpu_id);
     }
-    T* access_at_core(size_t core_idx) const { return _values[core_idx]; }
-
-    inline void reset() {
-        for (int i = 0; i < _size; ++i) {
-            _values[i]->~T();
-        }
-        _values.clear();
-        _values.resize(_size, nullptr);
-        CoreLocalValueController<T>* controller = CoreLocalValueController<T>::instance();
-        for (int i = 0; i < _size; ++i) {
-            void* ptr = controller->allocator(i)->get_or_create(_id);
-            _values[i] = new (ptr) T();
-        }
-    }
+    inline T* access_at_core(size_t core_idx) const { return _values[core_idx]; }
 
 private:
     int _id = -1;
@@ -160,4 +141,4 @@ private:
     std::vector<T*> _values;
 };
 
-} // namespace doris
+} // namespace starrocks

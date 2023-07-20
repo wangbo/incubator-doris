@@ -17,9 +17,16 @@
 # under the License.
 
 ##############################################################
-# This script is used to compile Apache Doris
-# Usage:
+# This script is used to compile StarRocks
+# Usage: 
 #    sh build.sh --help
+# Eg:
+#    sh build.sh                                      build all
+#    sh build.sh  --be                                build Backend without clean
+#    sh build.sh  --fe --clean                        clean and build Frontend and Spark Dpp application
+#    sh build.sh  --fe --be --clean                   clean and build Frontend, Spark Dpp application and Backend
+#    sh build.sh  --spark-dpp                         build Spark DPP application alone
+#    BUILD_TYPE=build_type ./build.sh --be            build Backend is different mode (build_type could be Release, Debug, or Asan. Default value is Release. To build Backend in Debug mode, you can execute: BUILD_TYPE=Debug ./build.sh --be)
 #
 # You need to make sure all thirdparty libraries have been
 # compiled and installed correctly.
@@ -27,670 +34,454 @@
 
 set -eo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ROOT=`dirname "$0"`
+ROOT=`cd "$ROOT"; pwd`
+MACHINE_TYPE=$(uname -m)
 
-export DORIS_HOME="${ROOT}"
+export STARROCKS_HOME=${ROOT}
 
-. "${DORIS_HOME}/env.sh"
+. ${STARROCKS_HOME}/env.sh
+
+if [[ $OSTYPE == darwin* ]] ; then
+    PARALLEL=$(sysctl -n hw.ncpu)
+    # We know for sure that build-thirdparty.sh will fail on darwin platform, so just skip the step.
+else
+    if [[ ! -f ${STARROCKS_THIRDPARTY}/installed/include/fast_float/fast_float.h ]]; then
+        echo "Thirdparty libraries need to be build ..."
+        ${STARROCKS_THIRDPARTY}/build-thirdparty.sh
+    fi
+    PARALLEL=$[$(nproc)/4+1]
+fi
 
 # Check args
 usage() {
-    echo "
+  echo "
 Usage: $0 <options>
   Optional options:
-     [no option]            build all components
-     --fe                   build Frontend and Spark DPP application. Default ON.
-     --be                   build Backend. Default ON.
-     --meta-tool            build Backend meta tool. Default OFF.
-     --broker               build Broker. Default ON.
-     --audit                build audit loader. Default ON.
-     --spark-dpp            build Spark DPP application. Default ON.
-     --hive-udf             build Hive UDF library for Spark Load. Default ON.
-     --be-java-extensions   build Backend java extensions. Default ON.
-     --clean                clean and build target
-     --output               specify the output directory
-     -j                     build Backend parallel
+     --be               build Backend
+     --fe               build Frontend and Spark Dpp application
+     --spark-dpp        build Spark DPP application
+     --clean            clean and build target
+     --use-staros       build Backend with staros
+     --with-gcov        build Backend with gcov, has an impact on performance
+     --without-gcov     build Backend without gcov(default)
+     --with-bench       build Backend with bench(default without bench)
+     -j                 build Backend parallel
 
-  Environment variables:
-    USE_AVX2                    If the CPU does not support AVX2 instruction set, please set USE_AVX2=0. Default is ON.
-    STRIP_DEBUG_INFO            If set STRIP_DEBUG_INFO=ON, the debug information in the compiled binaries will be stored separately in the 'be/lib/debug_info' directory. Default is OFF.
-    DISABLE_BE_JAVA_EXTENSIONS  If set DISABLE_BE_JAVA_EXTENSIONS=ON, we will do not build binary with java-udf,hudi-scanner,jdbc-scanner and so on Default is OFF.
-    DISABLE_JAVA_CHECK_STYLE    If set DISABLE_JAVA_CHECK_STYLE=ON, it will skip style check of java code in FE.
   Eg.
-    $0                                      build all
-    $0 --be                                 build Backend
-    $0 --meta-tool                          build Backend meta tool
-    $0 --fe --clean                         clean and build Frontend and Spark Dpp application
-    $0 --fe --be --clean                    clean and build Frontend, Spark Dpp application and Backend
-    $0 --spark-dpp                          build Spark DPP application alone
-    $0 --broker                             build Broker
-    $0 --be --fe                            build Backend, Frontend, Spark Dpp application and Java UDF library
-    $0 --be --coverage                      build Backend with coverage enabled
-    $0 --be --output PATH                   build Backend, the result will be output to PATH(relative paths are available)
-
-    USE_AVX2=0 $0 --be                      build Backend and not using AVX2 instruction.
-    USE_AVX2=0 STRIP_DEBUG_INFO=ON $0       build all and not using AVX2 instruction, and strip the debug info for Backend
+    $0                                           build all
+    $0 --be                                      build Backend without clean
+    $0 --fe --clean                              clean and build Frontend and Spark Dpp application
+    $0 --fe --be --clean                         clean and build Frontend, Spark Dpp application and Backend
+    $0 --spark-dpp                               build Spark DPP application alone
+    BUILD_TYPE=build_type ./build.sh --be        build Backend is different mode (build_type could be Release, Debug, or Asan. Default value is Release. To build Backend in Debug mode, you can execute: BUILD_TYPE=Debug ./build.sh --be)
   "
-    exit 1
+  exit 1
 }
 
-clean_gensrc() {
-    pushd "${DORIS_HOME}/gensrc"
-    make clean
-    rm -rf "${DORIS_HOME}/gensrc/build"
-    rm -rf "${DORIS_HOME}/fe/fe-common/target"
-    rm -rf "${DORIS_HOME}/fe/fe-core/target"
-    popd
-}
+OPTS=$(getopt \
+  -n $0 \
+  -o '' \
+  -o 'h' \
+  -l 'be' \
+  -l 'fe' \
+  -l 'spark-dpp' \
+  -l 'clean' \
+  -l 'with-gcov' \
+  -l 'with-bench' \
+  -l 'without-gcov' \
+  -l 'use-staros' \
+  -o 'j:' \
+  -l 'help' \
+  -- "$@")
 
-clean_be() {
-    pushd "${DORIS_HOME}"
-
-    # "build.sh --clean" just cleans and exits, however CMAKE_BUILD_DIR is set
-    # while building be.
-    CMAKE_BUILD_TYPE="${BUILD_TYPE:-Release}"
-    CMAKE_BUILD_DIR="${DORIS_HOME}/be/build_${CMAKE_BUILD_TYPE}"
-
-    rm -rf "${CMAKE_BUILD_DIR}"
-    rm -rf "${DORIS_HOME}/be/output"
-    popd
-}
-
-clean_fe() {
-    pushd "${DORIS_HOME}/fe"
-    "${MVN_CMD}" clean
-    popd
-}
-
-# Copy the common files like licenses, notice.txt to output folder
-function copy_common_files() {
-    cp -r -p "${DORIS_HOME}/NOTICE.txt" "$1/"
-    cp -r -p "${DORIS_HOME}/dist/LICENSE-dist.txt" "$1/"
-    cp -r -p "${DORIS_HOME}/dist/licenses" "$1/"
-}
-
-if ! OPTS="$(getopt \
-    -n "$0" \
-    -o '' \
-    -l 'fe' \
-    -l 'be' \
-    -l 'broker' \
-    -l 'audit' \
-    -l 'meta-tool' \
-    -l 'spark-dpp' \
-    -l 'hive-udf' \
-    -l 'be-java-extensions' \
-    -l 'clean' \
-    -l 'coverage' \
-    -l 'help' \
-    -l 'output:' \
-    -o 'hj:' \
-    -- "$@")"; then
+if [ $? != 0 ] ; then
     usage
 fi
 
-eval set -- "${OPTS}"
+eval set -- "$OPTS"
 
-PARALLEL="$(($(nproc) / 4 + 1))"
-BUILD_FE=0
-BUILD_BE=0
-BUILD_BROKER=0
-BUILD_AUDIT=0
-BUILD_META_TOOL='OFF'
-BUILD_SPARK_DPP=0
-BUILD_BE_JAVA_EXTENSIONS=0
-BUILD_HIVE_UDF=0
-CLEAN=0
+BUILD_BE=
+BUILD_FE=
+BUILD_SPARK_DPP=
+CLEAN=
+RUN_UT=
+WITH_GCOV=OFF
+WITH_BENCH=OFF
+USE_STAROS=OFF
+MSG=""
+MSG_FE="Frontend"
+MSG_DPP="Spark Dpp application"
+MSG_BE="Backend"
+if [[ -z ${USE_AVX2} ]]; then
+    USE_AVX2=ON
+fi
+if [[ -z ${USE_AVX512} ]]; then
+    ## Disable it by default
+    USE_AVX512=OFF
+fi
+if [[ -z ${USE_SSE4_2} ]]; then
+    USE_SSE4_2=ON
+fi
+
+if [ -e /proc/cpuinfo ] ; then
+    # detect cpuinfo
+    if [[ -z $(grep -o 'avx[^ ]*' /proc/cpuinfo) ]]; then
+        USE_AVX2=OFF
+    fi
+    if [[ -z $(grep -o 'avx512' /proc/cpuinfo) ]]; then
+        USE_AVX512=OFF
+    fi
+    if [[ -z $(grep -o 'sse[^ ]*' /proc/cpuinfo) ]]; then
+        USE_SSE4_2=OFF
+    fi
+fi
+
+# The `WITH_CACHELIB` just controls whether cachelib is compiled in, while starcache is now always compiled in.
+# This option will soon be deprecated.
+if [[ "${MACHINE_TYPE}" == "aarch64" ]]; then
+    # force turn off cachelib on arm platform
+    WITH_CACHELIB=OFF
+elif [[ -z ${WITH_CACHELIB} ]]; then
+    WITH_CACHELIB=ON
+fi
+
+if [[ "${WITH_CACHELIB}" == "ON" && ! -f ${STARROCKS_THIRDPARTY}/installed/cachelib/lib/libcachelib_allocator.a ]]; then
+    echo "WITH_CACHELIB=ON but missing depdency libraries(cachelib)"
+    exit 1
+fi
+
+if [[ -z ${ENABLE_QUERY_DEBUG_TRACE} ]]; then
+	ENABLE_QUERY_DEBUG_TRACE=OFF
+fi
+
+if [[ -z ${USE_JEMALLOC} ]]; then
+    USE_JEMALLOC=ON
+fi
+
 HELP=0
-PARAMETER_COUNT="$#"
-PARAMETER_FLAG=0
-DENABLE_CLANG_COVERAGE='OFF'
-if [[ "$#" == 1 ]]; then
+if [ $# == 1 ] ; then
     # default
-    BUILD_FE=1
     BUILD_BE=1
-    BUILD_BROKER=1
-    BUILD_AUDIT=1
-    BUILD_META_TOOL='OFF'
+    BUILD_FE=1
     BUILD_SPARK_DPP=1
-    BUILD_HIVE_UDF=1
-    BUILD_BE_JAVA_EXTENSIONS=1
     CLEAN=0
+    RUN_UT=0
+elif [[ $OPTS =~ "-j" ]] && [ $# == 3 ]; then
+    # default
+    BUILD_BE=1
+    BUILD_FE=1
+    BUILD_SPARK_DPP=1
+    CLEAN=0
+    RUN_UT=0
+    PARALLEL=$2
 else
+    BUILD_BE=0
+    BUILD_FE=0
+    BUILD_SPARK_DPP=0
+    CLEAN=0
+    RUN_UT=0
     while true; do
         case "$1" in
-        --fe)
-            BUILD_FE=1
-            BUILD_SPARK_DPP=1
-            BUILD_HIVE_UDF=1
-            BUILD_BE_JAVA_EXTENSIONS=1
-            shift
-            ;;
-        --be)
-            BUILD_BE=1
-            BUILD_BE_JAVA_EXTENSIONS=1
-            shift
-            ;;
-        --broker)
-            BUILD_BROKER=1
-            shift
-            ;;
-        --audit)
-            BUILD_AUDIT=1
-            shift
-            ;;
-        --meta-tool)
-            BUILD_META_TOOL='ON'
-            shift
-            ;;
-        --spark-dpp)
-            BUILD_SPARK_DPP=1
-            shift
-            ;;
-        --hive-udf)
-            BUILD_HIVE_UDF=1
-            shift
-            ;;
-        --be-java-extensions)
-            BUILD_BE_JAVA_EXTENSIONS=1
-            shift
-            ;;
-        --clean)
-            CLEAN=1
-            shift
-            ;;
-        --coverage)
-            DENABLE_CLANG_COVERAGE='ON'
-            shift
-            ;;
-        -h)
-            HELP=1
-            shift
-            ;;
-        --help)
-            HELP=1
-            shift
-            ;;
-        -j)
-            PARALLEL="$2"
-            PARAMETER_FLAG=1
-            shift 2
-            ;;
-        --output)
-            DORIS_OUTPUT="$2"
-            shift 2
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            echo "Internal error"
-            exit 1
-            ;;
+            --be) BUILD_BE=1 ; shift ;;
+            --fe) BUILD_FE=1 ; shift ;;
+            --spark-dpp) BUILD_SPARK_DPP=1 ; shift ;;
+            --clean) CLEAN=1 ; shift ;;
+            --ut) RUN_UT=1   ; shift ;;
+            --with-gcov) WITH_GCOV=ON; shift ;;
+            --without-gcov) WITH_GCOV=OFF; shift ;;
+            --use-staros) USE_STAROS=ON; shift ;;
+            --with-bench) WITH_BENCH=ON; shift ;;
+            -h) HELP=1; shift ;;
+            --help) HELP=1; shift ;;
+            -j) PARALLEL=$2; shift 2 ;;
+            --) shift ;  break ;;
+            *) echo "Internal error" ; exit 1 ;;
         esac
     done
-    #only ./build.sh -j xx then build all
-    if [[ "${PARAMETER_COUNT}" -eq 3 ]] && [[ "${PARAMETER_FLAG}" -eq 1 ]]; then
-        BUILD_FE=1
-        BUILD_BE=1
-        BUILD_BROKER=1
-        BUILD_AUDIT=1
-        BUILD_META_TOOL='ON'
-        BUILD_SPARK_DPP=1
-        BUILD_HIVE_UDF=1
-        BUILD_BE_JAVA_EXTENSIONS=1
-        CLEAN=0
-    fi
 fi
 
-if [[ "${HELP}" -eq 1 ]]; then
+if [[ ${HELP} -eq 1 ]]; then
     usage
-fi
-# build thirdparty libraries if necessary
-if [[ ! -f "${DORIS_THIRDPARTY}/installed/lib/libbacktrace.a" ]]; then
-    echo "Thirdparty libraries need to be build ..."
-    # need remove all installed pkgs because some lib like lz4 will throw error if its lib alreay exists
-    rm -rf "${DORIS_THIRDPARTY}/installed"
-
-    if [[ "${CLEAN}" -eq 0 ]]; then
-        "${DORIS_THIRDPARTY}/build-thirdparty.sh" -j "${PARALLEL}"
-    else
-        "${DORIS_THIRDPARTY}/build-thirdparty.sh" -j "${PARALLEL}" --clean
-    fi
+    exit
 fi
 
-update_submodule() {
-    local submodule_path=$1
-    local submodule_name=$2
-    local archive_url=$3
-
-    set +e
-    cd "${DORIS_HOME}"
-    echo "Update ${submodule_name} submodule ..."
-    git submodule update --init --recursive "${submodule_path}"
-    exit_code=$?
-    set -e
-    if [[ "${exit_code}" -ne 0 ]]; then
-        echo "Update ${submodule_name} submodule failed, start to download and extract ${submodule_name} package ..."
-        mkdir -p "${DORIS_HOME}/${submodule_path}"
-        curl -L "${archive_url}" | tar -xz -C "${DORIS_HOME}/${submodule_path}" --strip-components=1
-    fi
-}
-
-update_submodule "be/src/apache-orc" "apache-orc" "https://github.com/apache/doris-thirdparty/archive/refs/heads/orc.tar.gz"
-update_submodule "be/src/clucene" "clucene" "https://github.com/apache/doris-thirdparty/archive/refs/heads/clucene.tar.gz"
-
-if [[ "${CLEAN}" -eq 1 && "${BUILD_BE}" -eq 0 && "${BUILD_FE}" -eq 0 && "${BUILD_SPARK_DPP}" -eq 0 ]]; then
-    clean_gensrc
-    clean_be
-    clean_fe
-    exit 0
-fi
-
-if [[ -z "${WITH_MYSQL}" ]]; then
-    WITH_MYSQL='OFF'
-fi
-if [[ -z "${GLIBC_COMPATIBILITY}" ]]; then
-    if [[ "$(uname -s)" != 'Darwin' ]]; then
-        GLIBC_COMPATIBILITY='ON'
-    else
-        GLIBC_COMPATIBILITY='OFF'
-    fi
-fi
-if [[ -z "${USE_AVX2}" ]]; then
-    USE_AVX2='ON'
-fi
-if [[ -z "${WITH_LZO}" ]]; then
-    WITH_LZO='OFF'
-fi
-if [[ -z "${USE_LIBCPP}" ]]; then
-    if [[ "$(uname -s)" != 'Darwin' ]]; then
-        USE_LIBCPP='OFF'
-    else
-        USE_LIBCPP='ON'
-    fi
-fi
-if [[ -z "${STRIP_DEBUG_INFO}" ]]; then
-    STRIP_DEBUG_INFO='OFF'
-fi
-if [[ -z "${USE_MEM_TRACKER}" ]]; then
-    if [[ "$(uname -s)" != 'Darwin' ]]; then
-        USE_MEM_TRACKER='ON'
-    else
-        USE_MEM_TRACKER='OFF'
-    fi
-fi
-if [[ -z "${USE_JEMALLOC}" ]]; then
-    USE_JEMALLOC='ON'
-fi
-if [[ -z "${USE_BTHREAD_SCANNER}" ]]; then
-    USE_BTHREAD_SCANNER='OFF'
-fi
-if [[ -z "${ENABLE_STACKTRACE}" ]]; then
-    ENABLE_STACKTRACE='ON'
-fi
-
-if [[ -z "${USE_DWARF}" ]]; then
-    USE_DWARF='OFF'
-fi
-
-if [[ -z "${DISPLAY_BUILD_TIME}" ]]; then
-    DISPLAY_BUILD_TIME='OFF'
-fi
-
-if [[ -z "${OUTPUT_BE_BINARY}" ]]; then
-    OUTPUT_BE_BINARY=${BUILD_BE}
-fi
-
-if [[ -n "${DISABLE_BE_JAVA_EXTENSIONS}" ]]; then
-    if [[ "${DISABLE_BE_JAVA_EXTENSIONS}" == "ON" ]]; then
-        BUILD_BE_JAVA_EXTENSIONS=0
-    else
-        BUILD_BE_JAVA_EXTENSIONS=1
-    fi
-fi
-
-if [[ -z "${DISABLE_JAVA_CHECK_STYLE}" ]]; then
-    DISABLE_JAVA_CHECK_STYLE='OFF'
-fi
-
-if [[ -z "${RECORD_COMPILER_SWITCHES}" ]]; then
-    RECORD_COMPILER_SWITCHES='OFF'
-fi
-
-if [[ "${BUILD_BE_JAVA_EXTENSIONS}" -eq 1 && "$(uname -s)" == 'Darwin' ]]; then
-    if [[ -z "${JAVA_HOME}" ]]; then
-        CAUSE='the environment variable JAVA_HOME is not set'
-    else
-        LIBJVM="$(find -L "${JAVA_HOME}/" -name 'libjvm.dylib')"
-        if [[ -z "${LIBJVM}" ]]; then
-            CAUSE="the library libjvm.dylib is missing"
-        elif [[ "$(file "${LIBJVM}" | awk '{print $NF}')" != "$(uname -m)" ]]; then
-            CAUSE='the architecture which the library libjvm.dylib is built for does not match'
-        fi
-    fi
-
-    if [[ -n "${CAUSE}" ]]; then
-        echo -e "\033[33;1mWARNNING: \033[37;1mSkip building with BE Java extensions due to ${CAUSE}.\033[0m"
-        BUILD_BE_JAVA_EXTENSIONS=0
-        BUILD_BE_JAVA_EXTENSIONS_IN_CONF=1
-    fi
+if [ ${CLEAN} -eq 1 -a ${BUILD_BE} -eq 0 -a ${BUILD_FE} -eq 0 -a ${BUILD_SPARK_DPP} -eq 0 ]; then
+    echo "--clean can not be specified without --fe or --be or --spark-dpp"
+    exit 1
 fi
 
 echo "Get params:
-    BUILD_FE                    -- ${BUILD_FE}
-    BUILD_BE                    -- ${BUILD_BE}
-    BUILD_BROKER                -- ${BUILD_BROKER}
-    BUILD_AUDIT                 -- ${BUILD_AUDIT}
-    BUILD_META_TOOL             -- ${BUILD_META_TOOL}
-    BUILD_SPARK_DPP             -- ${BUILD_SPARK_DPP}
-    BUILD_BE_JAVA_EXTENSIONS    -- ${BUILD_BE_JAVA_EXTENSIONS}
-    BUILD_HIVE_UDF              -- ${BUILD_HIVE_UDF}
-    PARALLEL                    -- ${PARALLEL}
-    CLEAN                       -- ${CLEAN}
-    WITH_MYSQL                  -- ${WITH_MYSQL}
-    WITH_LZO                    -- ${WITH_LZO}
-    GLIBC_COMPATIBILITY         -- ${GLIBC_COMPATIBILITY}
-    USE_AVX2                    -- ${USE_AVX2}
-    USE_LIBCPP                  -- ${USE_LIBCPP}
-    USE_DWARF                   -- ${USE_DWARF}
-    STRIP_DEBUG_INFO            -- ${STRIP_DEBUG_INFO}
-    USE_MEM_TRACKER             -- ${USE_MEM_TRACKER}
-    USE_JEMALLOC                -- ${USE_JEMALLOC}
-    USE_BTHREAD_SCANNER         -- ${USE_BTHREAD_SCANNER}
-    ENABLE_STACKTRACE           -- ${ENABLE_STACKTRACE}
-    DENABLE_CLANG_COVERAGE      -- ${DENABLE_CLANG_COVERAGE}
-    DISPLAY_BUILD_TIME          -- ${DISPLAY_BUILD_TIME}
-    ENABLE_PCH                  -- ${ENABLE_PCH}
+    BUILD_BE            -- $BUILD_BE
+    BE_CMAKE_TYPE       -- $BUILD_TYPE
+    BUILD_FE            -- $BUILD_FE
+    BUILD_SPARK_DPP     -- $BUILD_SPARK_DPP
+    CLEAN               -- $CLEAN
+    RUN_UT              -- $RUN_UT
+    WITH_GCOV           -- $WITH_GCOV
+    WITH_BENCH          -- $WITH_BENCH
+    USE_STAROS          -- $USE_STAROS
+    USE_AVX2            -- $USE_AVX2
+    USE_AVX512          -- $USE_AVX512
+    PARALLEL            -- $PARALLEL
+    ENABLE_QUERY_DEBUG_TRACE -- $ENABLE_QUERY_DEBUG_TRACE
+    WITH_CACHELIB       -- $WITH_CACHELIB
+    USE_JEMALLOC        -- $USE_JEMALLOC
 "
 
-# Clean and build generated code
-if [[ "${CLEAN}" -eq 1 ]]; then
-    clean_gensrc
-fi
-"${DORIS_HOME}"/generated-source.sh noclean
-
-# Assesmble FE modules
-FE_MODULES=''
-BUILD_DOCS='OFF'
-modules=("")
-if [[ "${BUILD_FE}" -eq 1 ]]; then
-    modules+=("fe-common")
-    modules+=("fe-core")
-    BUILD_DOCS='ON'
-fi
-if [[ "${BUILD_SPARK_DPP}" -eq 1 ]]; then
-    modules+=("fe-common")
-    modules+=("spark-dpp")
-fi
-if [[ "${BUILD_HIVE_UDF}" -eq 1 ]]; then
-    modules+=("fe-common")
-    modules+=("hive-udf")
-fi
-if [[ "${BUILD_BE_JAVA_EXTENSIONS}" -eq 1 ]]; then
-    modules+=("fe-common")
-    modules+=("be-java-extensions/hudi-scanner")
-    modules+=("be-java-extensions/java-common")
-    modules+=("be-java-extensions/java-udf")
-    modules+=("be-java-extensions/jdbc-scanner")
-    modules+=("be-java-extensions/paimon-scanner")
-    modules+=("be-java-extensions/max-compute-scanner")
-    modules+=("be-java-extensions/avro-scanner")
-fi
-FE_MODULES="$(
-    IFS=','
-    echo "${modules[*]}"
-)"
-
-# Clean and build Backend
-if [[ "${BUILD_BE}" -eq 1 ]]; then
-    if [[ -e "${DORIS_HOME}/gensrc/build/gen_cpp/version.h" ]]; then
-        rm -f "${DORIS_HOME}/gensrc/build/gen_cpp/version.h"
+check_tool()
+{
+    local toolname=$1
+    if [ -e $STARROCKS_THIRDPARTY/installed/bin/$toolname ] ; then
+        return 0
     fi
-    CMAKE_BUILD_TYPE="${BUILD_TYPE:-Release}"
-    echo "Build Backend: ${CMAKE_BUILD_TYPE}"
-    CMAKE_BUILD_DIR="${DORIS_HOME}/be/build_${CMAKE_BUILD_TYPE}"
-    if [[ "${CLEAN}" -eq 1 ]]; then
-        clean_be
+    if which $toolname &>/dev/null ; then
+        return 0
     fi
-    MAKE_PROGRAM="$(command -v "${BUILD_SYSTEM}")"
-
-    if [[ -z "${BUILD_FS_BENCHMARK}" ]]; then
-        BUILD_FS_BENCHMARK=OFF
-    fi
-
-    echo "-- Make program: ${MAKE_PROGRAM}"
-    echo "-- Use ccache: ${CMAKE_USE_CCACHE}"
-    echo "-- Extra cxx flags: ${EXTRA_CXX_FLAGS:-}"
-    echo "-- Build fs benchmark tool: ${BUILD_FS_BENCHMARK}"
-
-    mkdir -p "${CMAKE_BUILD_DIR}"
-    cd "${CMAKE_BUILD_DIR}"
-    "${CMAKE_CMD}" -G "${GENERATOR}" \
-        -DCMAKE_MAKE_PROGRAM="${MAKE_PROGRAM}" \
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
-        -DMAKE_TEST=OFF \
-        -DBUILD_FS_BENCHMARK="${BUILD_FS_BENCHMARK}" \
-        ${CMAKE_USE_CCACHE:+${CMAKE_USE_CCACHE}} \
-        -DWITH_MYSQL="${WITH_MYSQL}" \
-        -DWITH_LZO="${WITH_LZO}" \
-        -DUSE_LIBCPP="${USE_LIBCPP}" \
-        -DBUILD_META_TOOL="${BUILD_META_TOOL}" \
-        -DSTRIP_DEBUG_INFO="${STRIP_DEBUG_INFO}" \
-        -DUSE_DWARF="${USE_DWARF}" \
-        -DDISPLAY_BUILD_TIME="${DISPLAY_BUILD_TIME}" \
-        -DENABLE_PCH="${ENABLE_PCH}" \
-        -DUSE_MEM_TRACKER="${USE_MEM_TRACKER}" \
-        -DUSE_JEMALLOC="${USE_JEMALLOC}" \
-        -DUSE_BTHREAD_SCANNER="${USE_BTHREAD_SCANNER}" \
-        -DENABLE_STACKTRACE="${ENABLE_STACKTRACE}" \
-        -DUSE_AVX2="${USE_AVX2}" \
-        -DGLIBC_COMPATIBILITY="${GLIBC_COMPATIBILITY}" \
-        -DEXTRA_CXX_FLAGS="${EXTRA_CXX_FLAGS}" \
-        -DENABLE_CLANG_COVERAGE="${DENABLE_CLANG_COVERAGE}" \
-        -DDORIS_JAVA_HOME="${JAVA_HOME}" \
-        "${DORIS_HOME}/be"
-
-    if [[ "${OUTPUT_BE_BINARY}" -eq 1 ]]; then
-        "${BUILD_SYSTEM}" -j "${PARALLEL}"
-        "${BUILD_SYSTEM}" install
-    fi
-
-    cd "${DORIS_HOME}"
-fi
-
-if [[ "${BUILD_DOCS}" = "ON" ]]; then
-    # Build docs, should be built before Frontend
-    echo "Build docs"
-    cd "${DORIS_HOME}/docs"
-    ./build_help_zip.sh
-    cd "${DORIS_HOME}"
-fi
-
-function build_ui() {
-    NPM='npm'
-    if ! ${NPM} --version; then
-        echo "Error: npm is not found"
-        exit 1
-    fi
-    if [[ -n "${CUSTOM_NPM_REGISTRY}" ]]; then
-        "${NPM}" config set registry "${CUSTOM_NPM_REGISTRY}"
-        npm_reg="$("${NPM}" get registry)"
-        echo "NPM registry: ${npm_reg}"
-    fi
-
-    echo "Build Frontend UI"
-    ui_dist="${DORIS_HOME}/ui/dist"
-    if [[ -n "${CUSTOM_UI_DIST}" ]]; then
-        ui_dist="${CUSTOM_UI_DIST}"
-    else
-        cd "${DORIS_HOME}/ui"
-        "${NPM}" cache clean --force
-        "${NPM}" install --legacy-peer-deps
-        "${NPM}" run build
-    fi
-    echo "ui dist: ${ui_dist}"
-    rm -rf "${DORIS_HOME}/fe/fe-core/src/main/resources/static"
-    mkdir -p "${DORIS_HOME}/fe/fe-core/src/main/resources/static"
-    cp -r "${ui_dist}"/* "${DORIS_HOME}/fe/fe-core/src/main/resources/static"/
+    return 1
 }
 
-# FE UI must be built before building FE
-if [[ "${BUILD_FE}" -eq 1 ]]; then
-    build_ui
+# check protoc and thrift
+for tool in protoc thrift
+do
+    if ! check_tool $tool ; then
+        echo "Can't find command tool '$tool'!"
+        exit 1
+    fi
+done
+
+# Clean and build generated code
+echo "Build generated code"
+cd ${STARROCKS_HOME}/gensrc
+if [ ${CLEAN} -eq 1 ]; then
+   make clean
+   rm -rf ${STARROCKS_HOME}/fe/fe-core/target
+fi
+# DO NOT using parallel make(-j) for gensrc
+make
+cd ${STARROCKS_HOME}
+
+if [[ "${MACHINE_TYPE}" == "aarch64" ]]; then
+    export LIBRARY_PATH=${JAVA_HOME}/jre/lib/aarch64/server/
+else
+    export LIBRARY_PATH=${JAVA_HOME}/jre/lib/amd64/server/
+fi
+
+# Clean and build Backend
+if [ ${BUILD_BE} -eq 1 ] ; then
+    if ! ${CMAKE_CMD} --version; then
+        echo "Error: cmake is not found"
+        exit 1
+    fi
+
+    CMAKE_BUILD_TYPE=${BUILD_TYPE:-Release}
+    echo "Build Backend: ${CMAKE_BUILD_TYPE}"
+    CMAKE_BUILD_DIR=${STARROCKS_HOME}/be/build_${CMAKE_BUILD_TYPE}
+    if [ "${WITH_GCOV}" = "ON" ]; then
+        CMAKE_BUILD_DIR=${STARROCKS_HOME}/be/build_${CMAKE_BUILD_TYPE}_gcov
+    fi
+
+    if [ ${CLEAN} -eq 1 ]; then
+        rm -rf $CMAKE_BUILD_DIR
+        rm -rf ${STARROCKS_HOME}/be/output/
+    fi
+    mkdir -p ${CMAKE_BUILD_DIR}
+
+    source ${STARROCKS_HOME}/bin/common.sh
+    update_submodules
+
+    cd ${CMAKE_BUILD_DIR}
+    if [ "${USE_STAROS}" == "ON"  ]; then
+      if [ -z "$STARLET_INSTALL_DIR" ] ; then
+        # assume starlet_thirdparty is installed to ${STARROCKS_THIRDPARTY}/installed/starlet/
+        STARLET_INSTALL_DIR=${STARROCKS_THIRDPARTY}/installed/starlet
+      fi
+      ${CMAKE_CMD} -G "${CMAKE_GENERATOR}" \
+                    -DSTARROCKS_THIRDPARTY=${STARROCKS_THIRDPARTY} \
+                    -DSTARROCKS_HOME=${STARROCKS_HOME} \
+                    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+                    -DMAKE_TEST=OFF -DWITH_GCOV=${WITH_GCOV}\
+                    -DUSE_AVX2=$USE_AVX2 -DUSE_AVX512=$USE_AVX512 -DUSE_SSE4_2=$USE_SSE4_2 \
+                    -DENABLE_QUERY_DEBUG_TRACE=$ENABLE_QUERY_DEBUG_TRACE \
+                    -DUSE_JEMALLOC=$USE_JEMALLOC \
+                    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+                    -DUSE_STAROS=${USE_STAROS} \
+                    -DWITH_BENCH=${WITH_BENCH} \
+                    -DWITH_CACHELIB=${WITH_CACHELIB} \
+                    -DSTARCACHE_THIRDPARTY_DIR=${STARROCKS_THIRDPARTY}/installed \
+                    -DSTARCACHE_SKIP_INSTALL=ON \
+                    -Dabsl_DIR=${STARLET_INSTALL_DIR}/third_party/lib/cmake/absl \
+                    -DgRPC_DIR=${STARLET_INSTALL_DIR}/third_party/lib/cmake/grpc \
+                    -Dprometheus-cpp_DIR=${STARLET_INSTALL_DIR}/third_party/lib/cmake/prometheus-cpp \
+                    -Dstarlet_DIR=${STARLET_INSTALL_DIR}/starlet_install/lib/cmake ..
+    else
+      ${CMAKE_CMD} -G "${CMAKE_GENERATOR}" \
+                    -DSTARROCKS_THIRDPARTY=${STARROCKS_THIRDPARTY} \
+                    -DSTARROCKS_HOME=${STARROCKS_HOME} \
+                    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+                    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+                    -DMAKE_TEST=OFF -DWITH_GCOV=${WITH_GCOV}\
+                    -DUSE_AVX2=$USE_AVX2 -DUSE_AVX512=$USE_AVX512 -DUSE_SSE4_2=$USE_SSE4_2 \
+                    -DENABLE_QUERY_DEBUG_TRACE=$ENABLE_QUERY_DEBUG_TRACE \
+                    -DUSE_JEMALLOC=$USE_JEMALLOC \
+                    -DWITH_BENCH=${WITH_BENCH} \
+                    -DWITH_CACHELIB=${WITH_CACHELIB} \
+                    -DSTARCACHE_THIRDPARTY_DIR=${STARROCKS_THIRDPARTY}/installed \
+                    -DSTARCACHE_SKIP_INSTALL=ON \
+                    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON  ..
+    fi
+    time ${BUILD_SYSTEM} -j${PARALLEL}
+    ${BUILD_SYSTEM} install
+
+    # Build JDBC Bridge
+    echo "Build Java Extensions"
+    cd ${STARROCKS_HOME}/java-extensions
+    if [ ${CLEAN} -eq 1 ]; then
+        ${MVN_CMD} clean
+    fi
+    ${MVN_CMD} package -DskipTests
+    cd ${STARROCKS_HOME}
+fi
+
+cd ${STARROCKS_HOME}
+
+# Assesmble FE modules
+FE_MODULES=
+if [ ${BUILD_FE} -eq 1 -o ${BUILD_SPARK_DPP} -eq 1 ]; then
+    if [ ${BUILD_SPARK_DPP} -eq 1 ]; then
+        FE_MODULES="fe-common,spark-dpp"
+    fi
+    if [ ${BUILD_FE} -eq 1 ]; then
+        FE_MODULES="fe-common,spark-dpp,fe-core"
+    fi
 fi
 
 # Clean and build Frontend
-if [[ "${FE_MODULES}" != '' ]]; then
-    echo "Build Frontend Modules: ${FE_MODULES}"
-    cd "${DORIS_HOME}/fe"
-    if [[ "${CLEAN}" -eq 1 ]]; then
-        clean_fe
+if [ ${FE_MODULES}x != ""x ]; then
+    echo "Build Frontend Modules: $FE_MODULES"
+    cd ${STARROCKS_HOME}/fe
+    if [ ${CLEAN} -eq 1 ]; then
+        ${MVN_CMD} clean
     fi
-    if [[ "${DISABLE_JAVA_CHECK_STYLE}" = "ON" ]]; then
-        "${MVN_CMD}" package -pl ${FE_MODULES:+${FE_MODULES}} -Dskip.doc=true -DskipTests -Dcheckstyle.skip=true
-    else
-        "${MVN_CMD}" package -pl ${FE_MODULES:+${FE_MODULES}} -Dskip.doc=true -DskipTests
-    fi
-    cd "${DORIS_HOME}"
+    ${MVN_CMD} package -am -pl ${FE_MODULES} -DskipTests
+    cd ${STARROCKS_HOME}
 fi
+
 
 # Clean and prepare output dir
-DORIS_OUTPUT=${DORIS_OUTPUT:="${DORIS_HOME}/output/"}
-echo "OUTPUT DIR=${DORIS_OUTPUT}"
-mkdir -p "${DORIS_OUTPUT}"
+STARROCKS_OUTPUT=${STARROCKS_HOME}/output/
+mkdir -p ${STARROCKS_OUTPUT}
 
 # Copy Frontend and Backend
-if [[ "${BUILD_FE}" -eq 1 ]]; then
-    install -d "${DORIS_OUTPUT}/fe/bin" "${DORIS_OUTPUT}/fe/conf" \
-        "${DORIS_OUTPUT}/fe/webroot" "${DORIS_OUTPUT}/fe/lib"
+if [ ${BUILD_FE} -eq 1 -o ${BUILD_SPARK_DPP} -eq 1 ]; then
+    if [ ${BUILD_FE} -eq 1 ]; then
+        install -d ${STARROCKS_OUTPUT}/fe/bin ${STARROCKS_OUTPUT}/fe/conf/ \
+                   ${STARROCKS_OUTPUT}/fe/webroot/ ${STARROCKS_OUTPUT}/fe/lib/ \
+                   ${STARROCKS_OUTPUT}/fe/spark-dpp/
 
-    cp -r -p "${DORIS_HOME}/bin"/*_fe.sh "${DORIS_OUTPUT}/fe/bin"/
-    cp -r -p "${DORIS_HOME}/conf/fe.conf" "${DORIS_OUTPUT}/fe/conf"/
-    cp -r -p "${DORIS_HOME}/conf/ldap.conf" "${DORIS_OUTPUT}/fe/conf"/
-    cp -r -p "${DORIS_HOME}/conf/mysql_ssl_default_certificate" "${DORIS_OUTPUT}/fe/"/
-    rm -rf "${DORIS_OUTPUT}/fe/lib"/*
-    cp -r -p "${DORIS_HOME}/fe/fe-core/target/lib"/* "${DORIS_OUTPUT}/fe/lib"/
-    cp -r -p "${DORIS_HOME}/fe/fe-core/target/doris-fe.jar" "${DORIS_OUTPUT}/fe/lib"/
-    cp -r -p "${DORIS_HOME}/docs/build/help-resource.zip" "${DORIS_OUTPUT}/fe/lib"/
-    cp -r -p "${DORIS_HOME}/webroot/static" "${DORIS_OUTPUT}/fe/webroot"/
-
-    cp -r -p "${DORIS_THIRDPARTY}/installed/webroot"/* "${DORIS_OUTPUT}/fe/webroot/static"/
-    copy_common_files "${DORIS_OUTPUT}/fe/"
-    mkdir -p "${DORIS_OUTPUT}/fe/log"
-    mkdir -p "${DORIS_OUTPUT}/fe/doris-meta"
-    mkdir -p "${DORIS_OUTPUT}/fe/conf/ssl"
+        cp -r -p ${STARROCKS_HOME}/bin/*_fe.sh ${STARROCKS_OUTPUT}/fe/bin/
+        cp -r -p ${STARROCKS_HOME}/bin/show_fe_version.sh ${STARROCKS_OUTPUT}/fe/bin/
+        cp -r -p ${STARROCKS_HOME}/bin/common.sh ${STARROCKS_OUTPUT}/fe/bin/
+        cp -r -p ${STARROCKS_HOME}/conf/fe.conf ${STARROCKS_OUTPUT}/fe/conf/
+        cp -r -p ${STARROCKS_HOME}/conf/hadoop_env.sh ${STARROCKS_OUTPUT}/fe/conf/
+        rm -rf ${STARROCKS_OUTPUT}/fe/lib/*
+        cp -r -p ${STARROCKS_HOME}/fe/fe-core/target/lib/* ${STARROCKS_OUTPUT}/fe/lib/
+        cp -r -p ${STARROCKS_HOME}/fe/fe-core/target/starrocks-fe.jar ${STARROCKS_OUTPUT}/fe/lib/
+        cp -r -p ${STARROCKS_HOME}/webroot/* ${STARROCKS_OUTPUT}/fe/webroot/
+        cp -r -p ${STARROCKS_HOME}/fe/spark-dpp/target/spark-dpp-*-jar-with-dependencies.jar ${STARROCKS_OUTPUT}/fe/spark-dpp/
+        cp -r -p ${STARROCKS_THIRDPARTY}/installed/jindosdk/* ${STARROCKS_OUTPUT}/fe/lib/
+        cp -r -p ${STARROCKS_THIRDPARTY}/installed/broker_thirdparty_jars/* ${STARROCKS_OUTPUT}/fe/lib/
+        cp -r -p ${STARROCKS_THIRDPARTY}/installed/async-profiler/* ${STARROCKS_OUTPUT}/fe/bin/
+        MSG="${MSG} √ ${MSG_FE}"
+    elif [ ${BUILD_SPARK_DPP} -eq 1 ]; then
+        install -d ${STARROCKS_OUTPUT}/fe/spark-dpp/
+        rm -rf ${STARROCKS_OUTPUT}/fe/spark-dpp/*
+        cp -r -p ${STARROCKS_HOME}/fe/spark-dpp/target/spark-dpp-*-jar-with-dependencies.jar ${STARROCKS_OUTPUT}/fe/spark-dpp/
+        MSG="${MSG} √ ${MSG_DPP}"
+    fi
 fi
 
-if [[ "${BUILD_SPARK_DPP}" -eq 1 ]]; then
-    install -d "${DORIS_OUTPUT}/fe/spark-dpp"
-    rm -rf "${DORIS_OUTPUT}/fe/spark-dpp"/*
-    cp -r -p "${DORIS_HOME}/fe/spark-dpp/target"/spark-dpp-*-jar-with-dependencies.jar "${DORIS_OUTPUT}/fe/spark-dpp"/
+if [ ${BUILD_BE} -eq 1 ]; then
+    rm -rf ${STARROCKS_OUTPUT}/be/lib/*
+    mkdir -p ${STARROCKS_OUTPUT}/be/lib/jni-packages
+
+    install -d ${STARROCKS_OUTPUT}/be/bin  \
+               ${STARROCKS_OUTPUT}/be/conf \
+               ${STARROCKS_OUTPUT}/be/lib/hadoop \
+               ${STARROCKS_OUTPUT}/be/lib/jvm \
+               ${STARROCKS_OUTPUT}/be/www  \
+
+    cp -r -p ${STARROCKS_HOME}/be/output/bin/* ${STARROCKS_OUTPUT}/be/bin/
+    cp -r -p ${STARROCKS_HOME}/be/output/conf/be.conf ${STARROCKS_OUTPUT}/be/conf/
+    cp -r -p ${STARROCKS_HOME}/be/output/conf/be_test.conf ${STARROCKS_OUTPUT}/be/conf/
+    cp -r -p ${STARROCKS_HOME}/be/output/conf/cn.conf ${STARROCKS_OUTPUT}/be/conf/
+    cp -r -p ${STARROCKS_HOME}/be/output/conf/hadoop_env.sh ${STARROCKS_OUTPUT}/be/conf/
+    cp -r -p ${STARROCKS_HOME}/be/output/conf/log4j.properties ${STARROCKS_OUTPUT}/be/conf/
+    if [ "${BUILD_TYPE}" == "ASAN" ]; then
+        cp -r -p ${STARROCKS_HOME}/be/output/conf/asan_suppressions.conf ${STARROCKS_OUTPUT}/be/conf/
+    fi
+    cp -r -p ${STARROCKS_HOME}/be/output/lib/* ${STARROCKS_OUTPUT}/be/lib/
+    # format $BUILD_TYPE to lower case
+    ibuildtype=`echo ${BUILD_TYPE} | tr 'A-Z' 'a-z'`
+    if [ "${ibuildtype}" == "release" ] ; then
+        pushd ${STARROCKS_OUTPUT}/be/lib/ &>/dev/null
+        BE_BIN=starrocks_be
+        BE_BIN_DEBUGINFO=starrocks_be.debuginfo
+        echo "Split $BE_BIN debug symbol to $BE_BIN_DEBUGINFO ..."
+        # strip be binary
+        # if eu-strip is available, can replace following three lines into `eu-strip -g -f starrocks_be.debuginfo starrocks_be`
+        objcopy --only-keep-debug $BE_BIN $BE_BIN_DEBUGINFO
+        strip --strip-debug $BE_BIN
+        objcopy --add-gnu-debuglink=$BE_BIN_DEBUGINFO $BE_BIN
+        popd &>/dev/null
+    fi
+    cp -r -p ${STARROCKS_HOME}/be/output/www/* ${STARROCKS_OUTPUT}/be/www/
+    cp -r -p ${STARROCKS_HOME}/java-extensions/jdbc-bridge/target/starrocks-jdbc-bridge-jar-with-dependencies.jar ${STARROCKS_OUTPUT}/be/lib/jni-packages
+    cp -r -p ${STARROCKS_HOME}/java-extensions/udf-extensions/target/udf-extensions-jar-with-dependencies.jar ${STARROCKS_OUTPUT}/be/lib/jni-packages
+    cp -r -p ${STARROCKS_HOME}/java-extensions/java-utils/target/starrocks-java-utils.jar ${STARROCKS_OUTPUT}/be/lib/jni-packages
+    cp -r -p ${STARROCKS_HOME}/java-extensions/jni-connector/target/starrocks-jni-connector.jar ${STARROCKS_OUTPUT}/be/lib/jni-packages
+    cp -r -p ${STARROCKS_HOME}/java-extensions/hudi-reader/target/hudi-reader-lib ${STARROCKS_OUTPUT}/be/lib/
+    cp -r -p ${STARROCKS_HOME}/java-extensions/hudi-reader/target/starrocks-hudi-reader.jar ${STARROCKS_OUTPUT}/be/lib/jni-packages
+    cp -r -p ${STARROCKS_HOME}/java-extensions/hudi-reader/target/starrocks-hudi-reader.jar ${STARROCKS_OUTPUT}/be/lib/hudi-reader-lib
+    cp -r -p ${STARROCKS_THIRDPARTY}/installed/hadoop/share/hadoop/common ${STARROCKS_OUTPUT}/be/lib/hadoop/
+    cp -r -p ${STARROCKS_THIRDPARTY}/installed/hadoop/share/hadoop/hdfs ${STARROCKS_OUTPUT}/be/lib/hadoop/
+    cp -p ${STARROCKS_THIRDPARTY}/installed/hadoop/share/hadoop/tools/lib/hadoop-azure-* ${STARROCKS_OUTPUT}/be/lib/hadoop/hdfs
+    cp -p ${STARROCKS_THIRDPARTY}/installed/hadoop/share/hadoop/tools/lib/azure-* ${STARROCKS_OUTPUT}/be/lib/hadoop/hdfs
+    cp -p ${STARROCKS_THIRDPARTY}/installed/gcs_connector/*.jar ${STARROCKS_OUTPUT}/be/lib/hadoop/hdfs
+    cp -r -p ${STARROCKS_THIRDPARTY}/installed/hadoop/lib/native ${STARROCKS_OUTPUT}/be/lib/hadoop/
+
+    rm -f ${STARROCKS_OUTPUT}/be/lib/hadoop/common/lib/log4j-1.2.17.jar
+    rm -f ${STARROCKS_OUTPUT}/be/lib/hadoop/hdfs/lib/log4j-1.2.17.jar
+
+    if [ "${WITH_CACHELIB}" == "ON"  ]; then
+        mkdir -p ${STARROCKS_OUTPUT}/be/lib/cachelib
+        cp -r -p ${CACHELIB_DIR}/deps/lib64 ${STARROCKS_OUTPUT}/be/lib/cachelib/
+    fi
+
+    # note: do not use oracle jdk to avoid commercial dispute
+    if [[ "${MACHINE_TYPE}" == "aarch64" ]]; then
+        cp -r -p ${STARROCKS_THIRDPARTY}/installed/open_jdk/jre/lib/aarch64 ${STARROCKS_OUTPUT}/be/lib/jvm/
+    else
+        cp -r -p ${STARROCKS_THIRDPARTY}/installed/open_jdk/jre/lib/amd64 ${STARROCKS_OUTPUT}/be/lib/jvm/
+    fi
+    cp -r -p ${STARROCKS_THIRDPARTY}/installed/jindosdk/* ${STARROCKS_OUTPUT}/be/lib/hudi-reader-lib/
+    cp -r -p ${STARROCKS_THIRDPARTY}/installed/broker_thirdparty_jars/* ${STARROCKS_OUTPUT}/be/lib/hadoop/hdfs/
+    cp -r -p ${STARROCKS_THIRDPARTY}/installed/broker_thirdparty_jars/* ${STARROCKS_OUTPUT}/be/lib/hudi-reader-lib/
+    MSG="${MSG} √ ${MSG_BE}"
 fi
 
-if [[ "${OUTPUT_BE_BINARY}" -eq 1 ]]; then
-    install -d "${DORIS_OUTPUT}/be/bin" \
-        "${DORIS_OUTPUT}/be/conf" \
-        "${DORIS_OUTPUT}/be/lib" \
-        "${DORIS_OUTPUT}/be/www"
 
-    cp -r -p "${DORIS_HOME}/be/output/bin"/* "${DORIS_OUTPUT}/be/bin"/
-    cp -r -p "${DORIS_HOME}/be/output/conf"/* "${DORIS_OUTPUT}/be/conf"/
-    cp -r -p "${DORIS_HOME}/be/output/dict" "${DORIS_OUTPUT}/be/"
 
-    if [[ -d "${DORIS_THIRDPARTY}/installed/lib/hadoop_hdfs/" ]]; then
-        cp -r -p "${DORIS_THIRDPARTY}/installed/lib/hadoop_hdfs/" "${DORIS_OUTPUT}/be/lib/"
-    fi
-
-    if [[ "${BUILD_BE_JAVA_EXTENSIONS_IN_CONF}" -eq 1 ]]; then
-        echo -e "\033[33;1mWARNNING: \033[37;1mDisable Java UDF support in be.conf due to the BE was built without Java UDF.\033[0m"
-        cat >>"${DORIS_OUTPUT}/be/conf/be.conf" <<EOF
-
-# Java UDF and BE-JAVA-EXTENSION support
-enable_java_support = false
-EOF
-    fi
-
-    # Fix Killed: 9 error on MacOS (arm64).
-    # See: https://stackoverflow.com/questions/67378106/mac-m1-cping-binary-over-another-results-in-crash
-    rm -f "${DORIS_OUTPUT}/be/lib/doris_be"
-    cp -r -p "${DORIS_HOME}/be/output/lib/doris_be" "${DORIS_OUTPUT}/be/lib"/
-    if [[ -f "${DORIS_HOME}/be/output/lib/fs_benchmark_tool" ]]; then
-        cp -r -p "${DORIS_HOME}/be/output/lib/fs_benchmark_tool" "${DORIS_OUTPUT}/be/lib"/
-    fi
-
-    # make a soft link palo_be point to doris_be, for forward compatibility
-    cd "${DORIS_OUTPUT}/be/lib"
-    rm -f palo_be
-    ln -s doris_be palo_be
-    cd -
-
-    if [[ "${BUILD_META_TOOL}" = "ON" ]]; then
-        cp -r -p "${DORIS_HOME}/be/output/lib/meta_tool" "${DORIS_OUTPUT}/be/lib"/
-    fi
-
-    cp -r -p "${DORIS_HOME}/webroot/be"/* "${DORIS_OUTPUT}/be/www"/
-    if [[ "${STRIP_DEBUG_INFO}" = "ON" ]]; then
-        cp -r -p "${DORIS_HOME}/be/output/lib/debug_info" "${DORIS_OUTPUT}/be/lib"/
-    fi
-
-    if [[ "${BUILD_FS_BENCHMARK}" = "ON" ]]; then
-        cp -r -p "${DORIS_HOME}/bin/run-fs-benchmark.sh" "${DORIS_OUTPUT}/be/bin/"/
-    fi
-
-    extensions_modules=("")
-    extensions_modules+=("java-udf")
-    extensions_modules+=("jdbc-scanner")
-    extensions_modules+=("hudi-scanner")
-    extensions_modules+=("paimon-scanner")
-    extensions_modules+=("max-compute-scanner")
-    extensions_modules+=("avro-scanner")
-
-    BE_JAVA_EXTENSIONS_DIR="${DORIS_OUTPUT}/be/lib/java_extensions/"
-    rm -rf "${BE_JAVA_EXTENSIONS_DIR}"
-    mkdir "${BE_JAVA_EXTENSIONS_DIR}"
-    for extensions_module in "${extensions_modules[@]}"; do
-        module_path="${DORIS_HOME}/fe/be-java-extensions/${extensions_module}/target/${extensions_module}-jar-with-dependencies.jar"
-        if [[ -f "${module_path}" ]]; then
-            cp "${module_path}" "${BE_JAVA_EXTENSIONS_DIR}"/
-        fi
-    done
-
-    cp -r -p "${DORIS_THIRDPARTY}/installed/webroot"/* "${DORIS_OUTPUT}/be/www"/
-    copy_common_files "${DORIS_OUTPUT}/be/"
-    mkdir -p "${DORIS_OUTPUT}/be/log"
-    mkdir -p "${DORIS_OUTPUT}/be/storage"
-fi
-
-if [[ "${BUILD_BROKER}" -eq 1 ]]; then
-    install -d "${DORIS_OUTPUT}/apache_hdfs_broker"
-
-    cd "${DORIS_HOME}/fs_brokers/apache_hdfs_broker"
-    ./build.sh
-    rm -rf "${DORIS_OUTPUT}/apache_hdfs_broker"/*
-    cp -r -p "${DORIS_HOME}/fs_brokers/apache_hdfs_broker/output/apache_hdfs_broker"/* "${DORIS_OUTPUT}/apache_hdfs_broker"/
-    copy_common_files "${DORIS_OUTPUT}/apache_hdfs_broker/"
-    cd "${DORIS_HOME}"
-fi
-
-if [[ "${BUILD_AUDIT}" -eq 1 ]]; then
-    install -d "${DORIS_OUTPUT}/audit_loader"
-
-    cd "${DORIS_HOME}/fe_plugins/auditloader"
-    ./build.sh
-    rm -rf "${DORIS_OUTPUT}/audit_loader"/*
-    cp -r -p "${DORIS_HOME}/fe_plugins/auditloader/output"/* "${DORIS_OUTPUT}/audit_loader"/
-    cd "${DORIS_HOME}"
-fi
+cp -r -p "${STARROCKS_HOME}/LICENSE.txt" "${STARROCKS_OUTPUT}/LICENSE.txt"
+build-support/gen_notice.py "${STARROCKS_HOME}/licenses,${STARROCKS_HOME}/licenses-binary" "${STARROCKS_OUTPUT}/NOTICE.txt" all
 
 echo "***************************************"
-echo "Successfully build Doris"
+echo "Successfully build StarRocks ${MSG}"
 echo "***************************************"
 
-if [[ -n "${DORIS_POST_BUILD_HOOK}" ]]; then
-    eval "${DORIS_POST_BUILD_HOOK}"
+if [[ ! -z ${STARROCKS_POST_BUILD_HOOK} ]]; then
+    eval ${STARROCKS_POST_BUILD_HOOK}
 fi
 
 exit 0

@@ -17,7 +17,7 @@
 
 #pragma once
 
-namespace doris {
+namespace starrocks {
 
 #cmakedefine HAVE_SCHED_GETCPU @HAVE_SCHED_GETCPU@
 

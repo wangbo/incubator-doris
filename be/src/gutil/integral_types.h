@@ -7,10 +7,11 @@
 // any changes here, make sure that you're not breaking any platforms.
 //
 
-#ifndef BASE_INTEGRAL_TYPES_H_
-#define BASE_INTEGRAL_TYPES_H_
+#pragma once
 
-#include <inttypes.h>
+#include <cinttypes>
+
+#include "butil/basictypes.h"
 
 // These typedefs are also defined in base/google.swig. In the
 // SWIG environment, we use those definitions and avoid duplicate
@@ -81,4 +82,21 @@ typedef unsigned long uword_t;
 
 #endif // _MSC_VER
 
-#endif // BASE_INTEGRAL_TYPES_H_
+//static const uint8  kuint8max  = (( uint8) 0xFF);
+//static const uint16 kuint16max = ((uint16) 0xFFFF);
+//static const uint32 kuint32max = ((uint32) 0xFFFFFFFF);
+//static const uint64 kuint64max = ((uint64) GG_LONGLONG(0xFFFFFFFFFFFFFFFF));
+//static const  int8  kint8min   = ((  int8) ~0x7F);
+//static const  int8  kint8max   = ((  int8) 0x7F);
+//static const  int16 kint16min  = (( int16) ~0x7FFF);
+//static const  int16 kint16max  = (( int16) 0x7FFF);
+//static const  int32 kint32min  = (( int32) ~0x7FFFFFFF);
+//static const  int32 kint32max  = (( int32) 0x7FFFFFFF);
+//static const  int64 kint64min  = (( int64) GG_LONGLONG(~0x7FFFFFFFFFFFFFFF));
+//static const  int64 kint64max  = (( int64) GG_LONGLONG(0x7FFFFFFFFFFFFFFF));
+
+// TODO(user): remove this eventually.
+// No object has kIllegalFprint as its Fingerprint.
+typedef uint64 Fprint;
+static const Fprint kIllegalFprint = 0;
+static const Fprint kMaxFprint = GG_ULONGLONG(0xFFFFFFFFFFFFFFFF);

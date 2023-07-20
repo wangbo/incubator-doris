@@ -6,8 +6,7 @@
 
 #pragma once
 
-#include <stddef.h>
-
+#include <cstddef>
 #include <string>
 using std::string;
 
@@ -115,9 +114,8 @@ void StripWhiteSpace(string* str);
 namespace strings {
 
 template <typename Collection>
-void StripWhiteSpaceInCollection(Collection* collection) {
-    for (typename Collection::iterator it = collection->begin(); it != collection->end(); ++it)
-        StripWhiteSpace(&(*it));
+inline void StripWhiteSpaceInCollection(Collection* collection) {
+    for (typename Collection::iterator it = collection->begin(); it != collection->end(); ++it) StripWhiteSpace(&(*it));
 }
 
 } // namespace strings
@@ -134,7 +132,7 @@ inline const char* StripLeadingWhiteSpace(const char* line) {
     while (ascii_isspace(*line)) ++line;
 
     if ('\0' == *line) // end of line, no non-whitespace
-        return NULL;
+        return nullptr;
 
     return line;
 }

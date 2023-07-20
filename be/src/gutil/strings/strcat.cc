@@ -2,13 +2,14 @@
 
 #include "gutil/strings/strcat.h"
 
-#include "common/logging.h"
-#include <stdarg.h>
-#include <stdint.h>
-#include <string.h>
+#include <common/logging.h>
+
+#include <cstdarg>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 
 #include "gutil/stl_util.h"
-#include "gutil/strings/escaping.h"
 
 AlphaNum gEmptyAlphaNum("");
 
@@ -35,8 +36,7 @@ static char* Append2(char* out, const AlphaNum& x1, const AlphaNum& x2) {
     return out + x2.size();
 }
 
-static char* Append4(char* out, const AlphaNum& x1, const AlphaNum& x2, const AlphaNum& x3,
-                     const AlphaNum& x4) {
+static char* Append4(char* out, const AlphaNum& x1, const AlphaNum& x2, const AlphaNum& x3, const AlphaNum& x4) {
     memcpy(out, x1.data(), x1.size());
     out += x1.size();
 
@@ -82,8 +82,7 @@ string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const Alp
     return result;
 }
 
-string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d,
-              const AlphaNum& e) {
+string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d, const AlphaNum& e) {
     string result;
     STLStringResizeUninitialized(&result, a.size() + b.size() + c.size() + d.size() + e.size());
     char* const begin = &*result.begin();
@@ -93,11 +92,10 @@ string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const Alp
     return result;
 }
 
-string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d,
-              const AlphaNum& e, const AlphaNum& f) {
+string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d, const AlphaNum& e,
+              const AlphaNum& f) {
     string result;
-    STLStringResizeUninitialized(&result,
-                                 a.size() + b.size() + c.size() + d.size() + e.size() + f.size());
+    STLStringResizeUninitialized(&result, a.size() + b.size() + c.size() + d.size() + e.size() + f.size());
     char* const begin = &*result.begin();
     char* out = Append4(begin, a, b, c, d);
     out = Append2(out, e, f);
@@ -105,11 +103,10 @@ string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const Alp
     return result;
 }
 
-string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d,
-              const AlphaNum& e, const AlphaNum& f, const AlphaNum& g) {
+string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d, const AlphaNum& e,
+              const AlphaNum& f, const AlphaNum& g) {
     string result;
-    STLStringResizeUninitialized(
-            &result, a.size() + b.size() + c.size() + d.size() + e.size() + f.size() + g.size());
+    STLStringResizeUninitialized(&result, a.size() + b.size() + c.size() + d.size() + e.size() + f.size() + g.size());
     char* const begin = &*result.begin();
     char* out = Append4(begin, a, b, c, d);
     out = Append2(out, e, f);
@@ -118,11 +115,11 @@ string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const Alp
     return result;
 }
 
-string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d,
-              const AlphaNum& e, const AlphaNum& f, const AlphaNum& g, const AlphaNum& h) {
+string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d, const AlphaNum& e,
+              const AlphaNum& f, const AlphaNum& g, const AlphaNum& h) {
     string result;
-    STLStringResizeUninitialized(&result, a.size() + b.size() + c.size() + d.size() + e.size() +
-                                                  f.size() + g.size() + h.size());
+    STLStringResizeUninitialized(&result,
+                                 a.size() + b.size() + c.size() + d.size() + e.size() + f.size() + g.size() + h.size());
     char* const begin = &*result.begin();
     char* out = Append4(begin, a, b, c, d);
     out = Append4(out, e, f, g, h);
@@ -130,8 +127,7 @@ string StrCat(const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const Alp
     return result;
 }
 
-namespace strings {
-namespace internal {
+namespace strings::internal {
 
 // StrCat with this many params is exceedingly rare, but it has been
 // requested...  therefore we'll rely on default arguments to make calling
@@ -158,15 +154,13 @@ string StrCatNineOrMore(const AlphaNum* a, ...) {
     return result;
 }
 
-} // namespace internal
-} // namespace strings
+} // namespace strings::internal
 
 // It's possible to call StrAppend with a StringPiece that is itself a fragment
 // of the string we're appending to.  However the results of this are random.
 // Therefore, check for this in debug mode.  Use unsigned math so we only have
 // to do one comparison.
-#define DCHECK_NO_OVERLAP(dest, src) \
-    DCHECK_GT(uintptr_t((src).data() - (dest).data()), uintptr_t((dest).size()))
+#define DCHECK_NO_OVERLAP(dest, src) DCHECK_GT(uintptr_t((src).data() - (dest).data()), uintptr_t((dest).size()))
 
 void StrAppend(string* result, const AlphaNum& a) {
     DCHECK_NO_OVERLAP(*result, a);
@@ -195,8 +189,7 @@ void StrAppend(string* result, const AlphaNum& a, const AlphaNum& b, const Alpha
     DCHECK_EQ(out, begin + result->size());
 }
 
-void StrAppend(string* result, const AlphaNum& a, const AlphaNum& b, const AlphaNum& c,
-               const AlphaNum& d) {
+void StrAppend(string* result, const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d) {
     DCHECK_NO_OVERLAP(*result, a);
     DCHECK_NO_OVERLAP(*result, b);
     DCHECK_NO_OVERLAP(*result, c);
@@ -211,9 +204,8 @@ void StrAppend(string* result, const AlphaNum& a, const AlphaNum& b, const Alpha
 // StrAppend with this many params is even rarer than with StrCat.
 // Therefore we'll again rely on default arguments to make calling
 // slightly less efficient, to preserve code size.
-void StrAppend(string* result, const AlphaNum& a, const AlphaNum& b, const AlphaNum& c,
-               const AlphaNum& d, const AlphaNum& e, const AlphaNum& f, const AlphaNum& g,
-               const AlphaNum& h, const AlphaNum& i) {
+void StrAppend(string* result, const AlphaNum& a, const AlphaNum& b, const AlphaNum& c, const AlphaNum& d,
+               const AlphaNum& e, const AlphaNum& f, const AlphaNum& g, const AlphaNum& h, const AlphaNum& i) {
     DCHECK_NO_OVERLAP(*result, a);
     DCHECK_NO_OVERLAP(*result, b);
     DCHECK_NO_OVERLAP(*result, c);
@@ -224,9 +216,8 @@ void StrAppend(string* result, const AlphaNum& a, const AlphaNum& b, const Alpha
     DCHECK_NO_OVERLAP(*result, h);
     DCHECK_NO_OVERLAP(*result, i);
     string::size_type old_size = result->size();
-    STLStringResizeUninitialized(result, old_size + a.size() + b.size() + c.size() + d.size() +
-                                                 e.size() + f.size() + g.size() + h.size() +
-                                                 i.size());
+    STLStringResizeUninitialized(result, old_size + a.size() + b.size() + c.size() + d.size() + e.size() + f.size() +
+                                                 g.size() + h.size() + i.size());
     char* const begin = &*result->begin();
     char* out = Append4(begin + old_size, a, b, c, d);
     out = Append4(out, e, f, g, h);

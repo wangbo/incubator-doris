@@ -14,13 +14,14 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/cpu-info.cpp
-// and modified by Doris
 
 #include "util/cpu_info.h"
 
+#include <limits>
+
 #if defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+/* GCC-compatible compiler, targeting x86/x86-64 */
+#include <x86intrin.h>
 #elif defined(__GNUC__) && defined(__ARM_NEON__)
 /* GCC-compatible compiler, targeting ARM with NEON */
 #include <arm_neon.h>
@@ -35,35 +36,44 @@
 #include <spe.h>
 #endif
 
-#ifndef __APPLE__
-#include <sys/sysinfo.h>
-#else
-#include <sys/sysctl.h>
+// CGROUP2_SUPER_MAGIC is the indication for cgroup v2
+// It is defined in kernel 4.5+
+// I copy the defintion from linux/magic.h in higher kernel
+#ifndef CGROUP2_SUPER_MAGIC
+#define CGROUP2_SUPER_MAGIC 0x63677270
 #endif
 
-#include <gen_cpp/Metrics_types.h>
+#include <linux/magic.h>
 #include <sched.h>
-#include <stdlib.h>
+#include <sys/sysinfo.h>
+#include <sys/vfs.h>
 #include <unistd.h>
 
 #include <algorithm>
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/trim.hpp>
-// IWYU pragma: no_include <bits/chrono.h>
-#include <chrono> // IWYU pragma: keep
+#include <boost/algorithm/string.hpp>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <sstream>
 
 #include "common/config.h"
 #include "common/env_config.h"
+#include "common/logging.h"
+#include "fs/fs_util.h"
 #include "gflags/gflags.h"
-#include "gutil/stringprintf.h"
+#include "gutil/strings/split.h"
 #include "gutil/strings/substitute.h"
+#include "util/errno.h"
+#include "util/file_util.h"
 #include "util/pretty_printer.h"
+#include "util/string_parser.hpp"
 
 using boost::algorithm::contains;
 using boost::algorithm::trim;
-namespace fs = std::filesystem;
+
 using std::max;
 
 DECLARE_bool(abort_on_config_error);
@@ -72,11 +82,10 @@ DEFINE_int32(num_cores, 0,
              " Impala. Setting it to 0 means Impala will use all available cores on the machine"
              " according to /proc/cpuinfo.");
 
-namespace doris {
+namespace starrocks {
 // Helper function to warn if a given file does not contain an expected string as its
 // first line. If the file cannot be opened, no error is reported.
-void WarnIfFileNotEqual(const string& filename, const string& expected,
-                        const string& warning_text) {
+void WarnIfFileNotEqual(const string& filename, const string& expected, const string& warning_text) {
     std::ifstream file(filename);
     if (!file) return;
     string line;
@@ -85,9 +94,9 @@ void WarnIfFileNotEqual(const string& filename, const string& expected,
         LOG(ERROR) << "Expected " << expected << ", actual " << line << std::endl << warning_text;
     }
 }
-} // namespace doris
+} // namespace starrocks
 
-namespace doris {
+namespace starrocks {
 
 bool CpuInfo::initialized_ = false;
 int64_t CpuInfo::hardware_flags_ = 0;
@@ -108,17 +117,16 @@ static struct {
         {"ssse3", CpuInfo::SSSE3},   {"sse4_1", CpuInfo::SSE4_1}, {"sse4_2", CpuInfo::SSE4_2},
         {"popcnt", CpuInfo::POPCNT}, {"avx", CpuInfo::AVX},       {"avx2", CpuInfo::AVX2},
 };
-static const long num_flags = sizeof(flag_mappings) / sizeof(flag_mappings[0]);
 
 // Helper function to parse for hardware flags.
-// values contains a list of space-separated flags.  check to see if the flags we
+// values contains a list of space-seperated flags.  check to see if the flags we
 // care about are present.
 // Returns a bitmap of flags.
 int64_t ParseCPUFlags(const string& values) {
     int64_t flags = 0;
-    for (int i = 0; i < num_flags; ++i) {
-        if (contains(values, flag_mappings[i].name)) {
-            flags |= flag_mappings[i].flag;
+    for (auto& flag_mapping : flag_mappings) {
+        if (contains(values, flag_mapping.name)) {
+            flags |= flag_mapping.flag;
         }
     }
     return flags;
@@ -169,17 +177,13 @@ void CpuInfo::init() {
 
     if (num_cores > 0) {
         num_cores_ = num_cores;
-    } else {
+    }
+    _init_num_cores_with_cgroup();
+    if (num_cores_ <= 0) {
         num_cores_ = 1;
     }
     if (config::num_cores > 0) num_cores_ = config::num_cores;
-
-#ifdef __APPLE__
-    size_t len = sizeof(max_num_cores_);
-    sysctlbyname("hw.logicalcpu", &max_num_cores_, &len, nullptr, 0);
-#else
     max_num_cores_ = get_nprocs_conf();
-#endif
 
     // Print a warning if something is wrong with sched_getcpu().
 #ifdef HAVE_SCHED_GETCPU
@@ -202,7 +206,7 @@ void CpuInfo::_init_numa() {
     // The filesystem entries are only present if the kernel was compiled with NUMA support.
     core_to_numa_node_.reset(new int[max_num_cores_]);
 
-    if (!fs::is_directory("/sys/devices/system/node")) {
+    if (!std::filesystem::is_directory("/sys/devices/system/node")) {
         LOG(WARNING) << "/sys/devices/system/node is not present - no NUMA support";
         // Assume a single NUMA node.
         max_num_numa_nodes_ = 1;
@@ -213,10 +217,9 @@ void CpuInfo::_init_numa() {
 
     // Search for node subdirectories - node0, node1, node2, etc to determine possible
     // NUMA nodes.
-    fs::directory_iterator dir_it("/sys/devices/system/node");
     max_num_numa_nodes_ = 0;
-    for (; dir_it != fs::directory_iterator(); ++dir_it) {
-        const string filename = dir_it->path().filename().string();
+    for (const auto& item : std::filesystem::directory_iterator("/sys/devices/system/node")) {
+        const string filename = item.path().filename().string();
         if (filename.find("node") == 0) ++max_num_numa_nodes_;
     }
     if (max_num_numa_nodes_ == 0) {
@@ -229,24 +232,119 @@ void CpuInfo::_init_numa() {
     for (int core = 0; core < max_num_cores_; ++core) {
         bool found_numa_node = false;
         for (int node = 0; node < max_num_numa_nodes_; ++node) {
-            if (fs::exists(
-                        strings::Substitute("/sys/devices/system/cpu/cpu$0/node$1", core, node))) {
+            if (std::filesystem::exists(strings::Substitute("/sys/devices/system/cpu/cpu$0/node$1", core, node))) {
                 core_to_numa_node_[core] = node;
                 found_numa_node = true;
                 break;
             }
         }
         if (!found_numa_node) {
-            LOG(WARNING) << "Could not determine NUMA node for core " << core
-                         << " from /sys/devices/system/cpu/";
+            LOG(WARNING) << "Could not determine NUMA node for core " << core << " from /sys/devices/system/cpu/";
             core_to_numa_node_[core] = 0;
         }
     }
     _init_numa_node_to_cores();
 }
 
-void CpuInfo::_init_fake_numa_for_test(int max_num_numa_nodes,
-                                       const std::vector<int>& core_to_numa_node) {
+void CpuInfo::_init_num_cores_with_cgroup() {
+    bool running_in_docker = fs::path_exist("/.dockerenv");
+    if (!running_in_docker) {
+        return;
+    }
+    struct statfs fs;
+    if (statfs("/sys/fs/cgroup", &fs) < 0) {
+        LOG(WARNING) << "Fail to get file system statistics. err: " << errno_to_string(errno);
+        return;
+    }
+
+    auto sizeof_cpusets = [](const std::string& cpuset_str) {
+        int32_t count = 0;
+        std::vector<std::string> fields = strings::Split(cpuset_str, ",", strings::SkipWhitespace());
+        for (const auto& field : fields) {
+            if (field.find('-') == std::string::npos) {
+                count++;
+                continue;
+            }
+            std::vector<std::string> pair = strings::Split(field, "-", strings::SkipWhitespace());
+            if (pair.size() != 2) {
+                continue;
+            }
+            std::string& start_str = pair[0];
+            std::string& end_str = pair[1];
+            StringParser::ParseResult result;
+            auto start = StringParser::string_to_int<int32_t>(start_str.data(), start_str.size(), &result);
+            if (result != StringParser::PARSE_SUCCESS) {
+                continue;
+            }
+            auto end = StringParser::string_to_int<int32_t>(end_str.data(), end_str.size(), &result);
+            if (result != StringParser::PARSE_SUCCESS) {
+                continue;
+            }
+
+            count += (end - start + 1);
+        }
+        return count;
+    };
+
+    std::string cfs_period_us_str;
+    std::string cfs_quota_us_str;
+    std::string cpuset_str;
+    if (fs.f_type == TMPFS_MAGIC) {
+        // cgroup v1
+        if (!FileUtil::read_whole_content("/sys/fs/cgroup/cpu/cpu.cfs_period_us", cfs_period_us_str)) {
+            return;
+        }
+
+        if (!FileUtil::read_whole_content("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", cfs_quota_us_str)) {
+            return;
+        }
+
+        if (!FileUtil::read_whole_content("/sys/fs/cgroup/cpuset/cpuset.cpus", cpuset_str)) {
+            return;
+        }
+    } else if (fs.f_type == CGROUP2_SUPER_MAGIC) {
+        // cgroup v2
+        if (!FileUtil::read_contents("/sys/fs/cgroup/cpu.max", cfs_quota_us_str, cfs_period_us_str)) {
+            return;
+        }
+
+        if (!FileUtil::read_whole_content("/sys/fs/cgroup/cpuset.cpus", cpuset_str)) {
+            return;
+        }
+    }
+
+    int32_t cfs_num_cores = num_cores_;
+    {
+        StringParser::ParseResult result;
+        auto cfs_period_us =
+                StringParser::string_to_int<int64_t>(cfs_period_us_str.data(), cfs_period_us_str.size(), &result);
+        if (result != StringParser::PARSE_SUCCESS) {
+            cfs_period_us = -1;
+        }
+        auto cfs_quota_us =
+                StringParser::string_to_int<int64_t>(cfs_quota_us_str.data(), cfs_quota_us_str.size(), &result);
+        if (result != StringParser::PARSE_SUCCESS) {
+            cfs_quota_us = -1;
+        }
+        if (cfs_quota_us > 0 && cfs_period_us > 0) {
+            cfs_num_cores = cfs_quota_us / cfs_period_us;
+        }
+    }
+
+    int32_t cpuset_num_cores = num_cores_;
+    if (!cpuset_str.empty() &&
+        std::any_of(cpuset_str.begin(), cpuset_str.end(), [](char c) { return !std::isspace(c); })) {
+        cpuset_num_cores = sizeof_cpusets(cpuset_str);
+    }
+
+    if (cfs_num_cores < num_cores_ || cpuset_num_cores < num_cores_) {
+        num_cores_ = std::max(1, std::min(cfs_num_cores, cpuset_num_cores));
+        LOG(INFO) << "Init docker hardware cores by cgroup's config, cfs_num_cores=" << cfs_num_cores
+                  << ", cpuset_num_cores=" << cpuset_num_cores << ", final num_cores=" << num_cores_;
+    }
+}
+
+void CpuInfo::_init_fake_numa_for_test(int max_num_numa_nodes, const std::vector<int>& core_to_numa_node) {
     DCHECK_EQ(max_num_cores_, core_to_numa_node.size());
     max_num_numa_nodes_ = max_num_numa_nodes;
     for (int i = 0; i < max_num_cores_; ++i) {
@@ -276,8 +374,8 @@ void CpuInfo::verify_cpu_requirements() {
 
 void CpuInfo::verify_performance_governor() {
     for (int cpu_id = 0; cpu_id < CpuInfo::num_cores(); ++cpu_id) {
-        const string governor_file = strings::Substitute(
-                "/sys/devices/system/cpu/cpu$0/cpufreq/scaling_governor", cpu_id);
+        const string governor_file =
+                strings::Substitute("/sys/devices/system/cpu/cpu$0/cpufreq/scaling_governor", cpu_id);
         const string warning_text = strings::Substitute(
                 "WARNING: CPU $0 is not using 'performance' governor. Note that changing the "
                 "governor to 'performance' will reset the no_turbo setting to 0.",
@@ -287,13 +385,12 @@ void CpuInfo::verify_performance_governor() {
 }
 
 void CpuInfo::verify_turbo_disabled() {
-    WarnIfFileNotEqual(
-            "/sys/devices/system/cpu/intel_pstate/no_turbo", "1",
-            "WARNING: CPU turbo is enabled. This setting can change the clock frequency of CPU "
-            "cores during the benchmark run, which can lead to inaccurate results. You can "
-            "disable CPU turbo by writing a 1 to "
-            "/sys/devices/system/cpu/intel_pstate/no_turbo. Note that changing the governor to "
-            "'performance' will reset this to 0.");
+    WarnIfFileNotEqual("/sys/devices/system/cpu/intel_pstate/no_turbo", "1",
+                       "WARNING: CPU turbo is enabled. This setting can change the clock frequency of CPU "
+                       "cores during the benchmark run, which can lead to inaccurate results. You can "
+                       "disable CPU turbo by writing a 1 to "
+                       "/sys/devices/system/cpu/intel_pstate/no_turbo. Note that changing the governor to "
+                       "'performance' will reset this to 0.");
 }
 
 void CpuInfo::enable_feature(long flag, bool enable) {
@@ -316,8 +413,8 @@ int CpuInfo::get_current_core() {
     if (cpu < 0) return 0;
     if (cpu >= max_num_cores_) {
         LOG_FIRST_N(WARNING, 5) << "sched_getcpu() return value " << cpu
-                                << ", which is greater than get_nprocs_conf() retrun value "
-                                << max_num_cores_ << ", now is " << get_nprocs_conf();
+                                << ", which is greater than get_nprocs_conf() retrun value " << max_num_cores_
+                                << ", now is " << get_nprocs_conf();
         cpu %= max_num_cores_;
     }
     return cpu;
@@ -326,27 +423,20 @@ int CpuInfo::get_current_core() {
 #endif
 }
 
-void CpuInfo::_get_cache_info(long cache_sizes[NUM_CACHE_LEVELS],
-                              long cache_line_sizes[NUM_CACHE_LEVELS]) {
+void CpuInfo::_get_cache_info(long cache_sizes[NUM_CACHE_LEVELS], long cache_line_sizes[NUM_CACHE_LEVELS]) {
 #ifdef __APPLE__
     // On Mac OS X use sysctl() to get the cache sizes
     size_t len = 0;
-    sysctlbyname("hw.cachesize", nullptr, &len, nullptr, 0);
+    sysctlbyname("hw.cachesize", NULL, &len, NULL, 0);
     uint64_t* data = static_cast<uint64_t*>(malloc(len));
-    sysctlbyname("hw.cachesize", data, &len, nullptr, 0);
-#ifndef __arm64__
+    sysctlbyname("hw.cachesize", data, &len, NULL, 0);
     DCHECK(len / sizeof(uint64_t) >= 3);
     for (size_t i = 0; i < NUM_CACHE_LEVELS; ++i) {
         cache_sizes[i] = data[i];
     }
-#else
-    for (size_t i = 0; i < NUM_CACHE_LEVELS; ++i) {
-        cache_sizes[i] = data[i + 1];
-    }
-#endif
     size_t linesize;
     size_t sizeof_linesize = sizeof(linesize);
-    sysctlbyname("hw.cachelinesize", &linesize, &sizeof_linesize, nullptr, 0);
+    sysctlbyname("hw.cachelinesize", &linesize, &sizeof_linesize, NULL, 0);
     for (size_t i = 0; i < NUM_CACHE_LEVELS; ++i) cache_line_sizes[i] = linesize;
 #else
     // Call sysconf to query for the cache sizes
@@ -369,23 +459,15 @@ std::string CpuInfo::debug_string() {
     long cache_line_sizes[NUM_CACHE_LEVELS];
     _get_cache_info(cache_sizes, cache_line_sizes);
 
-    string L1 = strings::Substitute(
-            "L1 Cache: $0 (Line: $1)",
-            PrettyPrinter::print(static_cast<int64_t>(cache_sizes[L1_CACHE]), TUnit::BYTES),
-            PrettyPrinter::print(static_cast<int64_t>(cache_line_sizes[L1_CACHE]), TUnit::BYTES));
-    string L2 = strings::Substitute(
-            "L2 Cache: $0 (Line: $1)",
-            PrettyPrinter::print(static_cast<int64_t>(cache_sizes[L2_CACHE]), TUnit::BYTES),
-            PrettyPrinter::print(static_cast<int64_t>(cache_line_sizes[L2_CACHE]), TUnit::BYTES));
+    string L1 =
+            strings::Substitute("L1 Cache: $0 (Line: $1)", PrettyPrinter::print(cache_sizes[L1_CACHE], TUnit::BYTES),
+                                PrettyPrinter::print(cache_line_sizes[L1_CACHE], TUnit::BYTES));
+    string L2 =
+            strings::Substitute("L2 Cache: $0 (Line: $1)", PrettyPrinter::print(cache_sizes[L2_CACHE], TUnit::BYTES),
+                                PrettyPrinter::print(cache_line_sizes[L2_CACHE], TUnit::BYTES));
     string L3 =
-            cache_sizes[L3_CACHE]
-                    ? strings::Substitute(
-                              "L3 Cache: $0 (Line: $1)",
-                              PrettyPrinter::print(static_cast<int64_t>(cache_sizes[L3_CACHE]),
-                                                   TUnit::BYTES),
-                              PrettyPrinter::print(static_cast<int64_t>(cache_line_sizes[L3_CACHE]),
-                                                   TUnit::BYTES))
-                    : "";
+            strings::Substitute("L3 Cache: $0 (Line: $1)", PrettyPrinter::print(cache_sizes[L3_CACHE], TUnit::BYTES),
+                                PrettyPrinter::print(cache_line_sizes[L3_CACHE], TUnit::BYTES));
     stream << "Cpu Info:" << std::endl
            << "  Model: " << model_name_ << std::endl
            << "  Cores: " << num_cores_ << std::endl
@@ -394,9 +476,9 @@ std::string CpuInfo::debug_string() {
            << "  " << L2 << std::endl
            << "  " << L3 << std::endl
            << "  Hardware Supports:" << std::endl;
-    for (int i = 0; i < num_flags; ++i) {
-        if (is_supported(flag_mappings[i].flag)) {
-            stream << "    " << flag_mappings[i].name << std::endl;
+    for (auto& flag_mapping : flag_mappings) {
+        if (is_supported(flag_mapping.flag)) {
+            stream << "    " << flag_mapping.name << std::endl;
         }
     }
     stream << "  Numa Nodes: " << max_num_numa_nodes_ << std::endl;
@@ -408,4 +490,4 @@ std::string CpuInfo::debug_string() {
     return stream.str();
 }
 
-} // namespace doris
+} // namespace starrocks

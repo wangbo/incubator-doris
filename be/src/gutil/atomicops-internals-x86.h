@@ -26,9 +26,9 @@
 
 #pragma once
 
-#include "common/logging.h"
-#include <stdint.h>
-#include <ostream>
+#include <common/logging.h>
+
+#include <cstdint>
 
 #define BASE_HAS_ATOMIC64 1 // Use only in tests and base/atomic*
 
@@ -64,21 +64,17 @@ typedef int64_t Atomic64;
 // hard-to-track-down bugs, if the pointer isn't naturally aligned. Check alignment
 // in debug mode.
 template <class T>
-void CheckNaturalAlignment(const T* ptr) {
+inline void CheckNaturalAlignment(const T* ptr) {
     DCHECK_EQ(0, reinterpret_cast<const uintptr_t>(ptr) & (sizeof(T) - 1))
             << "unaligned pointer not allowed for atomics";
 }
 
 // 32-bit low-level operations on any platform.
 
-inline Atomic32 NoBarrier_CompareAndSwap(volatile Atomic32* ptr, Atomic32 old_value,
-                                         Atomic32 new_value) {
+inline Atomic32 NoBarrier_CompareAndSwap(volatile Atomic32* ptr, Atomic32 old_value, Atomic32 new_value) {
     CheckNaturalAlignment(ptr);
     Atomic32 prev;
-    __asm__ __volatile__("lock; cmpxchgl %1,%2"
-                         : "=a"(prev)
-                         : "q"(new_value), "m"(*ptr), "0"(old_value)
-                         : "memory");
+    __asm__ __volatile__("lock; cmpxchgl %1,%2" : "=a"(prev) : "q"(new_value), "m"(*ptr), "0"(old_value) : "memory");
     return prev;
 }
 
@@ -119,18 +115,15 @@ inline Atomic32 Barrier_AtomicIncrement(volatile Atomic32* ptr, Atomic32 increme
 
 // On x86, the NoBarrier_CompareAndSwap() uses a locked instruction and so also
 // provides both acquire and release barriers.
-inline Atomic32 Acquire_CompareAndSwap(volatile Atomic32* ptr, Atomic32 old_value,
-                                       Atomic32 new_value) {
+inline Atomic32 Acquire_CompareAndSwap(volatile Atomic32* ptr, Atomic32 old_value, Atomic32 new_value) {
     return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
 }
 
-inline Atomic32 Release_CompareAndSwap(volatile Atomic32* ptr, Atomic32 old_value,
-                                       Atomic32 new_value) {
+inline Atomic32 Release_CompareAndSwap(volatile Atomic32* ptr, Atomic32 old_value, Atomic32 new_value) {
     return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
 }
 
-inline Atomic32 Barrier_CompareAndSwap(volatile Atomic32* ptr, Atomic32 old_value,
-                                       Atomic32 new_value) {
+inline Atomic32 Barrier_CompareAndSwap(volatile Atomic32* ptr, Atomic32 old_value, Atomic32 new_value) {
     return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
 }
 
@@ -212,14 +205,10 @@ inline Atomic32 Release_Load(volatile const Atomic32* ptr) {
 
 // 64-bit low-level operations on 64-bit platform.
 
-inline Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_value,
-                                         Atomic64 new_value) {
+inline Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_value, Atomic64 new_value) {
     Atomic64 prev;
     CheckNaturalAlignment(ptr);
-    __asm__ __volatile__("lock; cmpxchgq %1,%2"
-                         : "=a"(prev)
-                         : "q"(new_value), "m"(*ptr), "0"(old_value)
-                         : "memory");
+    __asm__ __volatile__("lock; cmpxchgq %1,%2" : "=a"(prev) : "q"(new_value), "m"(*ptr), "0"(old_value) : "memory");
     return prev;
 }
 
@@ -325,8 +314,7 @@ inline Atomic64 Release_Load(volatile const Atomic64* ptr) {
 //    the same register for another argument which has constraints
 //    that allow it ("r" for example).
 
-inline Atomic64 __sync_val_compare_and_swap(volatile Atomic64* ptr, Atomic64 old_value,
-                                            Atomic64 new_value) {
+inline Atomic64 __sync_val_compare_and_swap(volatile Atomic64* ptr, Atomic64 old_value, Atomic64 new_value) {
     CheckNaturalAlignment(ptr);
     Atomic64 prev;
     __asm__ __volatile__(
@@ -344,8 +332,7 @@ inline Atomic64 __sync_val_compare_and_swap(volatile Atomic64* ptr, Atomic64 old
 }
 #endif // Compiler < gcc-4.1
 
-inline Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_val,
-                                         Atomic64 new_val) {
+inline Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_val, Atomic64 new_val) {
     CheckNaturalAlignment(ptr);
     return __sync_val_compare_and_swap(ptr, old_val, new_val);
 }
@@ -398,8 +385,8 @@ inline void NoBarrier_Store(volatile Atomic64* ptr, Atomic64 value) {
             : "=m"(*ptr)
             : "m"(value)
             : // mark the FP stack and mmx registers as clobbered
-            "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)", "mm0", "mm1",
-            "mm2", "mm3", "mm4", "mm5", "mm6", "mm7");
+            "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)", "mm0", "mm1", "mm2", "mm3", "mm4",
+            "mm5", "mm6", "mm7");
 }
 
 inline void Acquire_Store(volatile Atomic64* ptr, Atomic64 value) {
@@ -422,8 +409,8 @@ inline Atomic64 NoBarrier_Load(volatile const Atomic64* ptr) {
             : "=m"(value)
             : "m"(*ptr)
             : // mark the FP stack and mmx registers as clobbered
-            "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)", "mm0", "mm1",
-            "mm2", "mm3", "mm4", "mm5", "mm6", "mm7");
+            "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)", "mm0", "mm1", "mm2", "mm3", "mm4",
+            "mm5", "mm6", "mm7");
     return value;
 }
 
@@ -441,18 +428,15 @@ inline Atomic64 Release_Load(volatile const Atomic64* ptr) {
 
 #endif // defined(__x86_64__)
 
-inline Atomic64 Acquire_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_value,
-                                       Atomic64 new_value) {
+inline Atomic64 Acquire_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_value, Atomic64 new_value) {
     return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
 }
 
-inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_value,
-                                       Atomic64 new_value) {
+inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_value, Atomic64 new_value) {
     return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
 }
 
-inline Atomic64 Barrier_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_value,
-                                       Atomic64 new_value) {
+inline Atomic64 Barrier_CompareAndSwap(volatile Atomic64* ptr, Atomic64 old_value, Atomic64 new_value) {
     return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
 }
 

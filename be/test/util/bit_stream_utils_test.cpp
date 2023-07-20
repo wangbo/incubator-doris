@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/test/util/bit_stream_utils_test.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,17 +32,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "util/bit_stream_utils.h"
-
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
-
-#include <boost/utility/binary.hpp>
 #include <cstdint>
-#include <string>
+#include <cstring>
 #include <vector>
 
-#include "gtest/gtest_pred_impl.h"
+// Must come before gtest.h.
+#include <gtest/gtest.h>
+
+#include <boost/utility/binary.hpp>
+
+#include "util/bit_stream_utils.h"
 #include "util/bit_stream_utils.inline.h"
 #include "util/bit_util.h"
 #include "util/faststring.h"
@@ -33,7 +49,7 @@
 using std::string;
 using std::vector;
 
-namespace doris {
+namespace starrocks {
 
 const int kMaxWidth = 64;
 class TestBitStreamUtil : public testing::Test {};
@@ -179,16 +195,16 @@ TEST(TestBitStreamUtil, TestSeekToBit) {
     reader.SeekToBit(buffer.size() * 8 - 8 * 8);
     uint32_t second_value;
     reader.GetValue(32, &second_value);
-    EXPECT_EQ(second_value, 2020);
+    ASSERT_EQ(second_value, 2020);
 
     uint32_t third_value;
     reader.GetValue(32, &third_value);
-    EXPECT_EQ(third_value, 2021);
+    ASSERT_EQ(third_value, 2021);
 
     reader.SeekToBit(0);
     uint32_t first_value;
     reader.GetValue(32, &first_value);
-    EXPECT_EQ(first_value, 2019);
+    ASSERT_EQ(first_value, 2019);
 }
 
 TEST(TestBitStreamUtil, TestUint64) {
@@ -204,18 +220,50 @@ TEST(TestBitStreamUtil, TestUint64) {
 
     uint64_t v1;
     reader.GetValue(64, &v1);
-    EXPECT_EQ(v1, 18446744073709551614U);
+    ASSERT_EQ(v1, 18446744073709551614U);
 
     uint64_t v2;
     reader.GetValue(64, &v2);
-    EXPECT_EQ(v2, 18446744073709551613U);
+    ASSERT_EQ(v2, 18446744073709551613U);
 
     uint64_t v3;
     reader.GetValue(32, &v3);
-    EXPECT_EQ(v3, 128);
+    ASSERT_EQ(v3, 128);
 
     uint64_t v4;
     reader.GetValue(16, &v4);
-    EXPECT_EQ(v4, 126);
+    ASSERT_EQ(v4, 126);
 }
-} // namespace doris
+
+TEST(TestBitStreamUtil, BatchedBitReaderGetBytes) {
+    uint8_t data[4] = {0x8, 0x1, 0x0, 0x0};
+
+    BatchedBitReader reader;
+    reader.reset(data, 4);
+
+    uint32_t value;
+    ASSERT_TRUE(reader.get_bytes(4, &value));
+    ASSERT_EQ(264, value);
+}
+
+TEST(TestBitStreamUtil, BatchedBitReaderUnpackBatch) {
+    uint8_t data[BitPacking::MAX_BITWIDTH * 48 / 8];
+    for (unsigned char& i : data) {
+        i = 0x8;
+    }
+
+    BatchedBitReader reader;
+    reader.reset(data, 24);
+    uint64_t result[48];
+    int64_t num = reader.unpack_batch<uint64_t>(4, 48, result);
+    ASSERT_EQ(num, 48);
+
+    for (size_t i = 0; i < 48; i++) {
+        if (i % 2 == 0) {
+            ASSERT_EQ(result[i], 8);
+        } else {
+            ASSERT_EQ(result[i], 0);
+        }
+    }
+}
+} // namespace starrocks

@@ -1,63 +1,46 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
 //
-//   http://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "exec/schema_scanner/schema_schemata_scanner.h"
 
-#include <gen_cpp/Descriptors_types.h>
-#include <gen_cpp/FrontendService_types.h>
-
-#include <string>
-
 #include "exec/schema_scanner/schema_helper.h"
-#include "runtime/define_primitive_type.h"
-#include "util/runtime_profile.h"
-#include "vec/common/string_ref.h"
+#include "runtime/string_value.h"
+#include "types/logical_type.h"
 
-namespace doris {
-class RuntimeState;
-namespace vectorized {
-class Block;
-} // namespace vectorized
+namespace starrocks {
 
-std::vector<SchemaScanner::ColumnDesc> SchemaSchemataScanner::_s_columns = {
+SchemaScanner::ColumnDesc SchemaSchemataScanner::_s_columns[] = {
         //   name,       type,          size
-        {"CATALOG_NAME", TYPE_VARCHAR, sizeof(StringRef), true},
-        {"SCHEMA_NAME", TYPE_VARCHAR, sizeof(StringRef), false},
-        {"DEFAULT_CHARACTER_SET_NAME", TYPE_VARCHAR, sizeof(StringRef), false},
-        {"DEFAULT_COLLATION_NAME", TYPE_VARCHAR, sizeof(StringRef), false},
-        {"SQL_PATH", TYPE_VARCHAR, sizeof(StringRef), true},
+        {"CATALOG_NAME", TYPE_VARCHAR, sizeof(StringValue), true},
+        {"SCHEMA_NAME", TYPE_VARCHAR, sizeof(StringValue), false},
+        {"DEFAULT_CHARACTER_SET_NAME", TYPE_VARCHAR, sizeof(StringValue), false},
+        {"DEFAULT_COLLATION_NAME", TYPE_VARCHAR, sizeof(StringValue), false},
+        {"SQL_PATH", TYPE_VARCHAR, sizeof(StringValue), true},
 };
 
 SchemaSchemataScanner::SchemaSchemataScanner()
-        : SchemaScanner(_s_columns, TSchemaTableType::SCH_SCHEMATA) {}
+        : SchemaScanner(_s_columns, sizeof(_s_columns) / sizeof(SchemaScanner::ColumnDesc)) {}
 
 SchemaSchemataScanner::~SchemaSchemataScanner() = default;
 
 Status SchemaSchemataScanner::start(RuntimeState* state) {
-    SCOPED_TIMER(_get_db_timer);
     if (!_is_init) {
         return Status::InternalError("used before initial.");
     }
     TGetDbsParams db_params;
     if (nullptr != _param->wild) {
         db_params.__set_pattern(*(_param->wild));
-    }
-    if (nullptr != _param->catalog) {
-        db_params.__set_catalog(*(_param->catalog));
     }
     if (nullptr != _param->current_user_ident) {
         db_params.__set_current_user_ident(*(_param->current_user_ident));
@@ -71,8 +54,7 @@ Status SchemaSchemataScanner::start(RuntimeState* state) {
     }
 
     if (nullptr != _param->ip && 0 != _param->port) {
-        RETURN_IF_ERROR(
-                SchemaHelper::get_db_names(*(_param->ip), _param->port, db_params, &_db_result));
+        RETURN_IF_ERROR(SchemaHelper::get_db_names(*(_param->ip), _param->port, db_params, &_db_result));
     } else {
         return Status::InternalError("IP or port doesn't exists");
     }
@@ -80,72 +62,77 @@ Status SchemaSchemataScanner::start(RuntimeState* state) {
     return Status::OK();
 }
 
-Status SchemaSchemataScanner::get_next_block(vectorized::Block* block, bool* eos) {
-    if (!_is_init) {
-        return Status::InternalError("Used before Initialized.");
-    }
-    if (nullptr == block || nullptr == eos) {
-        return Status::InternalError("input pointer is nullptr.");
-    }
-
-    *eos = true;
-    if (!_db_result.dbs.size()) {
-        return Status::OK();
-    }
-    return _fill_block_impl(block);
-}
-
-Status SchemaSchemataScanner::_fill_block_impl(vectorized::Block* block) {
-    SCOPED_TIMER(_fill_block_timer);
-    auto dbs_num = _db_result.dbs.size();
-    std::vector<void*> null_datas(dbs_num, nullptr);
-    std::vector<void*> datas(dbs_num);
-
-    // catalog
-    {
-        if (!_db_result.__isset.catalogs) {
-            fill_dest_column_for_range(block, 0, null_datas);
-        } else {
-            StringRef strs[dbs_num];
-            for (int i = 0; i < dbs_num; ++i) {
-                strs[i] = StringRef(_db_result.catalogs[i].c_str(), _db_result.catalogs[i].size());
-                datas[i] = strs + i;
+Status SchemaSchemataScanner::fill_chunk(ChunkPtr* chunk) {
+    const auto& slot_id_to_index_map = (*chunk)->get_slot_id_to_index_map();
+    for (const auto& [slot_id, index] : slot_id_to_index_map) {
+        switch (slot_id) {
+        case 1: {
+            // catalog
+            {
+                ColumnPtr column = (*chunk)->get_column_by_slot_id(1);
+                fill_data_column_with_null(column.get());
             }
-            fill_dest_column_for_range(block, 0, datas);
+            break;
+        }
+        case 2: {
+            // schema
+            {
+                ColumnPtr column = (*chunk)->get_column_by_slot_id(2);
+                std::string db_name = SchemaHelper::extract_db_name(_db_result.dbs[_db_index]);
+                Slice value(db_name.c_str(), db_name.length());
+                fill_column_with_slot<TYPE_VARCHAR>(column.get(), (void*)&value);
+            }
+            break;
+        }
+        case 3: {
+            // DEFAULT_CHARACTER_SET_NAME
+            {
+                ColumnPtr column = (*chunk)->get_column_by_slot_id(3);
+                const char* str = "utf8";
+                Slice value(str, strlen(str));
+                fill_column_with_slot<TYPE_VARCHAR>(column.get(), (void*)&value);
+            }
+            break;
+        }
+        case 4: {
+            // DEFAULT_COLLATION_NAME
+            {
+                ColumnPtr column = (*chunk)->get_column_by_slot_id(4);
+                const char* str = "utf8_general_ci";
+                Slice value(str, strlen(str));
+                fill_column_with_slot<TYPE_VARCHAR>(column.get(), (void*)&value);
+            }
+            break;
+        }
+        case 5: {
+            // SQL_PATH
+            {
+                ColumnPtr column = (*chunk)->get_column_by_slot_id(5);
+                fill_data_column_with_null(column.get());
+            }
+            break;
+        }
+        default:
+            break;
         }
     }
-    // schema
-    {
-        std::string db_names[dbs_num];
-        StringRef strs[dbs_num];
-        for (int i = 0; i < dbs_num; ++i) {
-            db_names[i] = SchemaHelper::extract_db_name(_db_result.dbs[i]);
-            strs[i] = StringRef(db_names[i].c_str(), db_names[i].size());
-            datas[i] = strs + i;
-        }
-        fill_dest_column_for_range(block, 1, datas);
-    }
-    // DEFAULT_CHARACTER_SET_NAME
-    {
-        std::string src = "utf8";
-        StringRef str = StringRef(src.c_str(), src.size());
-        for (int i = 0; i < dbs_num; ++i) {
-            datas[i] = &str;
-        }
-        fill_dest_column_for_range(block, 2, datas);
-    }
-    // DEFAULT_COLLATION_NAME
-    {
-        std::string src = "utf8_general_ci";
-        StringRef str = StringRef(src.c_str(), src.size());
-        for (int i = 0; i < dbs_num; ++i) {
-            datas[i] = &str;
-        }
-        fill_dest_column_for_range(block, 3, datas);
-    }
-    // SQL_PATH
-    { fill_dest_column_for_range(block, 4, null_datas); }
+    _db_index++;
     return Status::OK();
 }
 
-} // namespace doris
+Status SchemaSchemataScanner::get_next(ChunkPtr* chunk, bool* eos) {
+    if (!_is_init) {
+        return Status::InternalError("Used before Initialized.");
+    }
+    if (nullptr == chunk || nullptr == eos) {
+        return Status::InternalError("input pointer is nullptr.");
+    }
+    if (_db_index >= _db_result.dbs.size()) {
+        *eos = true;
+        return Status::OK();
+    }
+    *eos = false;
+    return fill_chunk(chunk);
+}
+
+} // namespace starrocks

@@ -1,6 +1,6 @@
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE.txt file.
+// Use of this source code is governed by a BSD-style license.
+// (https://developers.google.com/open-source/licenses/bsd)
 
 // Scopers help you manage ownership of a pointer, helping you easily manage the
 // a pointer within a scope, and automatically destroying the pointer at the
@@ -91,24 +91,23 @@
 // some of the older compilers we have to support.
 // -------------------------------------------------------------------------
 
+#pragma once
+
 // This is an implementation designed to match the anticipated future TR2
 // implementation of the scoped_ptr class, and its closely-related brethren,
 // scoped_array, scoped_ptr_malloc.
 
-#pragma once
-
-#include <assert.h>
-#include <stddef.h>
-#include <stdlib.h>
-
 #include <algorithm> // For std::swap().
-#include <type_traits>
+#include <cassert>
+#include <cstddef>
+#include <cstdlib>
 
 #include "gutil/basictypes.h"
 #include "gutil/move.h"
 #include "gutil/template_util.h"
+#include "gutil/type_traits.h"
 
-namespace doris {
+namespace starrocks {
 
 namespace subtle {
 class RefCountedBase;
@@ -120,7 +119,7 @@ class RefCountedThreadSafeBase;
 // invokes 'delete'. The default deleter for gscoped_ptr<T>.
 template <class T>
 struct DefaultDeleter {
-    DefaultDeleter() {}
+    DefaultDeleter() = default;
     template <typename U>
     DefaultDeleter(const DefaultDeleter<U>& other) {
         // IMPLEMENTATION NOTE: C++11 20.7.1.1.2p2 only provides this constructor
@@ -137,8 +136,7 @@ struct DefaultDeleter {
         // cannot convert to T*.
         enum { T_must_be_complete = sizeof(T) };
         enum { U_must_be_complete = sizeof(U) };
-        COMPILE_ASSERT((std::is_convertible<U*, T*>::value),
-                       U_ptr_must_implicitly_convert_to_T_ptr);
+        COMPILE_ASSERT((base::is_convertible<U*, T*>::value), U_ptr_must_implicitly_convert_to_T_ptr);
     }
     inline void operator()(T* ptr) const {
         enum { type_must_be_complete = sizeof(T) };
@@ -175,7 +173,7 @@ struct DefaultDeleter<T[n]> {
 // Function object which invokes 'free' on its parameter, which must be
 // a pointer. Can be used to store malloc-allocated pointers in gscoped_ptr:
 //
-// gscoped_ptr<int, doris::FreeDeleter> foo_ptr(
+// gscoped_ptr<int, starrocks::FreeDeleter> foo_ptr(
 //     static_cast<int*>(malloc(sizeof(int))));
 struct FreeDeleter {
     inline void operator()(void* ptr) const { free(ptr); }
@@ -186,8 +184,8 @@ namespace internal {
 template <typename T>
 struct IsNotRefCounted {
     enum {
-        value = !std::is_convertible<T*, doris::subtle::RefCountedBase*>::value &&
-                !std::is_convertible<T*, doris::subtle::RefCountedThreadSafeBase*>::value
+        value = !base::is_convertible<T*, starrocks::subtle::RefCountedBase*>::value &&
+                !base::is_convertible<T*, starrocks::subtle::RefCountedThreadSafeBase*>::value
     };
 };
 
@@ -204,8 +202,7 @@ public:
     // Templated constructor that destructively takes the value from another
     // gscoped_ptr_impl.
     template <typename U, typename V>
-    gscoped_ptr_impl(gscoped_ptr_impl<U, V>* other)
-            : data_(other->release(), other->get_deleter()) {
+    gscoped_ptr_impl(gscoped_ptr_impl<U, V>* other) : data_(other->release(), other->get_deleter()) {
         // We do not support move-only deleters.  We could modify our move
         // emulation to have base::subtle::move() and base::subtle::forward()
         // functions that are imperfect emulations of their C++11 equivalents,
@@ -289,12 +286,13 @@ private:
 
     Data data_;
 
-    DISALLOW_COPY_AND_ASSIGN(gscoped_ptr_impl);
+    gscoped_ptr_impl(const gscoped_ptr_impl&) = delete;
+    const gscoped_ptr_impl& operator=(const gscoped_ptr_impl&) = delete;
 };
 
 } // namespace internal
 
-} // namespace doris
+} // namespace starrocks
 
 // A gscoped_ptr<T> is like a T*, except that the destructor of gscoped_ptr<T>
 // automatically deletes the pointer it holds (if any).
@@ -312,12 +310,11 @@ private:
 // unique_ptr<> features. Known deficiencies include not supporting move-only
 // deleteres, function pointers as deleters, and deleters with reference
 // types.
-template <class T, class D = doris::DefaultDeleter<T>>
+template <class T, class D = starrocks::DefaultDeleter<T> >
 class gscoped_ptr {
     MOVE_ONLY_TYPE_FOR_CPP_03(gscoped_ptr, RValue)
 
-    COMPILE_ASSERT(doris::internal::IsNotRefCounted<T>::value,
-                   T_is_refcounted_type_and_needs_scoped_refptr);
+    COMPILE_ASSERT(starrocks::internal::IsNotRefCounted<T>::value, T_is_refcounted_type_and_needs_scoped_refptr);
 
 public:
     // The element and deleter types.
@@ -345,7 +342,7 @@ public:
     // implementation of gscoped_ptr.
     template <typename U, typename V>
     gscoped_ptr(gscoped_ptr<U, V> other) : impl_(&other.impl_) {
-        COMPILE_ASSERT(!std::is_array<U>::value, U_cannot_be_an_array);
+        COMPILE_ASSERT(!base::is_array<U>::value, U_cannot_be_an_array);
     }
 
     // Constructor.  Move constructor for C++03 move emulation of this type.
@@ -363,7 +360,7 @@ public:
     // gscoped_ptr.
     template <typename U, typename V>
     gscoped_ptr& operator=(gscoped_ptr<U, V> rhs) {
-        COMPILE_ASSERT(!std::is_array<U>::value, U_cannot_be_an_array);
+        COMPILE_ASSERT(!base::is_array<U>::value, U_cannot_be_an_array);
         impl_.TakeState(&rhs.impl_);
         return *this;
     }
@@ -391,7 +388,7 @@ public:
     // Allow gscoped_ptr<element_type> to be used in boolean expressions, but not
     // implicitly convertible to a real bool (which is dangerous).
 private:
-    typedef doris::internal::gscoped_ptr_impl<element_type, deleter_type> gscoped_ptr::*Testable;
+    typedef starrocks::internal::gscoped_ptr_impl<element_type, deleter_type> gscoped_ptr::*Testable;
 
 public:
     operator Testable() const { return impl_.get() ? &gscoped_ptr::impl_ : NULL; }
@@ -427,7 +424,7 @@ private:
     // Needed to reach into |impl_| in the constructor.
     template <typename U, typename V>
     friend class gscoped_ptr;
-    doris::internal::gscoped_ptr_impl<element_type, deleter_type> impl_;
+    starrocks::internal::gscoped_ptr_impl<element_type, deleter_type> impl_;
 
     // Forbid comparison of gscoped_ptr types.  If U != T, it totally
     // doesn't make sense, and if U == T, it still doesn't make sense
@@ -496,7 +493,7 @@ public:
     // Allow gscoped_ptr<element_type> to be used in boolean expressions, but not
     // implicitly convertible to a real bool (which is dangerous).
 private:
-    typedef doris::internal::gscoped_ptr_impl<element_type, deleter_type> gscoped_ptr::*Testable;
+    typedef starrocks::internal::gscoped_ptr_impl<element_type, deleter_type> gscoped_ptr::*Testable;
 
 public:
     operator Testable() const { return impl_.get() ? &gscoped_ptr::impl_ : NULL; }
@@ -522,7 +519,7 @@ private:
     enum { type_must_be_complete = sizeof(element_type) };
 
     // Actually hold the data.
-    doris::internal::gscoped_ptr_impl<element_type, deleter_type> impl_;
+    starrocks::internal::gscoped_ptr_impl<element_type, deleter_type> impl_;
 
     // Disable initialization from any type other than element_type*, by
     // providing a constructor that matches such an initialization, but is
@@ -683,12 +680,12 @@ bool operator!=(C* p1, const gscoped_array<C>& p2) {
     return p1 != p2.get();
 }
 
-// DEPRECATED: Use gscoped_ptr<C, doris::FreeDeleter> instead.
+// DEPRECATED: Use gscoped_ptr<C, starrocks::FreeDeleter> instead.
 //
 // gscoped_ptr_malloc<> is similar to gscoped_ptr<>, but it accepts a
 // second template argument, the functor used to free the object.
 
-template <class C, class FreeProc = doris::FreeDeleter>
+template <class C, class FreeProc = starrocks::FreeDeleter>
 class gscoped_ptr_malloc {
     MOVE_ONLY_TYPE_FOR_CPP_03(gscoped_ptr_malloc, RValue)
 
@@ -786,23 +783,23 @@ private:
 };
 
 template <class C, class FP>
-void swap(gscoped_ptr_malloc<C, FP>& a, gscoped_ptr_malloc<C, FP>& b) {
+inline void swap(gscoped_ptr_malloc<C, FP>& a, gscoped_ptr_malloc<C, FP>& b) {
     a.swap(b);
 }
 
 template <class C, class FP>
-bool operator==(C* p, const gscoped_ptr_malloc<C, FP>& b) {
+inline bool operator==(C* p, const gscoped_ptr_malloc<C, FP>& b) {
     return p == b.get();
 }
 
 template <class C, class FP>
-bool operator!=(C* p, const gscoped_ptr_malloc<C, FP>& b) {
+inline bool operator!=(C* p, const gscoped_ptr_malloc<C, FP>& b) {
     return p != b.get();
 }
 
 // A function to convert T* into gscoped_ptr<T>
 // Doing e.g. make_gscoped_ptr(new FooBarBaz<type>(arg)) is a shorter notation
-// for gscoped_ptr<FooBarBaz<type>>(new FooBarBaz<type>(arg))
+// for gscoped_ptr<FooBarBaz<type> >(new FooBarBaz<type>(arg))
 template <typename T>
 gscoped_ptr<T> make_gscoped_ptr(T* ptr) {
     return gscoped_ptr<T>(ptr);

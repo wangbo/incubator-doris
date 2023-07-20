@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/thread.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -14,33 +31,31 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/thread.h
-// and modified by Doris
 
 #pragma once
-#include <butil/macros.h>
-#include <pthread.h>
-#include <stdint.h>
 
-#include <functional>
-#include <string>
+#include <pthread.h>
+#include <syscall.h>
+
+#include <atomic>
+#include <thread>
 #include <utility>
 
 #include "common/status.h"
 #include "gutil/ref_counted.h"
 #include "util/countdown_latch.h"
 
-namespace doris {
-class WebPageHandler;
+namespace starrocks {
+
+class BeThreadInfo;
 
 class Thread : public RefCountedThreadSafe<Thread> {
 public:
     enum CreateFlags { NO_FLAGS = 0, NO_STACK_WATCHDOG = 1 };
 
     template <class F>
-    static Status create_with_flags(const std::string& category, const std::string& name,
-                                    const F& f, uint64_t flags, scoped_refptr<Thread>* holder) {
+    static Status create_with_flags(const std::string& category, const std::string& name, const F& f, uint64_t flags,
+                                    scoped_refptr<Thread>* holder) {
         return start_thread(category, name, f, flags, holder);
     }
 
@@ -51,49 +66,40 @@ public:
     }
 
     template <class F, class A1>
-    static Status create(const std::string& category, const std::string& name, const F& f,
-                         const A1& a1, scoped_refptr<Thread>* holder) {
+    static Status create(const std::string& category, const std::string& name, const F& f, const A1& a1,
+                         scoped_refptr<Thread>* holder) {
         return start_thread(category, name, std::bind(f, a1), NO_FLAGS, holder);
     }
 
     template <class F, class A1, class A2>
-    static Status create(const std::string& category, const std::string& name, const F& f,
-                         const A1& a1, const A2& a2, scoped_refptr<Thread>* holder) {
+    static Status create(const std::string& category, const std::string& name, const F& f, const A1& a1, const A2& a2,
+                         scoped_refptr<Thread>* holder) {
         return start_thread(category, name, std::bind(f, a1, a2), NO_FLAGS, holder);
     }
 
     template <class F, class A1, class A2, class A3>
-    static Status create(const std::string& category, const std::string& name, const F& f,
-                         const A1& a1, const A2& a2, const A3& a3, scoped_refptr<Thread>* holder) {
+    static Status create(const std::string& category, const std::string& name, const F& f, const A1& a1, const A2& a2,
+                         const A3& a3, scoped_refptr<Thread>* holder) {
         return start_thread(category, name, std::bind(f, a1, a2, a3), NO_FLAGS, holder);
     }
 
     template <class F, class A1, class A2, class A3, class A4>
-    static Status create(const std::string& category, const std::string& name, const F& f,
-                         const A1& a1, const A2& a2, const A3& a3, const A4& a4,
-                         scoped_refptr<Thread>* holder) {
+    static Status create(const std::string& category, const std::string& name, const F& f, const A1& a1, const A2& a2,
+                         const A3& a3, const A4& a4, scoped_refptr<Thread>* holder) {
         return start_thread(category, name, std::bind(f, a1, a2, a3, a4), NO_FLAGS, holder);
     }
 
     template <class F, class A1, class A2, class A3, class A4, class A5>
-    static Status create(const std::string& category, const std::string& name, const F& f,
-                         const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5,
-                         scoped_refptr<Thread>* holder) {
+    static Status create(const std::string& category, const std::string& name, const F& f, const A1& a1, const A2& a2,
+                         const A3& a3, const A4& a4, const A5& a5, scoped_refptr<Thread>* holder) {
         return start_thread(category, name, std::bind(f, a1, a2, a3, a4, a5), NO_FLAGS, holder);
     }
 
     template <class F, class A1, class A2, class A3, class A4, class A5, class A6>
-    static Status create(const std::string& category, const std::string& name, const F& f,
-                         const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5,
-                         const A6& a6, scoped_refptr<Thread>* holder) {
+    static Status create(const std::string& category, const std::string& name, const F& f, const A1& a1, const A2& a2,
+                         const A3& a3, const A4& a4, const A5& a5, const A6& a6, scoped_refptr<Thread>* holder) {
         return start_thread(category, name, std::bind(f, a1, a2, a3, a4, a5, a6), NO_FLAGS, holder);
     }
-
-    static void set_self_name(const std::string& name);
-
-#ifndef __APPLE__
-    static void set_idle_sched();
-#endif
 
     ~Thread();
 
@@ -115,7 +121,12 @@ public:
     const std::string& category() const;
     std::string to_string() const;
 
-    // The current thread of execution, or nullptr if the current thread isn't a doris::Thread.
+    bool idle() const { return _idle; }
+    void set_idle(bool idle) { _idle = idle; }
+    int64_t finished_tasks() const { return _finished_tasks; }
+    void inc_finished_tasks() { _finished_tasks++; }
+
+    // The current thread of execution, or NULL if the current thread isn't a starrocks::Thread.
     // This call is signal-safe.
     static Thread* current_thread();
 
@@ -134,15 +145,22 @@ public:
     // Returns the system thread ID (tid on Linux) for the current thread. Note
     // that this is a static method and thus can be used from any thread,
     // including the main thread of the process. This is in contrast to
-    // Thread::tid(), which only works on doris::Threads.
+    // Thread::tid(), which only works on starrocks::Threads.
     //
     // Thread::tid() will return the same value, but the value is cached in the
     // Thread object, so will be faster to call.
     //
     // Thread::unique_thread_id() (or Thread::tid()) should be preferred for
-    // performance sensitive code, however it is only guaranteed to return a
+    // performance sensistive code, however it is only guaranteed to return a
     // unique and stable thread ID, not necessarily the system thread ID.
     static int64_t current_thread_id();
+
+    // Set name for thread
+    // name's size should be less than 16, otherwise it will be truncated
+    static void set_thread_name(pthread_t t, const std::string& name);
+    static void set_thread_name(std::thread& t, std::string name);
+
+    static void get_thread_infos(std::vector<BeThreadInfo>& infos);
 
 private:
     friend class ThreadJoiner;
@@ -154,17 +172,11 @@ private:
 
     // User function to be executed by this thread.
     typedef std::function<void()> ThreadFunctor;
-    Thread(const std::string& category, const std::string& name, ThreadFunctor functor)
-            : _thread(0),
-              _tid(INVALID_TID),
-              _functor(std::move(functor)),
-              _category(std::move(category)),
-              _name(std::move(name)),
-              _done(1),
-              _joinable(false) {}
+    Thread(std::string category, std::string name, ThreadFunctor functor)
+            : _functor(std::move(functor)), _category(std::move(category)), _name(std::move(name)), _done(1) {}
 
     // Library-specific thread ID.
-    pthread_t _thread;
+    pthread_t _thread{0};
 
     // OS-specific thread ID. Once the constructor finishes start_thread(),
     // guaranteed to be set either to a non-negative integer, or to INVALID_TID.
@@ -175,7 +187,7 @@ private:
     //    thread has not yet begun running. Therefore the TID is not yet known
     //    but it will be set once the thread starts.
     // 3. <positive value>: the thread is running.
-    int64_t _tid;
+    int64_t _tid{INVALID_TID};
 
     const ThreadFunctor _functor;
 
@@ -189,9 +201,12 @@ private:
     // alive when a Joiner finishes.
     CountDownLatch _done;
 
-    bool _joinable;
+    bool _joinable{false};
 
-    // Thread local pointer to the current thread of execution. Will be nullptr if the current
+    bool _idle{true};
+    std::atomic<int64_t> _finished_tasks{0};
+
+    // Thread local pointer to the current thread of execution. Will be NULL if the current
     // thread is not a Thread.
     static __thread Thread* _tls;
 
@@ -202,15 +217,14 @@ private:
     // initialised and its TID has been read. Waits for notification from the started
     // thread that initialisation is complete before returning. On success, stores a
     // reference to the thread in holder.
-    static Status start_thread(const std::string& category, const std::string& name,
-                               const ThreadFunctor& functor, uint64_t flags,
-                               scoped_refptr<Thread>* holder);
+    static Status start_thread(const std::string& category, const std::string& name, const ThreadFunctor& functor,
+                               uint64_t flags, scoped_refptr<Thread>* holder);
 
     // Wrapper for the user-supplied function. Invoked from the new thread,
     // with the Thread as its only argument. Executes _functor, but before
     // doing so registers with the global ThreadMgr and reads the thread's
     // system ID. After _functor terminates, unregisters with the ThreadMgr.
-    // Always returns nullptr.
+    // Always returns NULL.
     //
     // supervise_thread() notifies start_thread() when thread initialisation is
     // completed via the _tid, which is set to the new thread's system ID.
@@ -283,10 +297,8 @@ private:
     int _warn_every_ms;
     int _give_up_after_ms;
 
-    DISALLOW_COPY_AND_ASSIGN(ThreadJoiner);
+    ThreadJoiner(const ThreadJoiner&) = delete;
+    const ThreadJoiner& operator=(const ThreadJoiner&) = delete;
 };
 
-// Registers /threadz with the debug webserver.
-void register_thread_display_page(WebPageHandler* web_page_handler);
-
-} //namespace doris
+} //namespace starrocks

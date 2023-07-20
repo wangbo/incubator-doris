@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/disk_info.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,17 +34,16 @@
 
 #pragma once
 
-#include <sys/types.h>
-
+#include <boost/cstdint.hpp>
 #include <map>
 #include <set>
 #include <string>
-#include <vector>
+#include <utility>
 
 #include "common/logging.h"
 #include "common/status.h"
 
-namespace doris {
+namespace starrocks {
 
 // DiskInfo is an interface to query for the disk information at runtime.  This
 // contains information about the system as well as the specific data node
@@ -44,6 +60,22 @@ public:
         DCHECK(_s_initialized);
         return _s_disks.size();
     }
+
+#if 0
+    // Returns the number of (logical) disks the data node is using.
+    // It is possible for this to be more than num_disks since the datanode
+    // can be configured to have multiple data directories on the same physical
+    // disk.
+    static int num_datanode_dirs() {
+        DCHECK(_initialized);
+        return _num_datanode_dirs;
+    }
+
+    // Returns a 0-based disk index for the data node dirs index.
+    static int disk_id(int datanode_dir_idx) {
+        return 0;
+    }
+#endif
 
     // Returns the 0-based disk index for 'path' (path must be a FS path, not
     // hdfs path).
@@ -65,8 +97,7 @@ public:
     static std::string debug_string();
 
     // get disk devices of given path
-    static Status get_disk_devices(const std::vector<std::string>& paths,
-                                   std::set<std::string>* devices);
+    static Status get_disk_devices(const std::vector<std::string>& paths, std::set<std::string>* devices);
 
 private:
     static bool _s_initialized;
@@ -77,15 +108,15 @@ private:
 
         // 0 based index.  Does not map to anything in the system, useful to index into
         // our structures
-        int id;
+        int id{0};
 
-        bool is_rotational;
+        bool is_rotational = false;
 
-        Disk() : name(""), id(0) {}
-        Disk(const std::string& name) : name(name), id(0), is_rotational(true) {}
-        Disk(const std::string& name, int id) : name(name), id(id), is_rotational(true) {}
-        Disk(const std::string& name, int id, bool is_rotational)
-                : name(name), id(id), is_rotational(is_rotational) {}
+        Disk() = default;
+        Disk(std::string name) : name(std::move(name)), is_rotational(true) {}
+        Disk(std::string name, int id) : name(std::move(name)), id(id), is_rotational(true) {}
+        Disk(std::string name, int id, bool is_rotational)
+                : name(std::move(name)), id(id), is_rotational(is_rotational) {}
     };
 
     // All disks
@@ -102,4 +133,4 @@ private:
     static void get_device_names();
 };
 
-} // namespace doris
+} // namespace starrocks

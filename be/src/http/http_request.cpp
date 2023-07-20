@@ -22,16 +22,16 @@
 #include <event2/http_struct.h>
 #include <event2/keyvalq_struct.h>
 
+#include <boost/algorithm/string.hpp>
 #include <sstream>
 #include <string>
-#include <unordered_map>
-#include <utility>
 
+#include "common/logging.h"
 #include "http/http_handler.h"
 
-namespace doris {
+namespace starrocks {
 
-static std::string s_empty = "";
+static std::string s_empty;
 
 HttpRequest::HttpRequest(evhttp_request* evhttp_request) : _ev_req(evhttp_request) {}
 
@@ -45,8 +45,7 @@ HttpRequest::~HttpRequest() {
 int HttpRequest::init_from_evhttp() {
     _method = to_http_method(evhttp_request_get_command(_ev_req));
     if (_method == HttpMethod::UNKNOWN) {
-        LOG(WARNING) << "unknown method of HTTP request, method="
-                     << evhttp_request_get_command(_ev_req);
+        LOG(WARNING) << "unknown method of HTTP request, method=" << evhttp_request_get_command(_ev_req);
         return -1;
     }
     _uri = evhttp_request_get_uri(_ev_req);
@@ -111,7 +110,9 @@ const std::string& HttpRequest::param(const std::string& key) const {
 }
 
 void HttpRequest::add_output_header(const char* key, const char* value) {
+    // #ifndef BE_TEST
     evhttp_add_header(evhttp_request_get_output_headers(_ev_req), key, value);
+    // #endif
 }
 
 std::string HttpRequest::get_request_body() {
@@ -133,4 +134,4 @@ const char* HttpRequest::remote_host() const {
     return _ev_req->remote_host;
 }
 
-} // namespace doris
+} // namespace starrocks

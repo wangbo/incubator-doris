@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/exec/data_sink.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -14,46 +31,33 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/exec/data-sink.h
-// and modified by Doris
 
 #pragma once
 
-#include <opentelemetry/trace/span.h>
-#include <stddef.h>
-// IWYU pragma: no_include <opentelemetry/nostd/shared_ptr.h>
-#include <memory>
-#include <string>
+#include <utility>
 #include <vector>
 
+#include "column/vectorized_fwd.h"
 #include "common/status.h"
-#include "util/runtime_profile.h"
-#include "util/telemetry/telemetry.h"
+#include "gen_cpp/DataSinks_types.h"
+#include "gen_cpp/Exprs_types.h"
+#include "runtime/query_statistics.h"
 
-namespace doris {
+namespace starrocks {
 
 class ObjectPool;
+class RuntimeProfile;
 class RuntimeState;
 class TPlanFragmentExecParams;
 class RowDescriptor;
-class DescriptorTbl;
-class QueryStatistics;
-class TDataSink;
-class TExpr;
-class TPipelineFragmentParams;
-
-namespace vectorized {
-class Block;
-}
 
 // Superclass of all data sinks.
 class DataSink {
 public:
-    DataSink() : _closed(false) {}
-    virtual ~DataSink() {}
+    DataSink() = default;
+    virtual ~DataSink() = default;
 
-    virtual Status init(const TDataSink& thrift_sink);
+    virtual Status init(const TDataSink& thrift_sink, RuntimeState* state);
 
     // Setup. Call before send(), Open(), or Close().
     // Subclasses must call DataSink::Prepare().
@@ -62,57 +66,44 @@ public:
     // Setup. Call before send() or close().
     virtual Status open(RuntimeState* state) = 0;
 
-    // Send a Block into this sink.
-    virtual Status send(RuntimeState* state, vectorized::Block* block, bool eos = false) {
-        return Status::NotSupported("Not support send block");
+    virtual void cancel() {
+        // TODO: Currently only OlapTableSink supports FastCancel,
+        //  other types of Sink need to be fully tested before adding.
     }
 
-    virtual void try_close(RuntimeState* state, Status exec_status) {}
-
-    virtual bool is_close_done() { return true; }
+    virtual Status send_chunk(RuntimeState* state, Chunk* chunk);
 
     // Releases all resources that were allocated in prepare()/send().
     // Further send() calls are illegal after calling close().
     // It must be okay to call this multiple times. Subsequent calls should
     // be ignored.
     virtual Status close(RuntimeState* state, Status exec_status) {
-        profile()->add_to_span(_span);
         _closed = true;
         return Status::OK();
     }
 
     // Creates a new data sink from thrift_sink. A pointer to the
     // new sink is written to *sink, and is owned by the caller.
-    static Status create_data_sink(ObjectPool* pool, const TDataSink& thrift_sink,
-                                   const std::vector<TExpr>& output_exprs,
-                                   const TPlanFragmentExecParams& params,
-                                   const RowDescriptor& row_desc, RuntimeState* state,
-                                   std::unique_ptr<DataSink>* sink, DescriptorTbl& desc_tbl);
-
-    static Status create_data_sink(ObjectPool* pool, const TDataSink& thrift_sink,
-                                   const std::vector<TExpr>& output_exprs,
-                                   const TPipelineFragmentParams& params,
-                                   const size_t& local_param_idx, const RowDescriptor& row_desc,
-                                   RuntimeState* state, std::unique_ptr<DataSink>* sink,
-                                   DescriptorTbl& desc_tbl);
+    static Status create_data_sink(RuntimeState* state, const TDataSink& thrift_sink,
+                                   const std::vector<TExpr>& output_exprs, const TPlanFragmentExecParams& params,
+                                   int32_t sender_id, const RowDescriptor& row_desc, std::unique_ptr<DataSink>* sink);
 
     // Returns the runtime profile for the sink.
     virtual RuntimeProfile* profile() = 0;
 
     virtual void set_query_statistics(std::shared_ptr<QueryStatistics> statistics) {
-        _query_statistics = statistics;
+        _query_statistics = std::move(statistics);
     }
 
 protected:
+    RuntimeState* _runtime_state = nullptr;
+
     // Set to true after close() has been called. subclasses should check and set this in
     // close().
-    bool _closed;
-    std::string _name;
+    bool _closed{false};
 
     // Maybe this will be transferred to BufferControlBlock.
     std::shared_ptr<QueryStatistics> _query_statistics;
-
-    OpentelemetrySpan _span {};
 };
 
-} // namespace doris
+} // namespace starrocks

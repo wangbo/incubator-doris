@@ -19,11 +19,8 @@
 //
 #pragma once
 
-// IWYU pragma: no_include <pstl/glue_algorithm_defs.h>
-
-#include <stddef.h>
 #include <algorithm>
-
+#include <cstddef>
 using std::copy;
 using std::max;
 using std::min;
@@ -31,36 +28,32 @@ using std::reverse;
 using std::sort;
 using std::swap;
 #include <iterator>
-
 using std::back_insert_iterator;
 using std::iterator_traits;
 #include <map>
-
 using std::map;
 using std::multimap;
 #include <set>
-
 using std::multiset;
 using std::set;
 #include <string>
-
 using std::string;
 #include <utility>
-
 using std::make_pair;
 using std::pair;
 #include <vector>
-
 using std::vector;
-#include "common/logging.h"
+#include <common/logging.h>
+
 #include <unordered_map>
 #include <unordered_set>
 
 #include "gutil/integral_types.h"
+#include "gutil/logging-inl.h"
 #include "gutil/strings/charset.h"
+#include "gutil/strings/split_internal.h"
 #include "gutil/strings/stringpiece.h"
 #include "gutil/strings/strip.h"
-#include "gutil/strings/split_internal.h" // IWYU pragma: keep
 
 namespace strings {
 
@@ -297,12 +290,12 @@ namespace strings {
 
 // Definitions of the main Split() function.
 template <typename Delimiter>
-internal::Splitter<Delimiter> Split(StringPiece text, Delimiter d) {
+inline internal::Splitter<Delimiter> Split(StringPiece text, Delimiter d) {
     return internal::Splitter<Delimiter>(text, d);
 }
 
 template <typename Delimiter, typename Predicate>
-internal::Splitter<Delimiter, Predicate> Split(StringPiece text, Delimiter d, Predicate p) {
+inline internal::Splitter<Delimiter, Predicate> Split(StringPiece text, Delimiter d, Predicate p) {
     return internal::Splitter<Delimiter, Predicate>(text, d, p);
 }
 
@@ -401,8 +394,7 @@ private:
 template <typename Delimiter>
 class LimitImpl {
 public:
-    LimitImpl(Delimiter delimiter, int limit)
-            : delimiter_(std::move(delimiter)), limit_(limit), count_(0) {}
+    LimitImpl(Delimiter delimiter, int limit) : delimiter_(std::move(delimiter)), limit_(limit), count_(0) {}
     StringPiece Find(StringPiece text) {
         if (count_++ == limit_) {
             return StringPiece(text.end(), 0); // No more matches.
@@ -420,7 +412,7 @@ private:
 // Literal as the default if string-like objects are passed as the delimiter
 // parameter. This is similar to the overloads for Split() below.
 template <typename Delimiter>
-LimitImpl<Delimiter> Limit(Delimiter delim, int limit) {
+inline LimitImpl<Delimiter> Limit(Delimiter delim, int limit) {
     return LimitImpl<Delimiter>(delim, limit);
 }
 
@@ -504,24 +496,18 @@ inline internal::Splitter<delimiter::Literal> Split(StringPiece text, StringPiec
 
 // Same overloads as above, but also including a Predicate argument.
 template <typename Predicate>
-internal::Splitter<delimiter::Literal, Predicate> Split(StringPiece text, const char* delimiter,
-                                                        Predicate p) {
-    return internal::Splitter<delimiter::Literal, Predicate>(text, delimiter::Literal(delimiter),
-                                                             p);
+inline internal::Splitter<delimiter::Literal, Predicate> Split(StringPiece text, const char* delimiter, Predicate p) {
+    return internal::Splitter<delimiter::Literal, Predicate>(text, delimiter::Literal(delimiter), p);
 }
 
 template <typename Predicate>
-internal::Splitter<delimiter::Literal, Predicate> Split(StringPiece text, const string& delimiter,
-                                                        Predicate p) {
-    return internal::Splitter<delimiter::Literal, Predicate>(text, delimiter::Literal(delimiter),
-                                                             p);
+inline internal::Splitter<delimiter::Literal, Predicate> Split(StringPiece text, const string& delimiter, Predicate p) {
+    return internal::Splitter<delimiter::Literal, Predicate>(text, delimiter::Literal(delimiter), p);
 }
 
 template <typename Predicate>
-internal::Splitter<delimiter::Literal, Predicate> Split(StringPiece text, StringPiece delimiter,
-                                                        Predicate p) {
-    return internal::Splitter<delimiter::Literal, Predicate>(text, delimiter::Literal(delimiter),
-                                                             p);
+inline internal::Splitter<delimiter::Literal, Predicate> Split(StringPiece text, StringPiece delimiter, Predicate p) {
+    return internal::Splitter<delimiter::Literal, Predicate>(text, delimiter::Literal(delimiter), p);
 }
 
 } // namespace strings
@@ -616,8 +602,7 @@ vector<char*>* SplitUsing(char* full, const char* delimiters);
 //    true, empty strings are omitted from the resulting vector.
 // ----------------------------------------------------------------------
 void SplitToVector(char* full, const char* delimiters, vector<char*>* vec, bool omit_empty_strings);
-void SplitToVector(char* full, const char* delimiters, vector<const char*>* vec,
-                   bool omit_empty_strings);
+void SplitToVector(char* full, const char* delimiters, vector<const char*>* vec, bool omit_empty_strings);
 
 // ----------------------------------------------------------------------
 // SplitStringPieceToVector
@@ -660,8 +645,7 @@ void SplitStringPieceToVector(const StringPiece& full, const char* delim, vector
 // to avoid string copies.
 // ----------------------------------------------------------------------
 void SplitStringUsing(const string& full, const char* delimiters, vector<string>* result);
-void SplitStringToHashsetUsing(const string& full, const char* delimiters,
-                               std::unordered_set<string>* result);
+void SplitStringToHashsetUsing(const string& full, const char* delimiters, std::unordered_set<string>* result);
 void SplitStringToSetUsing(const string& full, const char* delimiters, set<string>* result);
 // The even-positioned (0-based) components become the keys for the
 // odd-positioned components that follow them. When there is an odd
@@ -669,8 +653,7 @@ void SplitStringToSetUsing(const string& full, const char* delimiters, set<strin
 // if the key was already present in the hash table, or will be the
 // empty string if the key is a newly inserted key.
 void SplitStringToMapUsing(const string& full, const char* delim, map<string, string>* result);
-void SplitStringToHashmapUsing(const string& full, const char* delim,
-                               std::unordered_map<string, string>* result);
+void SplitStringToHashmapUsing(const string& full, const char* delim, std::unordered_map<string, string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringAllowEmpty()
@@ -712,12 +695,9 @@ void SplitStringAllowEmpty(const string& full, const char* delim, vector<string>
 //
 //   All versions other than "AllowEmpty" discard any empty substrings.
 // ----------------------------------------------------------------------
-void SplitStringWithEscaping(const string& full, const strings::CharSet& delimiters,
-                             vector<string>* result);
-void SplitStringWithEscapingAllowEmpty(const string& full, const strings::CharSet& delimiters,
-                                       vector<string>* result);
-void SplitStringWithEscapingToSet(const string& full, const strings::CharSet& delimiters,
-                                  set<string>* result);
+void SplitStringWithEscaping(const string& full, const strings::CharSet& delimiters, vector<string>* result);
+void SplitStringWithEscapingAllowEmpty(const string& full, const strings::CharSet& delimiters, vector<string>* result);
+void SplitStringWithEscapingToSet(const string& full, const strings::CharSet& delimiters, set<string>* result);
 void SplitStringWithEscapingToHashset(const string& full, const strings::CharSet& delimiters,
                                       std::unordered_set<string>* result);
 
@@ -734,8 +714,7 @@ void SplitStringWithEscapingToHashset(const string& full, const strings::CharSet
 //
 //    If "full" is the empty string, yields an empty string as the only value.
 // ----------------------------------------------------------------------
-void SplitStringIntoNPiecesAllowEmpty(const string& full, const char* delimiters, int pieces,
-                                      vector<string>* result);
+void SplitStringIntoNPiecesAllowEmpty(const string& full, const char* delimiters, int pieces, vector<string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringAndParse()
@@ -778,18 +757,16 @@ void SplitStringIntoNPiecesAllowEmpty(const string& full, const char* delimiters
 //  CHECK_EQ(4, values.size());
 // ----------------------------------------------------------------------
 template <class T>
-bool SplitStringAndParse(StringPiece source, StringPiece delim,
-                         bool (*parse)(const string& str, T* value), vector<T>* result);
+bool SplitStringAndParse(StringPiece source, StringPiece delim, bool (*parse)(const string& str, T* value),
+                         vector<T>* result);
 template <class Container>
 bool SplitStringAndParseToContainer(StringPiece source, StringPiece delim,
-                                    bool (*parse)(const string& str,
-                                                  typename Container::value_type* value),
+                                    bool (*parse)(const string& str, typename Container::value_type* value),
                                     Container* result);
 
 template <class List>
 bool SplitStringAndParseToList(StringPiece source, StringPiece delim,
-                               bool (*parse)(const string& str, typename List::value_type* value),
-                               List* result);
+                               bool (*parse)(const string& str, typename List::value_type* value), List* result);
 // ----------------------------------------------------------------------
 // SplitRange()
 //    Splits a string of the form "<from>-<to>".  Either or both can be
@@ -864,13 +841,11 @@ void SplitCSVLineWithDelimiterForStrings(const string& line, char delimiter, vec
 //              function will return the position of the problem : ]
 //
 // ----------------------------------------------------------------------
-char* SplitStructuredLine(char* line, char delimiter, const char* symbol_pairs,
-                          vector<char*>* cols);
+char* SplitStructuredLine(char* line, char delimiter, const char* symbol_pairs, vector<char*>* cols);
 
 // Similar to the function with the same name above, but splits a StringPiece
 // into StringPiece parts. Returns true if successful.
-bool SplitStructuredLine(StringPiece line, char delimiter, const char* symbol_pairs,
-                         vector<StringPiece>* cols);
+bool SplitStructuredLine(StringPiece line, char delimiter, const char* symbol_pairs, vector<StringPiece>* cols);
 
 // ----------------------------------------------------------------------
 // SplitStructuredLineWithEscapes()
@@ -891,8 +866,7 @@ bool SplitStructuredLine(StringPiece line, char delimiter, const char* symbol_pa
 //                    "item4\,item5", "[5,{6,7}]" }
 //
 // ----------------------------------------------------------------------
-char* SplitStructuredLineWithEscapes(char* line, char delimiter, const char* symbol_pairs,
-                                     vector<char*>* cols);
+char* SplitStructuredLineWithEscapes(char* line, char delimiter, const char* symbol_pairs, vector<char*>* cols);
 
 // Similar to the function with the same name above, but splits a StringPiece
 // into StringPiece parts. Returns true if successful.
@@ -949,8 +923,7 @@ bool SplitStructuredLineWithEscapes(StringPiece line, char delimiter, const char
 //
 // ----------------------------------------------------------------------
 bool SplitStringIntoKeyValues(const string& line, const string& key_value_delimiters,
-                              const string& value_value_delimiters, string* key,
-                              vector<string>* values);
+                              const string& value_value_delimiters, string* key, vector<string>* values);
 
 // ----------------------------------------------------------------------
 // SplitStringIntoKeyValuePairs()
@@ -994,8 +967,7 @@ bool SplitStringIntoKeyValues(const string& line, const string& key_value_delimi
 //
 // ----------------------------------------------------------------------
 bool SplitStringIntoKeyValuePairs(const string& line, const string& key_value_delimiters,
-                                  const string& key_value_pair_delimiters,
-                                  vector<pair<string, string>>* kv_pairs);
+                                  const string& key_value_pair_delimiters, vector<pair<string, string> >* kv_pairs);
 
 // ----------------------------------------------------------------------
 // SplitLeadingDec32Values()
@@ -1075,8 +1047,8 @@ bool SplitOneHexUint64Token(const char** source, const char* delim, uint64* valu
 
 // SplitStringAndParse() -- see description above
 template <class T>
-bool SplitStringAndParse(StringPiece source, StringPiece delim,
-                         bool (*parse)(const string& str, T* value), vector<T>* result) {
+bool SplitStringAndParse(StringPiece source, StringPiece delim, bool (*parse)(const string& str, T* value),
+                         vector<T>* result) {
     return SplitStringAndParseToList(source, delim, parse, result);
 }
 
@@ -1085,16 +1057,14 @@ namespace internal {
 
 template <class Container, class InsertPolicy>
 bool SplitStringAndParseToInserter(StringPiece source, StringPiece delim,
-                                   bool (*parse)(const string& str,
-                                                 typename Container::value_type* value),
+                                   bool (*parse)(const string& str, typename Container::value_type* value),
                                    Container* result, InsertPolicy insert_policy) {
-    CHECK(NULL != parse);
-    CHECK(NULL != result);
-    CHECK(NULL != delim.data());
+    CHECK(nullptr != parse);
+    CHECK(nullptr != result);
+    CHECK(nullptr != delim.data());
     CHECK_GT(delim.size(), 0);
     bool retval = true;
-    vector<StringPiece> pieces =
-            strings::Split(source, strings::delimiter::AnyOf(delim), strings::SkipEmpty());
+    vector<StringPiece> pieces = strings::Split(source, strings::delimiter::AnyOf(delim), strings::SkipEmpty());
     for (const auto& piece : pieces) {
         typename Container::value_type t;
         if (parse(piece.as_string(), &t)) {
@@ -1129,8 +1099,7 @@ struct BackInsertPolicy {
 // SplitStringAndParseToContainer() -- see description above
 template <class Container>
 bool SplitStringAndParseToContainer(StringPiece source, StringPiece delim,
-                                    bool (*parse)(const string& str,
-                                                  typename Container::value_type* value),
+                                    bool (*parse)(const string& str, typename Container::value_type* value),
                                     Container* result) {
     return strings::internal::SplitStringAndParseToInserter(source, delim, parse, result,
                                                             strings::internal::BasicInsertPolicy());
@@ -1139,8 +1108,7 @@ bool SplitStringAndParseToContainer(StringPiece source, StringPiece delim,
 // SplitStringAndParseToList() -- see description above
 template <class List>
 bool SplitStringAndParseToList(StringPiece source, StringPiece delim,
-                               bool (*parse)(const string& str, typename List::value_type* value),
-                               List* result) {
+                               bool (*parse)(const string& str, typename List::value_type* value), List* result) {
     return strings::internal::SplitStringAndParseToInserter(source, delim, parse, result,
                                                             strings::internal::BackInsertPolicy());
 }

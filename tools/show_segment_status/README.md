@@ -42,10 +42,13 @@ $ python setup.py install
 2. Execute `python show_segment_status.py`
 
 # Example
-1. If you want to watch the process of a table named `xxxx`, you can specify 
-   `table_name = xxxx` in conf file
+1. If you want to watch the process of databases named `xxx`, `yyy`, you can specify 
+   `db_names = xxx,yyy` in conf file
 
-2. If you want to watch the process on be whose be_id is `xxxx`, you can specify 
+2. If you want to watch the process of tables named `xxx`, `yyy`, you can specify 
+   `table_names = xxx,yyy` in conf file
+
+3. If you want to watch the process on be whose be_id is `xxxx`, you can specify 
    `be_id = xxxx` in conf file
 
 # Output Example Format

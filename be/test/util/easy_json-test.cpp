@@ -17,27 +17,43 @@
 
 #include "util/easy_json.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
-#include <rapidjson/allocators.h>
+#include <gtest/gtest.h>
 #include <rapidjson/document.h>
 #include <rapidjson/rapidjson.h>
 
 #include <string>
 
-#include "gtest/gtest_pred_impl.h"
+#include "gutil/integral_types.h"
 
 using rapidjson::SizeType;
 using rapidjson::Value;
 using std::string;
 
-namespace doris {
+namespace starrocks {
 
 class EasyJsonTest : public ::testing::Test {};
 
 TEST_F(EasyJsonTest, TestNull) {
     EasyJson ej;
-    EXPECT_TRUE(ej.value().IsNull());
+    ASSERT_TRUE(ej.value().IsNull());
+}
+
+TEST_F(EasyJsonTest, TestBasic) {
+    EasyJson ej;
+    ej.SetObject();
+    ej.Set("1", true);
+    ej.Set("2", kint32min);
+    ej.Set("4", kint64min);
+    ej.Set("6", 1.0);
+    ej.Set("7", "string");
+
+    Value& v = ej.value();
+
+    ASSERT_EQ(v["1"].GetBool(), true);
+    ASSERT_EQ(v["2"].GetInt(), kint32min);
+    ASSERT_EQ(v["4"].GetInt64(), kint64min);
+    ASSERT_EQ(v["6"].GetDouble(), 1.0);
+    ASSERT_EQ(string(v["7"].GetString()), "string");
 }
 
 TEST_F(EasyJsonTest, TestNested) {
@@ -45,45 +61,45 @@ TEST_F(EasyJsonTest, TestNested) {
     ej.SetObject();
     ej.Get("nested").SetObject();
     ej.Get("nested").Set("nested_attr", true);
-    EXPECT_EQ(ej.value()["nested"]["nested_attr"].GetBool(), true);
+    ASSERT_EQ(ej.value()["nested"]["nested_attr"].GetBool(), true);
 
     ej.Get("nested_array").SetArray();
     ej.Get("nested_array").PushBack(1);
     ej.Get("nested_array").PushBack(2);
-    EXPECT_EQ(ej.value()["nested_array"][SizeType(0)].GetInt(), 1);
-    EXPECT_EQ(ej.value()["nested_array"][SizeType(1)].GetInt(), 2);
+    ASSERT_EQ(ej.value()["nested_array"][SizeType(0)].GetInt(), 1);
+    ASSERT_EQ(ej.value()["nested_array"][SizeType(1)].GetInt(), 2);
 }
 
 TEST_F(EasyJsonTest, TestCompactSyntax) {
     EasyJson ej;
     ej["nested"]["nested_attr"] = true;
-    EXPECT_EQ(ej.value()["nested"]["nested_attr"].GetBool(), true);
+    ASSERT_EQ(ej.value()["nested"]["nested_attr"].GetBool(), true);
 
     for (int i = 0; i < 2; i++) {
         ej["nested_array"][i] = i + 1;
     }
-    EXPECT_EQ(ej.value()["nested_array"][SizeType(0)].GetInt(), 1);
-    EXPECT_EQ(ej.value()["nested_array"][SizeType(1)].GetInt(), 2);
+    ASSERT_EQ(ej.value()["nested_array"][SizeType(0)].GetInt(), 1);
+    ASSERT_EQ(ej.value()["nested_array"][SizeType(1)].GetInt(), 2);
 }
 
 TEST_F(EasyJsonTest, TestComplexInitializer) {
     EasyJson ej;
     ej = EasyJson::kObject;
-    EXPECT_TRUE(ej.value().IsObject());
+    ASSERT_TRUE(ej.value().IsObject());
 
     EasyJson nested_arr = ej.Set("nested_arr", EasyJson::kArray);
-    EXPECT_TRUE(nested_arr.value().IsArray());
+    ASSERT_TRUE(nested_arr.value().IsArray());
 
     EasyJson nested_obj = nested_arr.PushBack(EasyJson::kObject);
-    EXPECT_TRUE(ej["nested_arr"][0].value().IsObject());
+    ASSERT_TRUE(ej["nested_arr"][0].value().IsObject());
 }
 
 TEST_F(EasyJsonTest, TestAllocatorLifetime) {
-    EasyJson* root = new EasyJson;
+    auto* root = new EasyJson;
     EasyJson child = (*root)["child"];
     delete root;
 
     child["child_attr"] = 1;
-    EXPECT_EQ(child.value()["child_attr"].GetInt(), 1);
+    ASSERT_EQ(child.value()["child_attr"].GetInt(), 1);
 }
-} // namespace doris
+} // namespace starrocks

@@ -17,21 +17,16 @@
 
 #include "http/http_client.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
-#include <unistd.h>
+#include <gtest/gtest.h>
 
-#include <boost/algorithm/string/predicate.hpp>
-
-#include "gtest/gtest_pred_impl.h"
+#include "boost/algorithm/string.hpp"
+#include "common/logging.h"
 #include "http/ev_http_server.h"
 #include "http/http_channel.h"
 #include "http/http_handler.h"
-#include "http/http_headers.h"
 #include "http/http_request.h"
-#include "http/utils.h"
 
-namespace doris {
+namespace starrocks {
 
 class HttpClientTestSimpleGetHandler : public HttpHandler {
 public:
@@ -81,8 +76,8 @@ static std::string hostname = "";
 
 class HttpClientTest : public testing::Test {
 public:
-    HttpClientTest() {}
-    ~HttpClientTest() override {}
+    HttpClientTest() = default;
+    ~HttpClientTest() override = default;
 
     static void SetUpTestCase() {
         s_server = new EvHttpServer(0);
@@ -91,90 +86,90 @@ public:
         s_server->register_handler(POST, "/simple_post", &s_simple_post_handler);
         s_server->start();
         real_port = s_server->get_real_port();
-        EXPECT_NE(0, real_port);
+        ASSERT_NE(0, real_port);
         hostname = "http://127.0.0.1:" + std::to_string(real_port);
     }
 
-    static void TearDownTestCase() { delete s_server; }
+    static void TearDownTestCase() {
+        s_server->stop();
+        delete s_server;
+    }
 };
 
 TEST_F(HttpClientTest, get_normal) {
     HttpClient client;
     auto st = client.init(hostname + "/simple_get");
-    EXPECT_TRUE(st.ok());
+    ASSERT_TRUE(st.ok());
     client.set_method(GET);
     client.set_basic_auth("test1", "");
     std::string response;
     st = client.execute(&response);
-    EXPECT_TRUE(st.ok());
-    EXPECT_STREQ("test1", response.c_str());
+    ASSERT_TRUE(st.ok());
+    ASSERT_STREQ("test1", response.c_str());
 
     // for head
     st = client.init(hostname + "/simple_get");
-    EXPECT_TRUE(st.ok());
+    ASSERT_TRUE(st.ok());
     client.set_method(HEAD);
     client.set_basic_auth("test1", "");
     st = client.execute();
-    EXPECT_TRUE(st.ok());
-    uint64_t len = 0;
-    st = client.get_content_length(&len);
-    EXPECT_TRUE(st.ok());
-    EXPECT_EQ(5, len);
+    ASSERT_TRUE(st.ok());
+    ASSERT_EQ(5, client.get_content_length());
 }
 
 TEST_F(HttpClientTest, download) {
     HttpClient client;
     auto st = client.init(hostname + "/simple_get");
-    EXPECT_TRUE(st.ok());
+    ASSERT_TRUE(st.ok());
     client.set_basic_auth("test1", "");
     std::string local_file = ".http_client_test.dat";
     st = client.download(local_file);
-    EXPECT_TRUE(st.ok());
+    ASSERT_TRUE(st.ok());
     char buf[50];
     auto fp = fopen(local_file.c_str(), "r");
     auto size = fread(buf, 1, 50, fp);
     buf[size] = 0;
-    EXPECT_STREQ("test1", buf);
+    ASSERT_STREQ("test1", buf);
     unlink(local_file.c_str());
 }
 
 TEST_F(HttpClientTest, get_failed) {
     HttpClient client;
     auto st = client.init(hostname + "/simple_get");
-    EXPECT_TRUE(st.ok());
+    ASSERT_TRUE(st.ok());
     client.set_method(GET);
     client.set_basic_auth("test1", "");
     std::string response;
     st = client.execute(&response);
-    EXPECT_FALSE(!st.ok());
+    ASSERT_FALSE(!st.ok());
 }
 
 TEST_F(HttpClientTest, post_normal) {
     HttpClient client;
     auto st = client.init(hostname + "/simple_post");
-    EXPECT_TRUE(st.ok());
+    ASSERT_TRUE(st.ok());
     client.set_method(POST);
     client.set_basic_auth("test1", "");
     std::string response;
     std::string request_body = "simple post body query";
     st = client.execute_post_request(request_body, &response);
-    EXPECT_TRUE(st.ok());
-    EXPECT_EQ(response.length(), request_body.length());
-    EXPECT_STREQ(response.c_str(), request_body.c_str());
+    ASSERT_TRUE(st.ok());
+    ASSERT_EQ(response.length(), request_body.length());
+    ASSERT_STREQ(response.c_str(), request_body.c_str());
 }
 
 TEST_F(HttpClientTest, post_failed) {
     HttpClient client;
     auto st = client.init(hostname + "/simple_pos");
-    EXPECT_TRUE(st.ok());
+    ASSERT_TRUE(st.ok());
     client.set_method(POST);
     client.set_basic_auth("test1", "");
     std::string response;
     std::string request_body = "simple post body query";
     st = client.execute_post_request(request_body, &response);
-    EXPECT_FALSE(st.ok());
+    ASSERT_FALSE(st.ok());
     std::string not_found = "404";
-    EXPECT_TRUE(boost::algorithm::contains(st.to_string(), not_found));
+    ASSERT_TRUE(boost::algorithm::contains(st.get_error_msg(), not_found));
 }
 
-} // namespace doris
+} // namespace starrocks

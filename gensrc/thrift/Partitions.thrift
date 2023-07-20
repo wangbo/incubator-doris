@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/gensrc/thrift/Partitions.thrift
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,8 +32,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-namespace cpp doris
-namespace java org.apache.doris.thrift
+namespace cpp starrocks
+namespace java com.starrocks.thrift
 
 include "Exprs.thrift"
 include "Types.thrift"
@@ -34,24 +51,17 @@ enum TPartitionType {
   // ordered partition on a list of exprs
   // (partition bounds don't overlap)
   RANGE_PARTITIONED,
-  
-  // partition on a list of exprs
-  LIST_PARTITIONED,
 
   // unordered partition on a set of exprs
   // (only use in bucket shuffle join)
-  BUCKET_SHFFULE_HASH_PARTITIONED
+  BUCKET_SHUFFLE_HASH_PARTITIONED
 }
 
 enum TDistributionType {
-  UNPARTITIONED,
-
-  // round-robin partition
-  RANDOM,
-
-  // unordered partition on a set of exprs
-  // (partition bounds overlap)
-  HASH_PARTITIONED
+  ANY,
+  BROADCAST,
+  SHUFFLE,
+  GATHER
 }
 
 // TODO(zc): Refine

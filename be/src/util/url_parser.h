@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/url_parser.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,10 +34,10 @@
 
 #pragma once
 
-#include "vec/common/string_ref.h"
+#include "runtime/string_search.hpp"
+#include "runtime/string_value.h"
 
-namespace doris {
-class StringSearch;
+namespace starrocks {
 
 // TODO: For now, our parse_url may not behave exactly like Hive
 // when given malformed URLs.
@@ -42,47 +59,35 @@ class StringSearch;
 class UrlParser {
 public:
     // Parts of a URL that can be requested.
-    enum UrlPart { INVALID, AUTHORITY, FILE, HOST, PATH, PROTOCOL, QUERY, REF, USERINFO, PORT };
+    enum UrlPart { INVALID, AUTHORITY, FILE, HOST, PATH, PROTOCOL, QUERY, REF, USERINFO };
 
     // Tries to parse the part from url. Places the result in result.
     // Returns false if the URL is malformed or if part is invalid. True otherwise.
     // If false is returned the contents of results are undefined.
-    static bool parse_url(const StringRef& url, UrlPart part, StringRef* result);
-
-    // Tries to parse key from url. Places the result in result.
-    // Returns false if the URL is malformed or if part is invalid. True otherwise.
-    // If false is returned the contents of results are undefined.
-    static bool parse_url_key(const StringRef& url, UrlPart part, const StringRef& key,
-                              StringRef* result);
+    static bool parse_url(const StringValue& url, UrlPart part, StringValue* result);
 
     // Compares part against url_authority, url_file, url_host, etc.,
     // and returns the corresponding enum.
     // If part did not match any of the url part constants, returns INVALID.
-    static UrlPart get_url_part(const StringRef& part);
-
-    // Extract parameter value from url
-    // Example for url:
-    // http://doris.apache.org?k1=aa&k2=bb&k3=cc&test=dd#999
-    static StringRef extract_url(StringRef url, StringRef name);
+    static UrlPart get_url_part(const StringValue& part);
 
 private:
     // Constants representing parts of a URL.
-    static const StringRef _s_url_authority;
-    static const StringRef _s_url_file;
-    static const StringRef _s_url_host;
-    static const StringRef _s_url_path;
-    static const StringRef _s_url_protocol;
-    static const StringRef _s_url_query;
-    static const StringRef _s_url_ref;
-    static const StringRef _s_url_userinfo;
-    static const StringRef _s_url_port;
+    static const StringValue _s_url_authority;
+    static const StringValue _s_url_file;
+    static const StringValue _s_url_host;
+    static const StringValue _s_url_path;
+    static const StringValue _s_url_protocol;
+    static const StringValue _s_url_query;
+    static const StringValue _s_url_ref;
+    static const StringValue _s_url_userinfo;
     // Constants used in searching for URL parts.
-    static const StringRef _s_protocol;
-    static const StringRef _s_at;
-    static const StringRef _s_slash;
-    static const StringRef _s_colon;
-    static const StringRef _s_question;
-    static const StringRef _s_hash;
+    static const StringValue _s_protocol;
+    static const StringValue _s_at;
+    static const StringValue _s_slash;
+    static const StringValue _s_colon;
+    static const StringValue _s_question;
+    static const StringValue _s_hash;
     static const StringSearch _s_protocol_search;
     static const StringSearch _s_at_search;
     static const StringSearch _s_slash_search;
@@ -91,4 +96,4 @@ private:
     static const StringSearch _s_hash_search;
 };
 
-} // namespace doris
+} // namespace starrocks

@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/test/runtime/result_queue_mgr_test.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,28 +34,18 @@
 
 #include "runtime/result_queue_mgr.h"
 
-#include <arrow/array/builder_primitive.h>
+#include <arrow/array.h>
+#include <arrow/builder.h>
 #include <arrow/record_batch.h>
-#include <arrow/status.h>
 #include <arrow/type.h>
-#include <gen_cpp/Types_types.h>
-#include <glog/logging.h>
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include <gtest/gtest.h>
 
 #include <memory>
-#include <ostream>
-#include <utility>
-#include <vector>
 
-#include "gtest/gtest_pred_impl.h"
-#include "runtime/record_batch_queue.h"
+#include "gen_cpp/StarrocksExternalService_types.h"
+#include "util/blocking_queue.hpp"
 
-namespace arrow {
-class Array;
-} // namespace arrow
-
-namespace doris {
+namespace starrocks {
 
 class ResultQueueMgrTest : public testing::Test {};
 
@@ -49,7 +56,7 @@ TEST_F(ResultQueueMgrTest, create_normal) {
     query_id.hi = 100;
     ResultQueueMgr queue_mgr;
     queue_mgr.create_queue(query_id, &block_queue_t);
-    EXPECT_TRUE(block_queue_t != nullptr);
+    ASSERT_TRUE(block_queue_t != nullptr);
 }
 
 TEST_F(ResultQueueMgrTest, create_same_queue) {
@@ -60,13 +67,13 @@ TEST_F(ResultQueueMgrTest, create_same_queue) {
 
     BlockQueueSharedPtr block_queue_t_1;
     queue_mgr.create_queue(query_id, &block_queue_t_1);
-    EXPECT_TRUE(block_queue_t_1 != nullptr);
+    ASSERT_TRUE(block_queue_t_1 != nullptr);
 
     BlockQueueSharedPtr block_queue_t_2;
     queue_mgr.create_queue(query_id, &block_queue_t_2);
-    EXPECT_TRUE(block_queue_t_2 != nullptr);
+    ASSERT_TRUE(block_queue_t_2 != nullptr);
 
-    EXPECT_EQ(block_queue_t_1.get(), block_queue_t_2.get());
+    ASSERT_EQ(block_queue_t_1.get(), block_queue_t_2.get());
 }
 
 TEST_F(ResultQueueMgrTest, fetch_result_normal) {
@@ -77,7 +84,7 @@ TEST_F(ResultQueueMgrTest, fetch_result_normal) {
 
     BlockQueueSharedPtr block_queue_t;
     queue_mgr.create_queue(query_id, &block_queue_t);
-    EXPECT_TRUE(block_queue_t != nullptr);
+    ASSERT_TRUE(block_queue_t != nullptr);
 
     std::shared_ptr<arrow::Field> field = arrow::field("k1", arrow::int32(), true);
     std::vector<std::shared_ptr<arrow::Field>> fields;
@@ -86,34 +93,23 @@ TEST_F(ResultQueueMgrTest, fetch_result_normal) {
 
     std::shared_ptr<arrow::Array> k1_col;
     arrow::NumericBuilder<arrow::Int32Type> builder;
-
-    auto st = builder.Reserve(1);
-    if (!st.ok()) {
-        LOG(WARNING) << "Reserve error";
-    }
-    st = builder.Append(20);
-    if (!st.ok()) {
-        LOG(WARNING) << "Append error";
-    }
-    st = builder.Finish(&k1_col);
-    if (!st.ok()) {
-        LOG(WARNING) << "Finish error";
-    }
+    builder.Reserve(1);
+    builder.Append(20);
+    builder.Finish(&k1_col);
 
     std::vector<std::shared_ptr<arrow::Array>> arrays;
     arrays.push_back(k1_col);
-    std::shared_ptr<arrow::RecordBatch> record_batch =
-            arrow::RecordBatch::Make(schema, 1, std::move(arrays));
+    std::shared_ptr<arrow::RecordBatch> record_batch = arrow::RecordBatch::Make(schema, 1, std::move(arrays));
     block_queue_t->blocking_put(record_batch);
     // sentinel
     block_queue_t->blocking_put(nullptr);
 
     std::shared_ptr<arrow::RecordBatch> result;
     bool eos;
-    EXPECT_TRUE(queue_mgr.fetch_result(query_id, &result, &eos).ok());
-    EXPECT_FALSE(eos);
-    EXPECT_EQ(1, result->num_rows());
-    EXPECT_EQ(1, result->num_columns());
+    ASSERT_TRUE(queue_mgr.fetch_result(query_id, &result, &eos).ok());
+    ASSERT_FALSE(eos);
+    ASSERT_EQ(1, result->num_rows());
+    ASSERT_EQ(1, result->num_columns());
 }
 
 TEST_F(ResultQueueMgrTest, fetch_result_end) {
@@ -124,14 +120,14 @@ TEST_F(ResultQueueMgrTest, fetch_result_end) {
 
     BlockQueueSharedPtr block_queue_t;
     queue_mgr.create_queue(query_id, &block_queue_t);
-    EXPECT_TRUE(block_queue_t != nullptr);
+    ASSERT_TRUE(block_queue_t != nullptr);
     block_queue_t->blocking_put(nullptr);
 
     std::shared_ptr<arrow::RecordBatch> result;
     bool eos;
-    EXPECT_TRUE(queue_mgr.fetch_result(query_id, &result, &eos).ok());
-    EXPECT_TRUE(eos);
-    EXPECT_TRUE(result == nullptr);
+    ASSERT_TRUE(queue_mgr.fetch_result(query_id, &result, &eos).ok());
+    ASSERT_TRUE(eos);
+    ASSERT_TRUE(result == nullptr);
 }
 
 TEST_F(ResultQueueMgrTest, normal_cancel) {
@@ -141,8 +137,8 @@ TEST_F(ResultQueueMgrTest, normal_cancel) {
     ResultQueueMgr queue_mgr;
     BlockQueueSharedPtr block_queue_t;
     queue_mgr.create_queue(query_id, &block_queue_t);
-    EXPECT_TRUE(block_queue_t != nullptr);
-    EXPECT_TRUE(queue_mgr.cancel(query_id).ok());
+    ASSERT_TRUE(block_queue_t != nullptr);
+    ASSERT_TRUE(queue_mgr.cancel(query_id).ok());
 }
 
 TEST_F(ResultQueueMgrTest, cancel_no_block) {
@@ -152,7 +148,7 @@ TEST_F(ResultQueueMgrTest, cancel_no_block) {
     ResultQueueMgr queue_mgr;
     BlockQueueSharedPtr block_queue_t;
     queue_mgr.create_queue(query_id, &block_queue_t);
-    EXPECT_TRUE(block_queue_t != nullptr);
-    EXPECT_TRUE(queue_mgr.cancel(query_id).ok());
+    ASSERT_TRUE(block_queue_t != nullptr);
+    ASSERT_TRUE(queue_mgr.cancel(query_id).ok());
 }
-} // namespace doris
+} // namespace starrocks

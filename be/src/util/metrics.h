@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/metrics.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,29 +34,31 @@
 
 #pragma once
 
+#include <gperftools/malloc_extension.h>
 #include <rapidjson/document.h>
 #include <rapidjson/rapidjson.h>
-#include <stddef.h>
-#include <stdint.h>
 
 #include <atomic>
 #include <functional>
-#include <map>
-#include <memory>
+#include <iomanip>
 #include <mutex>
+#include <ostream>
+#include <set>
+#include <shared_mutex>
 #include <sstream>
 #include <string>
-#include <unordered_map>
 #include <utility>
-#include <vector>
 
+#include "common/compiler_util.h"
+#include "common/config.h"
 #include "util/core_local.h"
-#include "util/histogram.h"
 #include "util/spinlock.h"
 
-namespace doris {
+namespace starrocks {
 
 namespace rj = RAPIDJSON_NAMESPACE;
+
+class MetricRegistry;
 
 enum class MetricType { COUNTER, GAUGE, HISTOGRAM, SUMMARY, UNTYPED };
 
@@ -57,46 +76,48 @@ enum class MetricUnit {
     ROWSETS,
     CONNECTIONS,
     PACKETS,
-    NOUNIT,
-    FILESYSTEM
+    NOUNIT
 };
 
 std::ostream& operator<<(std::ostream& os, MetricType type);
 const char* unit_name(MetricUnit unit);
 
-using Labels = std::unordered_map<std::string, std::string>;
-
 class Metric {
 public:
-    Metric() {}
-    virtual ~Metric() {}
+    Metric(MetricType type, MetricUnit unit) : _type(type), _unit(unit) {}
+    virtual ~Metric() noexcept { hide(); }
     virtual std::string to_string() const = 0;
-    virtual std::string to_prometheus(const std::string& display_name, const Labels& entity_labels,
-                                      const Labels& metric_labels) const;
-    virtual rj::Value to_json_value(rj::Document::AllocatorType& allocator) const = 0;
+    MetricType type() const { return _type; }
+    MetricUnit unit() const { return _unit; }
+    void hide();
+    virtual void write_value(rj::Value& metric_obj, rj::Document::AllocatorType& allocator) = 0;
 
 private:
     friend class MetricRegistry;
+
+    MetricType _type = MetricType::UNTYPED;
+    MetricUnit _unit = MetricUnit::NOUNIT;
+    MetricRegistry* _registry{nullptr};
 };
 
 // Metric that only can increment
 template <typename T>
 class AtomicMetric : public Metric {
 public:
-    AtomicMetric() : _value(T()) {}
-    virtual ~AtomicMetric() {}
+    AtomicMetric(MetricType type, MetricUnit unit) : Metric(type, unit), _value(T()) {}
+    ~AtomicMetric() override = default;
 
     std::string to_string() const override { return std::to_string(value()); }
 
-    T value() const { return _value.load(); }
+    void write_value(rj::Value& metric_obj, rj::Document::AllocatorType& allocator) override {
+        metric_obj.AddMember("value", rj::Value(value()), allocator);
+    }
+
+    virtual T value() const { return _value.load(); }
 
     void increment(const T& delta) { _value.fetch_add(delta); }
 
     void set_value(const T& value) { _value.store(value); }
-
-    rj::Value to_json_value(rj::Document::AllocatorType& allocator) const override {
-        return rj::Value(value());
-    }
 
 protected:
     std::atomic<T> _value;
@@ -105,10 +126,14 @@ protected:
 template <typename T>
 class LockSimpleMetric : public Metric {
 public:
-    LockSimpleMetric() : _value(T()) {}
-    virtual ~LockSimpleMetric() {}
+    LockSimpleMetric(MetricType type, MetricUnit unit) : Metric(type, unit), _value(T()) {}
+    ~LockSimpleMetric() override = default;
 
     std::string to_string() const override { return std::to_string(value()); }
+
+    void write_value(rj::Value& metric_obj, rj::Document::AllocatorType& allocator) override {
+        metric_obj.AddMember("value", rj::Value(value()), allocator);
+    }
 
     T value() const {
         std::lock_guard<SpinLock> l(_lock);
@@ -117,16 +142,11 @@ public:
 
     void increment(const T& delta) {
         std::lock_guard<SpinLock> l(this->_lock);
-        _value += delta;
+        this->_value += delta;
     }
-
     void set_value(const T& value) {
         std::lock_guard<SpinLock> l(this->_lock);
-        _value = value;
-    }
-
-    rj::Value to_json_value(rj::Document::AllocatorType& allocator) const override {
-        return rj::Value(value());
+        this->_value = value;
     }
 
 protected:
@@ -144,13 +164,18 @@ protected:
 template <typename T>
 class CoreLocalCounter : public Metric {
 public:
-    CoreLocalCounter() {}
-    virtual ~CoreLocalCounter() {}
+    CoreLocalCounter(MetricUnit unit) : Metric(MetricType::COUNTER, unit), _value() {}
+
+    ~CoreLocalCounter() override = default;
 
     std::string to_string() const override {
         std::stringstream ss;
         ss << value();
         return ss.str();
+    }
+
+    void write_value(rj::Value& metric_obj, rj::Document::AllocatorType& allocator) override {
+        metric_obj.AddMember("value", rj::Value(value()), allocator);
     }
 
     T value() const {
@@ -163,76 +188,212 @@ public:
 
     void increment(const T& delta) { __sync_fetch_and_add(_value.access(), delta); }
 
-    void reset() { _value.reset(); }
-
-    rj::Value to_json_value(rj::Document::AllocatorType& allocator) const override {
-        return rj::Value(value());
-    }
-
 protected:
     CoreLocalValue<T> _value;
-};
-
-class HistogramMetric : public Metric {
-public:
-    HistogramMetric() {}
-    virtual ~HistogramMetric() {}
-
-    HistogramMetric(const HistogramMetric&) = delete;
-    HistogramMetric& operator=(const HistogramMetric&) = delete;
-
-    void clear();
-    bool is_empty() const;
-    void add(const uint64_t& value);
-    void merge(const HistogramMetric& other);
-    void set_histogram(const HistogramStat& stats);
-
-    uint64_t min() const { return _stats.min(); }
-    uint64_t max() const { return _stats.max(); }
-    uint64_t num() const { return _stats.num(); }
-    uint64_t sum() const { return _stats.sum(); }
-    double median() const;
-    double percentile(double p) const;
-    double average() const;
-    double standard_deviation() const;
-    std::string to_string() const override;
-    std::string to_prometheus(const std::string& display_name, const Labels& entity_labels,
-                              const Labels& metric_labels) const override;
-    rj::Value to_json_value(rj::Document::AllocatorType& allocator) const override;
-
-protected:
-    static std::map<std::string, double> _s_output_percentiles;
-    mutable SpinLock _lock;
-    HistogramStat _stats;
 };
 
 template <typename T>
 class AtomicCounter : public AtomicMetric<T> {
 public:
-    AtomicCounter() {}
-    virtual ~AtomicCounter() {}
+    AtomicCounter(MetricUnit unit) : AtomicMetric<T>(MetricType::COUNTER, unit) {}
+    ~AtomicCounter() override = default;
 };
 
 template <typename T>
 class AtomicGauge : public AtomicMetric<T> {
 public:
-    AtomicGauge() : AtomicMetric<T>() {}
-    virtual ~AtomicGauge() {}
+    AtomicGauge(MetricUnit unit) : AtomicMetric<T>(MetricType::GAUGE, unit) {}
+    ~AtomicGauge() override = default;
 };
 
 template <typename T>
 class LockCounter : public LockSimpleMetric<T> {
 public:
-    LockCounter() : LockSimpleMetric<T>() {}
-    virtual ~LockCounter() {}
+    LockCounter(MetricUnit unit) : LockSimpleMetric<T>(MetricType::COUNTER, unit) {}
+    virtual ~LockCounter() = default;
 };
 
 // This can only used for trival type
 template <typename T>
 class LockGauge : public LockSimpleMetric<T> {
 public:
-    LockGauge() : LockSimpleMetric<T>() {}
-    virtual ~LockGauge() {}
+    LockGauge(MetricUnit unit) : LockSimpleMetric<T>(MetricType::GAUGE, unit) {}
+    virtual ~LockGauge() = default;
+};
+
+// one key-value pair used to
+struct MetricLabel {
+    std::string name;
+    std::string value;
+
+    MetricLabel() = default;
+    MetricLabel(std::string name_, std::string value_) : name(std::move(name_)), value(std::move(value_)) {}
+
+    bool operator==(const MetricLabel& other) const { return name == other.name && value == other.value; }
+    bool operator!=(const MetricLabel& other) const { return !(*this == other); }
+    bool operator<(const MetricLabel& other) const {
+        auto res = name.compare(other.name);
+        if (res == 0) {
+            return value < other.value;
+        }
+        return res < 0;
+    }
+    int compare(const MetricLabel& other) const {
+        auto res = name.compare(other.name);
+        if (res == 0) {
+            return value.compare(other.value);
+        }
+        return res;
+    }
+    std::string to_string() const { return name + "=" + value; }
+};
+
+struct MetricLabels {
+    static MetricLabels EmptyLabels;
+    // used std::set to sort MetricLabel so that we can get compare two MetricLabels
+    std::set<MetricLabel> labels;
+
+    MetricLabels& add(const std::string& name, const std::string& value) {
+        labels.emplace(name, value);
+        return *this;
+    }
+
+    bool operator==(const MetricLabels& other) const {
+        if (labels.size() != other.labels.size()) {
+            return false;
+        }
+        auto it = labels.begin();
+        auto other_it = other.labels.begin();
+        while (it != labels.end()) {
+            if (*it != *other_it) {
+                return false;
+            }
+            ++it;
+            ++other_it;
+        }
+        return true;
+    }
+    bool operator<(const MetricLabels& other) const {
+        auto it = labels.begin();
+        auto other_it = other.labels.begin();
+        while (it != labels.end() && other_it != other.labels.end()) {
+            auto res = it->compare(*other_it);
+            if (res < 0) {
+                return true;
+            } else if (res > 0) {
+                return false;
+            }
+            ++it;
+            ++other_it;
+        }
+        if (it == labels.end()) {
+            if (other_it == other.labels.end()) {
+                return false;
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
+    bool empty() const { return labels.empty(); }
+
+    std::string to_string() const {
+        std::stringstream ss;
+        int i = 0;
+        for (auto& label : labels) {
+            if (i++ > 0) {
+                ss << ",";
+            }
+            ss << label.to_string();
+        }
+        return ss.str();
+    }
+};
+
+class MetricCollector;
+
+class MetricsVisitor {
+public:
+    virtual ~MetricsVisitor() = default;
+
+    // visit a collector, you can implement collector visitor, or only implement
+    // metric visitor
+    virtual void visit(const std::string& prefix, const std::string& name, MetricCollector* collector) = 0;
+};
+
+class MetricCollector {
+public:
+    bool add_metric(const MetricLabels& labels, Metric* metric);
+    void remove_metric(Metric* metric);
+    void collect(const std::string& prefix, const std::string& name, MetricsVisitor* visitor) {
+        visitor->visit(prefix, name, this);
+    }
+    bool empty() const { return _metrics.empty(); }
+    Metric* get_metric(const MetricLabels& labels) const;
+    // get all metrics belong to this collector
+    void get_metrics(std::vector<Metric*>* metrics);
+
+    const std::map<MetricLabels, Metric*>& metrics() const { return _metrics; }
+    MetricType type() const { return _type; }
+
+private:
+    MetricType _type = MetricType::UNTYPED;
+    std::map<MetricLabels, Metric*> _metrics;
+};
+
+class MetricRegistry {
+public:
+    MetricRegistry(std::string name) : _name(std::move(name)) {}
+    ~MetricRegistry() noexcept;
+    bool register_metric(const std::string& name, Metric* metric) {
+        return register_metric(name, MetricLabels::EmptyLabels, metric);
+    }
+    bool register_metric(const std::string& name, const MetricLabels& labels, Metric* metric);
+    // Now this function is not used frequently, so this is a little time consuming
+    void deregister_metric(Metric* metric) {
+        std::shared_lock lock(_mutex);
+        _deregister_locked(metric);
+    }
+    Metric* get_metric(const std::string& name) const { return get_metric(name, MetricLabels::EmptyLabels); }
+    Metric* get_metric(const std::string& name, const MetricLabels& labels) const;
+
+    // Register a hook, this hook will called before collect is called
+    bool register_hook(const std::string& name, const std::function<void()>& hook);
+    void deregister_hook(const std::string& name);
+
+    void collect(MetricsVisitor* visitor) {
+        std::shared_lock lock(_mutex);
+        if (!config::enable_metric_calculator) {
+            // Before we collect, need to call hooks
+            unprotected_trigger_hook();
+        }
+
+        for (auto& it : _collectors) {
+            it.second->collect(_name, it.first, visitor);
+        }
+    }
+
+    void trigger_hook() {
+        std::shared_lock lock(_mutex);
+        unprotected_trigger_hook();
+    }
+
+private:
+    void unprotected_trigger_hook() {
+        for (const auto& it : _hooks) {
+            it.second();
+        }
+    }
+
+private:
+    void _deregister_locked(Metric* metric);
+
+    const std::string _name;
+
+    // mutable SpinLock _lock;
+    mutable std::shared_mutex _mutex;
+    std::map<std::string, MetricCollector*> _collectors;
+    std::map<std::string, std::function<void()>> _hooks;
 };
 
 using IntCounter = CoreLocalCounter<int64_t>;
@@ -243,189 +404,45 @@ using IntGauge = AtomicGauge<int64_t>;
 using UIntGauge = AtomicGauge<uint64_t>;
 using DoubleGauge = LockGauge<double>;
 
-using Labels = std::unordered_map<std::string, std::string>;
-struct MetricPrototype {
+class TcmallocMetric final : public UIntGauge {
 public:
-    MetricPrototype(MetricType type_, MetricUnit unit_, std::string name_,
-                    std::string description_ = "", std::string group_name_ = "",
-                    Labels labels_ = Labels(), bool is_core_metric_ = false)
-            : is_core_metric(is_core_metric_),
-              type(type_),
-              unit(unit_),
-              name(std::move(name_)),
-              description(std::move(description_)),
-              group_name(std::move(group_name_)),
-              labels(std::move(labels_)) {}
+    TcmallocMetric(std::string tcmalloc_var) : UIntGauge(MetricUnit::BYTES), _tcmalloc_var(std::move(tcmalloc_var)) {}
 
-    std::string simple_name() const;
-    std::string combine_name(const std::string& registry_name) const;
-    std::string to_prometheus(const std::string& registry_name) const;
-
-    bool is_core_metric;
-    MetricType type;
-    MetricUnit unit;
-    std::string name;
-    std::string description;
-    std::string group_name;
-    Labels labels;
-};
-
-#define DEFINE_METRIC_PROTOTYPE(name, type, unit, desc, group, labels, core) \
-    ::doris::MetricPrototype METRIC_##name(type, unit, #name, desc, group, labels, core)
-
-#define DEFINE_COUNTER_METRIC_PROTOTYPE_2ARG(name, unit) \
-    DEFINE_METRIC_PROTOTYPE(name, MetricType::COUNTER, unit, "", "", Labels(), false)
-
-#define DEFINE_COUNTER_METRIC_PROTOTYPE_3ARG(name, unit, desc) \
-    DEFINE_METRIC_PROTOTYPE(name, MetricType::COUNTER, unit, desc, "", Labels(), false)
-
-#define DEFINE_COUNTER_METRIC_PROTOTYPE_5ARG(name, unit, desc, group, labels) \
-    DEFINE_METRIC_PROTOTYPE(name, MetricType::COUNTER, unit, desc, #group, labels, false)
-
-#define DEFINE_GAUGE_METRIC_PROTOTYPE_2ARG(name, unit) \
-    DEFINE_METRIC_PROTOTYPE(name, MetricType::GAUGE, unit, "", "", Labels(), false)
-
-#define DEFINE_GAUGE_CORE_METRIC_PROTOTYPE_2ARG(name, unit) \
-    DEFINE_METRIC_PROTOTYPE(name, MetricType::GAUGE, unit, "", "", Labels(), true)
-
-#define DEFINE_GAUGE_METRIC_PROTOTYPE_3ARG(name, unit, desc) \
-    DEFINE_METRIC_PROTOTYPE(name, MetricType::GAUGE, unit, desc, "", Labels(), false)
-
-#define DEFINE_GAUGE_METRIC_PROTOTYPE_5ARG(name, unit, desc, group, labels) \
-    DEFINE_METRIC_PROTOTYPE(name, MetricType::GAUGE, unit, desc, #group, labels, false)
-
-#define DEFINE_HISTOGRAM_METRIC_PROTOTYPE_2ARG(name, unit) \
-    DEFINE_METRIC_PROTOTYPE(name, MetricType::HISTOGRAM, unit, "", "", Labels(), false)
-
-#define INT_COUNTER_METRIC_REGISTER(entity, metric) \
-    metric = (IntCounter*)(entity->register_metric<IntCounter>(&METRIC_##metric))
-
-#define INT_GAUGE_METRIC_REGISTER(entity, metric) \
-    metric = (IntGauge*)(entity->register_metric<IntGauge>(&METRIC_##metric))
-
-#define INT_DOUBLE_METRIC_REGISTER(entity, metric) \
-    metric = (DoubleGauge*)(entity->register_metric<DoubleGauge>(&METRIC_##metric))
-
-#define INT_UGAUGE_METRIC_REGISTER(entity, metric) \
-    metric = (UIntGauge*)(entity->register_metric<UIntGauge>(&METRIC_##metric))
-
-#define INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, metric) \
-    metric = (IntAtomicCounter*)(entity->register_metric<IntAtomicCounter>(&METRIC_##metric))
-
-#define HISTOGRAM_METRIC_REGISTER(entity, metric) \
-    metric = (HistogramMetric*)(entity->register_metric<HistogramMetric>(&METRIC_##metric))
-
-#define METRIC_DEREGISTER(entity, metric) entity->deregister_metric(&METRIC_##metric)
-
-// For 'metrics' in MetricEntity.
-struct MetricPrototypeHash {
-    size_t operator()(const MetricPrototype* metric_prototype) const {
-        return std::hash<std::string>()(metric_prototype->group_name.empty()
-                                                ? metric_prototype->name
-                                                : metric_prototype->group_name);
+    uint64_t value() const override {
+        uint64_t val = 0;
+#if !defined(ADDRESS_SANITIZER) && !defined(THREAD_SANITIZER) && !defined(LEAK_SANITIZER) && !defined(USE_JEMALLOC)
+        MallocExtension::instance()->GetNumericProperty(_tcmalloc_var.c_str(), reinterpret_cast<size_t*>(&val));
+#endif
+        return val;
     }
-};
-
-struct MetricPrototypeEqualTo {
-    bool operator()(const MetricPrototype* first, const MetricPrototype* second) const {
-        return first->group_name == second->group_name && first->name == second->name;
-    }
-};
-
-using MetricMap = std::unordered_map<const MetricPrototype*, Metric*, MetricPrototypeHash,
-                                     MetricPrototypeEqualTo>;
-
-enum class MetricEntityType { kServer, kTablet };
-
-class MetricEntity {
-public:
-    MetricEntity(MetricEntityType type, const std::string& name, const Labels& labels)
-            : _type(type), _name(name), _labels(labels) {}
-    ~MetricEntity() {
-        for (auto& metric : _metrics) {
-            delete metric.second;
-        }
-    }
-
-    const std::string& name() const { return _name; }
-
-    template <typename T>
-    Metric* register_metric(const MetricPrototype* metric_type) {
-        std::lock_guard<SpinLock> l(_lock);
-        auto inserted_metric = _metrics.insert(std::make_pair(metric_type, nullptr));
-        if (inserted_metric.second) {
-            // If not exist, make a new metric pointer
-            inserted_metric.first->second = new T();
-        }
-        return inserted_metric.first->second;
-    }
-
-    void deregister_metric(const MetricPrototype* metric_type);
-    Metric* get_metric(const std::string& name, const std::string& group_name = "") const;
-
-    // Register a hook, this hook will called before get_metric is called
-    void register_hook(const std::string& name, const std::function<void()>& hook);
-    void deregister_hook(const std::string& name);
-    void trigger_hook_unlocked(bool force) const;
 
 private:
-    friend class MetricRegistry;
-    friend struct MetricEntityHash;
-    friend struct MetricEntityEqualTo;
-
-    MetricEntityType _type;
-    std::string _name;
-    Labels _labels;
-
-    mutable SpinLock _lock;
-    MetricMap _metrics;
-    std::map<std::string, std::function<void()>> _hooks;
+    const std::string _tcmalloc_var;
 };
 
-struct MetricEntityHash {
-    size_t operator()(const std::shared_ptr<MetricEntity> metric_entity) const {
-        return std::hash<std::string>()(metric_entity->name());
-    }
-};
+} // namespace starrocks
 
-struct MetricEntityEqualTo {
-    bool operator()(const std::shared_ptr<MetricEntity> first,
-                    const std::shared_ptr<MetricEntity> second) const {
-        return first->_type == second->_type && first->_name == second->_name &&
-               first->_labels == second->_labels;
-    }
-};
+// Convenience macros to metric
+#define METRIC_DEFINE_INT_COUNTER(metric_name, unit) \
+    starrocks::IntCounter metric_name { unit }
 
-using EntityMetricsByType =
-        std::unordered_map<const MetricPrototype*, std::vector<std::pair<MetricEntity*, Metric*>>,
-                           MetricPrototypeHash, MetricPrototypeEqualTo>;
+#define METRIC_DEFINE_INT_ATOMIC_COUNTER(metric_name, unit) \
+    starrocks::IntAtomicCounter metric_name { unit }
 
-class MetricRegistry {
-public:
-    MetricRegistry(const std::string& name) : _name(name) {}
-    ~MetricRegistry();
+#define METRIC_DEFINE_UINT_COUNTER(metric_name, unit) \
+    starrocks::UIntCounter metric_name { unit }
 
-    std::shared_ptr<MetricEntity> register_entity(
-            const std::string& name, const Labels& labels = {},
-            MetricEntityType type = MetricEntityType::kServer);
-    void deregister_entity(const std::shared_ptr<MetricEntity>& entity);
-    std::shared_ptr<MetricEntity> get_entity(const std::string& name, const Labels& labels = {},
-                                             MetricEntityType type = MetricEntityType::kServer);
+#define METRIC_DEFINE_DOUBLE_COUNTER(metric_name, unit) \
+    starrocks::DoubleCounter metric_name { unit }
 
-    void trigger_all_hooks(bool force) const;
+#define METRIC_DEFINE_INT_GAUGE(metric_name, unit) \
+    starrocks::IntGauge metric_name { unit }
 
-    std::string to_prometheus(bool with_tablet_metrics = false) const;
-    std::string to_json(bool with_tablet_metrics = false) const;
-    std::string to_core_string() const;
+#define METRIC_DEFINE_UINT_GAUGE(metric_name, unit) \
+    starrocks::UIntGauge metric_name { unit }
 
-private:
-    const std::string _name;
+#define METRIC_DEFINE_DOUBLE_GAUGE(metric_name, unit) \
+    starrocks::DoubleGauge metric_name { unit }
 
-    mutable SpinLock _lock;
-    // MetricEntity -> register count
-    std::unordered_map<std::shared_ptr<MetricEntity>, int32_t, MetricEntityHash,
-                       MetricEntityEqualTo>
-            _entities;
-};
-
-} // namespace doris
+#define METRIC_DEFINE_TCMALLOC_GAUGE(metric_name, tcmalloc_var) \
+    starrocks::TcmallocMetric metric_name { tcmalloc_var }

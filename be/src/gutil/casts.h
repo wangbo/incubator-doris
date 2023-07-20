@@ -9,15 +9,15 @@
 
 #pragma once
 
-#include "common/logging.h"
-#include <assert.h> // for use with down_cast<>
-#include <limits.h> // for enumeration casts and tests
-#include <string.h> // for memcpy
+#include <common/logging.h>
 
-#include <type_traits>
+#include <cassert> // for use with down_cast<>
+#include <climits> // for enumeration casts and tests
+#include <cstring> // for memcpy
 
 #include "gutil/macros.h"
 #include "gutil/template_util.h"
+#include "gutil/type_traits.h"
 
 // Use implicit_cast as a safe version of static_cast or const_cast
 // for implicit conversions. For example:
@@ -34,14 +34,14 @@
 // base::identity_ is used to make a non-deduced context, which
 // forces all callers to explicitly specify the template argument.
 template <typename To>
- To implicit_cast(typename base::identity_<To>::type to) {
+inline To implicit_cast(typename base::identity_<To>::type to) {
     return to;
 }
 
 // This version of implicit_cast is used when two template arguments
 // are specified. It's obsolete and should not be used.
 template <typename To, typename From>
- To implicit_cast(typename base::identity_<From>::type const& f) {
+inline To implicit_cast(typename base::identity_<From>::type const& f) {
     return f;
 }
 
@@ -72,7 +72,7 @@ inline To down_cast(From* f) {        // so we only accept pointers
 
     // TODO(user): This should use COMPILE_ASSERT.
     if (false) {
-        ::implicit_cast<From*, To>(NULL);
+        ::implicit_cast<const From*, To>(nullptr);
     }
 
     // uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
@@ -89,12 +89,12 @@ inline To down_cast(From* f) {        // so we only accept pointers
 // or the reference form. If you call down_cast with a const T&, the
 // compiler will just bind From to const T.
 template <typename To, typename From>
- To down_cast(From& f) {
-    COMPILE_ASSERT(std::is_reference<To>::value, target_type_not_a_reference);
-    using ToAsPointer = typename std::remove_reference<To>::type*;
+inline To down_cast(From& f) {
+    COMPILE_ASSERT(base::is_reference<To>::value, target_type_not_a_reference);
+    typedef typename base::remove_reference<To>::type* ToAsPointer;
     if (false) {
         // Compile-time check that To inherits from From. See above for details.
-        ::implicit_cast<From*, ToAsPointer>(NULL);
+        ::implicit_cast<From*, ToAsPointer>(nullptr);
     }
 
     assert(dynamic_cast<ToAsPointer>(&f) != NULL); // RTTI: debug mode only
@@ -124,7 +124,7 @@ template <typename To, typename From>
 //
 // This is true for any cast syntax, either *(int*)&f or
 // *reinterpret_cast<int*>(&f).  And it is particularly true for
-// conversions between integral lvalues and floating-point lvalues.
+// conversions betweeen integral lvalues and floating-point lvalues.
 //
 // The purpose of 3.10 -15- is to allow optimizing compilers to assume
 // that expressions with different types refer to different memory.  gcc
@@ -161,7 +161,7 @@ template <typename To, typename From>
 // -- mec 2005-10-17
 
 template <class Dest, class Source>
- Dest bit_cast(const Source& source) {
+inline Dest bit_cast(const Source& source) {
     // Compile time assertion: sizeof(Dest) == sizeof(Source)
     // A compile error here means your Dest and Source have different sizes.
     COMPILE_ASSERT(sizeof(Dest) == sizeof(Source), VerifySizesAreEqual);
@@ -185,7 +185,7 @@ template <class Dest, class Source>
 //   enum A { A_min = -18, A_max = 33 };
 //   MAKE_ENUM_LIMITS(A, A_min, A_max)
 //
-// Convert an enum to an int in one of two ways.  The preferred way is a
+// Convert an enum to an int in one of two ways.  The prefered way is a
 // tight conversion, which ensures that A_min <= value <= A_max.
 //
 //   A var = tight_enum_cast<A>(3);
@@ -279,7 +279,7 @@ public:
 // because of value propagation on the constant enumerator bounds.
 
 template <typename Enum>
- bool loose_enum_test(int e_val) {
+inline bool loose_enum_test(int e_val) {
     COMPILE_ASSERT(enum_limits<Enum>::is_specialized, missing_MAKE_ENUM_LIMITS);
     const Enum e_min = enum_limits<Enum>::min_enumerator;
     const Enum e_max = enum_limits<Enum>::max_enumerator;
@@ -296,7 +296,7 @@ template <typename Enum>
     // Find the binary bounding negative of both e_min and e_max.
     b_min &= e_min;
 
-    // However, if e_min is positive, the result will be positive.
+    // However, if e_min is postive, the result will be positive.
     // Now clear all bits right of the most significant clear bit,
     // which is a negative saturation for negative numbers.
     // In the case of positive numbers, this is flush to zero.
@@ -312,13 +312,13 @@ template <typename Enum>
     // Find the unary bounding positive number of e_max.
     int b_max = e_max_sign ^ e_max;
 
-    // Find the binary bounding positive number of that
+    // Find the binary bounding postive number of that
     // and the unary bounding positive number of e_min.
     int e_min_sign = e_min >> (sizeof(e_val) * 8 - 1);
     b_max |= e_min_sign ^ e_min;
 
     // Now set all bits right of the most significant set bit,
-    // which is a positive saturation for positive numbers.
+    // which is a postive saturation for positive numbers.
     b_max |= b_max >> 1;
     b_max |= b_max >> 2;
     b_max |= b_max >> 4;
@@ -333,7 +333,7 @@ template <typename Enum>
 }
 
 template <typename Enum>
- bool tight_enum_test(int e_val) {
+inline bool tight_enum_test(int e_val) {
     COMPILE_ASSERT(enum_limits<Enum>::is_specialized, missing_MAKE_ENUM_LIMITS);
     const Enum e_min = enum_limits<Enum>::min_enumerator;
     const Enum e_max = enum_limits<Enum>::max_enumerator;
@@ -341,7 +341,7 @@ template <typename Enum>
 }
 
 template <typename Enum>
- bool loose_enum_test_cast(int e_val, Enum* e_var) {
+inline bool loose_enum_test_cast(int e_val, Enum* e_var) {
     if (loose_enum_test<Enum>(e_val)) {
         *e_var = static_cast<Enum>(e_val);
         return true;
@@ -351,7 +351,7 @@ template <typename Enum>
 }
 
 template <typename Enum>
- bool tight_enum_test_cast(int e_val, Enum* e_var) {
+inline bool tight_enum_test_cast(int e_val, Enum* e_var) {
     if (tight_enum_test<Enum>(e_val)) {
         *e_var = static_cast<Enum>(e_val);
         return true;
@@ -371,7 +371,7 @@ inline void WarnEnumCastError(int value_of_int) {
 } // namespace base
 
 template <typename Enum>
- Enum loose_enum_cast(int e_val) {
+inline Enum loose_enum_cast(int e_val) {
     if (!loose_enum_test<Enum>(e_val)) {
         base::internal::WarnEnumCastError(e_val);
     }
@@ -379,7 +379,7 @@ template <typename Enum>
 }
 
 template <typename Enum>
- Enum tight_enum_cast(int e_val) {
+inline Enum tight_enum_cast(int e_val) {
     if (!tight_enum_test<Enum>(e_val)) {
         base::internal::WarnEnumCastError(e_val);
     }

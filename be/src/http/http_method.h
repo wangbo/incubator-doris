@@ -21,7 +21,7 @@
 
 #include <string>
 
-namespace doris {
+namespace starrocks {
 
 // Http method enumerate
 enum HttpMethod { GET, PUT, POST, DELETE, HEAD, OPTIONS, UNKNOWN };
@@ -51,4 +51,4 @@ inline HttpMethod to_http_method(evhttp_cmd_type type) {
 
 std::string to_method_desc(const HttpMethod& method);
 
-} // namespace doris
+} // namespace starrocks

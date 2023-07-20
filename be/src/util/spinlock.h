@@ -14,49 +14,60 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/spinlock.h
-// and modified by Doris
 
 #pragma once
+#include "common/logging.h"
 
-#include <sched.h> /* For sched_yield() */
-
-#include <atomic>
-
-namespace doris {
+namespace starrocks {
 
 // Lightweight spinlock.
 class SpinLock {
 public:
-    SpinLock() : _locked(false) {
+    SpinLock() {
         // do nothing
     }
 
     // Acquires the lock, spins until the lock becomes available
     void lock() {
-        for (int spin_count = 0; !try_lock(); ++spin_count) {
-            if (spin_count < NUM_SPIN_CYCLES) {
-#if (defined(__i386) || defined(__x86_64__))
-                asm volatile("pause\n" : : : "memory");
-#elif defined(__aarch64__)
-                asm volatile("yield\n" ::: "memory");
-#endif
-            } else {
-                sched_yield();
-                spin_count = 0;
-            }
+        if (!try_lock()) {
+            slow_acquire();
         }
     }
 
-    void unlock() { _locked.clear(std::memory_order_release); }
+    void unlock() {
+        // Memory barrier here. All updates before the unlock need to be made visible.
+        __sync_synchronize();
+        DCHECK(_locked);
+        _locked = false;
+    }
 
     // Tries to acquire the lock
-    bool try_lock() { return !_locked.test_and_set(std::memory_order_acquire); }
+    inline bool try_lock() { return __sync_bool_compare_and_swap(&_locked, false, true); }
+
+    void dcheck_locked() { DCHECK(_locked); }
 
 private:
+    // Out-of-line definition of the actual spin loop. The primary goal is to have the
+    // actual lock method as short as possible to avoid polluting the i-cache with
+    // unnecessary instructions in the non-contested case.
+    void slow_acquire();
+
+    // In typical spin lock implements, we want to spin (and keep the core fully busy),
+    // for some number of cycles before yielding. Consider these three cases:
+    //  1) lock is un-contended - spinning doesn't kick in and has no effect.
+    //  2) lock is taken by another thread and that thread finishes quickly.
+    //  3) lock is taken by another thread and that thread is slow (e.g. scheduled away).
+    //
+    // In case 3), we'd want to yield so another thread can do work. This thread
+    // won't be able to do anything useful until the thread with the lock runs again.
+    // In case 2), we don't want to yield (and give up our scheduling time slice)
+    // since we will get to run soon after.
+    // To try to get the best of everything, we will busy spin for a while before
+    // yielding to another thread.
+    // TODO: how do we set this.
     static const int NUM_SPIN_CYCLES = 70;
-    std::atomic_flag _locked;
+    // TODO: pad this to be a cache line?
+    bool _locked{false};
 };
 
-} // end namespace doris
+} // end namespace starrocks

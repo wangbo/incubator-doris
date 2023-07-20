@@ -1,6 +1,6 @@
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Use of this source code is governed by a BSD-style license.
+// (https://developers.google.com/open-source/licenses/bsd)
 
 #pragma once
 
@@ -9,11 +9,10 @@
 #include <utility> // IWYU pragma: keep
 
 #include "gutil/atomicops.h"
-// IWYU pragma: no_include <butil/macros.h>
-#include "gutil/macros.h" // IWYU pragma: keep
+#include "gutil/macros.h"
 #include "gutil/threading/thread_collision_warner.h"
 
-namespace doris {
+namespace starrocks {
 namespace subtle {
 
 typedef Atomic32 AtomicRefCount;
@@ -32,14 +31,15 @@ protected:
     bool Release() const;
 
 private:
-    mutable int ref_count_;
+    mutable int ref_count_{0};
 #ifndef NDEBUG
     mutable bool in_dtor_;
 #endif
 
     DFAKE_MUTEX(add_release_);
 
-    DISALLOW_COPY_AND_ASSIGN(RefCountedBase);
+    RefCountedBase(const RefCountedBase&) = delete;
+    const RefCountedBase& operator=(const RefCountedBase&) = delete;
 };
 
 class RefCountedThreadSafeBase {
@@ -56,12 +56,13 @@ protected:
     bool Release() const;
 
 private:
-    mutable AtomicRefCount ref_count_;
+    mutable AtomicRefCount ref_count_{0};
 #ifndef NDEBUG
     mutable bool in_dtor_;
 #endif
 
-    DISALLOW_COPY_AND_ASSIGN(RefCountedThreadSafeBase);
+    RefCountedThreadSafeBase(const RefCountedThreadSafeBase&) = delete;
+    const RefCountedThreadSafeBase& operator=(const RefCountedThreadSafeBase&) = delete;
 };
 
 } // namespace subtle
@@ -79,11 +80,11 @@ private:
 //   };
 //
 // You should always make your destructor private, to avoid any code deleting
-// the object accidentally while there are references to it.
+// the object accidently while there are references to it.
 template <class T>
 class RefCounted : public subtle::RefCountedBase {
 public:
-    RefCounted() {}
+    RefCounted() = default;
 
     void AddRef() const { subtle::RefCountedBase::AddRef(); }
 
@@ -94,7 +95,11 @@ public:
     }
 
 protected:
-    ~RefCounted() {}
+    ~RefCounted() = default;
+
+private:
+    RefCounted(const RefCounted&) = delete;
+    const RefCounted& operator=(const RefCounted&) = delete;
 };
 
 // Forward declaration.
@@ -125,10 +130,10 @@ struct DefaultRefCountedThreadSafeTraits {
 //    private:
 //     friend class RefCountedThreadSafe<MyFoo>;
 //     ~MyFoo();
-template <class T, typename Traits = DefaultRefCountedThreadSafeTraits<T>>
+template <class T, typename Traits = DefaultRefCountedThreadSafeTraits<T> >
 class RefCountedThreadSafe : public subtle::RefCountedThreadSafeBase {
 public:
-    RefCountedThreadSafe() {}
+    RefCountedThreadSafe() = default;
 
     void AddRef() const { subtle::RefCountedThreadSafeBase::AddRef(); }
 
@@ -139,13 +144,14 @@ public:
     }
 
 protected:
-    ~RefCountedThreadSafe() {}
+    ~RefCountedThreadSafe() = default;
 
 private:
     friend struct DefaultRefCountedThreadSafeTraits<T>;
     static void DeleteInternal(const T* x) { delete x; }
 
-    DISALLOW_COPY_AND_ASSIGN(RefCountedThreadSafe);
+    RefCountedThreadSafe(const RefCountedThreadSafe&) = delete;
+    const RefCountedThreadSafe& operator=(const RefCountedThreadSafe&) = delete;
 };
 
 //
@@ -153,7 +159,7 @@ private:
 // things in scoped_refptrs<>.
 //
 template <typename T>
-class RefCountedData : public doris::RefCountedThreadSafe<doris::RefCountedData<T>> {
+class RefCountedData : public starrocks::RefCountedThreadSafe<starrocks::RefCountedData<T> > {
 public:
     RefCountedData() : data() {}
     RefCountedData(const T& in_value) : data(in_value) {}
@@ -161,11 +167,11 @@ public:
     T data;
 
 private:
-    friend class doris::RefCountedThreadSafe<doris::RefCountedData<T>>;
-    ~RefCountedData() {}
+    friend class starrocks::RefCountedThreadSafe<starrocks::RefCountedData<T> >;
+    ~RefCountedData() = default;
 };
 
-} // namespace doris
+} // namespace starrocks
 
 //
 // A smart pointer class for reference counted objects.  Use this class instead
@@ -220,7 +226,7 @@ class scoped_refptr {
 public:
     typedef T element_type;
 
-    scoped_refptr() : ptr_(NULL) {}
+    scoped_refptr() : ptr_(nullptr) {}
 
     scoped_refptr(T* p) : ptr_(p) {
         if (ptr_) ptr_->AddRef();
@@ -264,7 +270,7 @@ public:
     operator T*() const { return ptr_; }
 #else
     typedef T* scoped_refptr::*Testable;
-    operator Testable() const { return ptr_ ? &scoped_refptr::ptr_ : NULL; }
+    operator Testable() const { return ptr_ ? &scoped_refptr::ptr_ : nullptr; }
 #endif
 
     T* operator->() const {
@@ -288,7 +294,7 @@ public:
         return *this = r.get();
     }
 
-    scoped_refptr<T>& operator=(scoped_refptr<T>&& r) {
+    scoped_refptr<T>& operator=(scoped_refptr<T>&& r) noexcept {
         scoped_refptr<T>(std::move(r)).swap(*this);
         return *this;
     }
@@ -309,7 +315,7 @@ public:
 
     // Like gscoped_ptr::reset(), drops a reference on the currently held object
     // (if any), and adds a reference to the passed-in object (if not NULL).
-    void reset(T* p = NULL) { *this = p; }
+    void reset(T* p = nullptr) { *this = p; }
 
 protected:
     T* ptr_;
@@ -330,9 +336,7 @@ scoped_refptr<T> make_scoped_refptr(T* t) {
 // use with STL unordered_* containers.
 template <class T>
 struct ScopedRefPtrEqualToFunctor {
-    bool operator()(const scoped_refptr<T>& x, const scoped_refptr<T>& y) const {
-        return x.get() == y.get();
-    }
+    bool operator()(const scoped_refptr<T>& x, const scoped_refptr<T>& y) const { return x.get() == y.get(); }
 };
 
 template <class T>

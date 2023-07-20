@@ -17,36 +17,34 @@
 
 #pragma once
 
-#include <butil/macros.h>
+#include <gutil/macros.h>
 
 #include <string>
 #include <vector>
 
 #include "gen_cpp/Types_types.h"
 
-namespace doris {
+namespace starrocks {
 
 class CIDR;
 
 class BackendOptions {
 public:
     static bool init();
-    static const std::string& get_localhost();
-    static TBackend get_local_backend();
+    static std::string get_localhost();
+    static TBackend get_localBackend();
     static void set_localhost(const std::string& host);
-    static bool is_bind_ipv6();
-    static const char* get_service_bind_address();
 
 private:
     static bool analyze_priority_cidrs();
     static bool is_in_prior_network(const std::string& ip);
 
     static std::string _s_localhost;
-    static TBackend _backend;
     static std::vector<CIDR> _s_priority_cidrs;
-    static bool _bind_ipv6;
+    static TBackend _backend;
 
-    DISALLOW_COPY_AND_ASSIGN(BackendOptions);
+    BackendOptions(const BackendOptions&) = delete;
+    const BackendOptions& operator=(const BackendOptions&) = delete;
 };
 
-} // namespace doris
+} // namespace starrocks

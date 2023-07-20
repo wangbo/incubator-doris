@@ -26,11 +26,10 @@
 // but don't require including the dangerous netinet/in.h.
 //
 // Buffer routines will copy to and from buffers without causing
-// a bus error when the architecture requires different byte alignments
-
+// a bus error when the architecture requires differnt byte alignments
 #pragma once
 
-#include <assert.h>
+#include <cassert>
 
 #include "gutil/int128.h"
 #include "gutil/integral_types.h"
@@ -103,10 +102,23 @@ inline uint64 ghtonll(uint64 x) {
 
 // ntoh* and hton* are the same thing for any size and bytesex,
 // since the function is an involution, i.e., its own inverse.
+inline uint16 gntohl(uint16 x) {
+    return ghtonl(x);
+}
+inline uint32 gntohs(uint32 x) {
+    return ghtons(x);
+}
+inline uint64 gntohll(uint64 x) {
+    return ghtonll(x);
+}
 #if !defined(__APPLE__)
 // This one is safe to take as it's an extension
-#define htonll(x) ghtonll(x)
-#define ntohll(x) htonll(x)
+inline uint64 htonll(uint64 x) {
+    return ghtonll(x);
+}
+inline uint64 ntohll(uint64 x) {
+    return htonll(x);
+}
 #endif
 
 // Utilities to convert numbers between the current hosts's native byte
@@ -176,7 +188,7 @@ public:
     // The caller needs to guarantee that 1 <= len <= 8.
     static uint64 Load64VariableLength(const void* const p, int len) {
         assert(len >= 1 && len <= 8);
-        const char* const buf = static_cast<const char*>(p);
+        const char* const buf = static_cast<const char* const>(p);
         uint64 val = 0;
         --len;
         do {
@@ -195,7 +207,7 @@ public:
                        ToHost64(UNALIGNED_LOAD64(p)));
     }
 
-    static void Store128(void* p, const uint128 v) {
+    static void Store128(void* p, const uint128& v) {
         UNALIGNED_STORE64(p, FromHost64(Uint128Low64(v)));
         UNALIGNED_STORE64(reinterpret_cast<uint64*>(p) + 1, FromHost64(Uint128High64(v)));
     }
@@ -208,8 +220,7 @@ public:
         if (len <= 8) {
             return uint128(Load64VariableLength(p, len));
         } else {
-            return uint128(Load64VariableLength(static_cast<const char*>(p) + 8, len - 8),
-                           Load64(p));
+            return uint128(Load64VariableLength(static_cast<const char*>(p) + 8, len - 8), Load64(p));
         }
     }
 
@@ -320,7 +331,7 @@ public:
                        ToHost64(UNALIGNED_LOAD64(reinterpret_cast<const uint64*>(p) + 1)));
     }
 
-    static void Store128(void* p, const uint128 v) {
+    static void Store128(void* p, const uint128& v) {
         UNALIGNED_STORE64(p, FromHost64(Uint128High64(v)));
         UNALIGNED_STORE64(reinterpret_cast<uint64*>(p) + 1, FromHost64(Uint128Low64(v)));
     }
@@ -333,8 +344,7 @@ public:
         if (len <= 8) {
             return uint128(Load64VariableLength(static_cast<const char*>(p) + 8, len));
         } else {
-            return uint128(Load64VariableLength(p, len - 8),
-                           Load64(static_cast<const char*>(p) + 8));
+            return uint128(Load64VariableLength(p, len - 8), Load64(static_cast<const char*>(p) + 8));
         }
     }
 

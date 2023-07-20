@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/runtime/decimalv2_value.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -19,38 +36,83 @@
 
 #include <fmt/format.h>
 
-#include <cmath>
-#include <cstring>
+#include <algorithm>
 #include <iostream>
 #include <utility>
 
+#include "runtime/int128_arithmetics_x86_64.h"
+#include "util/raw_container.h"
 #include "util/string_parser.hpp"
 
-namespace doris {
+namespace starrocks {
 
-const int128_t DecimalV2Value::MAX_DECIMAL_VALUE;
+DecimalV2Value DecimalV2Value::ZERO = DecimalV2Value();
+DecimalV2Value DecimalV2Value::ONE = DecimalV2Value(1, 0);
+
+#if defined(__x86_64__) && defined(__GNUC__)
+static inline int128_t umul_gcc_x86_64(const Int128Wrapper& wx, const Int128Wrapper& wy) {
+    Int128Wrapper wres;
+    // mul two unsigned int128_t and check overflow
+    int overflow = multi3(wx, wy, wres);
+    if (UNLIKELY(overflow)) {
+        return DecimalV2Value::MAX_DECIMAL_VALUE;
+    }
+    int128_t& res = wres.s128;
+    uint128_t remainder;
+    // res = res / 10**9
+    // remainder= res % 10**9
+    divmodti3(res, DecimalV2Value::ONE_BILLION, res, remainder);
+    if (UNLIKELY(res >= DecimalV2Value::MAX_DECIMAL_VALUE)) {
+        res = DecimalV2Value::MAX_DECIMAL_VALUE;
+    } else if (LIKELY(remainder != 0)) {
+        if (remainder >= (DecimalV2Value::ONE_BILLION >> 1)) {
+            res += 1;
+        }
+    }
+    return res;
+}
+
+static inline int128_t mul_gcc_x86_64(const int128_t& x, const int128_t& y) {
+    auto sx = x >> 127;
+    auto sy = y >> 127;
+    Int128Wrapper wx = {.s128 = (x ^ sx) - sx};
+    Int128Wrapper wy = {.s128 = (y ^ sy) - sy};
+    sx ^= sy;
+    return (umul_gcc_x86_64(wx, wy) ^ sx) - sx;
+}
+
+int128_t div_gcc_x86_64(const int128_t& x, const int128_t& y) {
+    int128_t result;
+    // todo: return 0 for divide zero
+    if (x == 0 || y == 0) return 0;
+    //
+    int128_t dividend = x * DecimalV2Value::ONE_BILLION;
+
+    uint128_t remainder;
+    divmodti3(dividend, y, result, remainder);
+    // round if remainder >= 0.5*y
+    if (remainder != 0) {
+        if (remainder >= (y >> 1)) {
+            result += 1;
+        }
+    }
+    return result;
+}
+#endif // defined(__x86_64__) && defined(__GNUC__)
 
 static inline int128_t abs(const int128_t& x) {
     return (x < 0) ? -x : x;
 }
 
-// x>=0 && y>=0
-static int do_add(int128_t x, int128_t y, int128_t* result) {
-    int error = E_DEC_OK;
-    if (DecimalV2Value::MAX_DECIMAL_VALUE - x >= y) {
-        *result = x + y;
-    } else {
-        *result = DecimalV2Value::MAX_DECIMAL_VALUE;
-        error = E_DEC_OVERFLOW;
+static inline int128_t do_add(int128_t x, int128_t y) {
+    auto res = x + y;
+    auto s = res >> 127;
+    res = (res ^ s) - s;
+    if (UNLIKELY(res > DecimalV2Value::MAX_DECIMAL_VALUE)) {
+        res = DecimalV2Value::MAX_DECIMAL_VALUE;
     }
-    return error;
-}
-
-// x>=0 && y>=0
-static int do_sub(int128_t x, int128_t y, int128_t* result) {
-    int error = E_DEC_OK;
-    *result = x - y;
-    return error;
+    res = (res ^ s) - s;
+    return res;
 }
 
 // clear leading zero for __int128
@@ -124,64 +186,17 @@ static int do_mod(int128_t x, int128_t y, int128_t* result) {
 }
 
 DecimalV2Value operator+(const DecimalV2Value& v1, const DecimalV2Value& v2) {
-    int128_t result;
-    int128_t x = v1.value();
-    int128_t y = v2.value();
-    if (x == 0) {
-        result = y;
-    } else if (y == 0) {
-        result = x;
-    } else if (x > 0) {
-        if (y > 0) {
-            do_add(x, y, &result);
-        } else {
-            do_sub(x, -y, &result);
-        }
-    } else { // x < 0
-        if (y > 0) {
-            do_sub(y, -x, &result);
-        } else {
-            do_add(-x, -y, &result);
-            result = -result;
-        }
-    }
-
-    return DecimalV2Value(result);
+    return DecimalV2Value(do_add(v1.value(), v2.value()));
 }
 
 DecimalV2Value operator-(const DecimalV2Value& v1, const DecimalV2Value& v2) {
-    int128_t result;
-    int128_t x = v1.value();
-    int128_t y = v2.value();
-    if (x == 0) {
-        result = -y;
-    } else if (y == 0) {
-        result = x;
-    } else if (x > 0) {
-        if (y > 0) {
-            do_sub(x, y, &result);
-        } else {
-            do_add(x, -y, &result);
-        }
-    } else { // x < 0
-        if (y > 0) {
-            do_add(-x, y, &result);
-            result = -result;
-        } else {
-            do_sub(-x, -y, &result);
-            result = -result;
-        }
-    }
-
-    return DecimalV2Value(result);
+    return DecimalV2Value(do_add(v1.value(), -v2.value()));
 }
 
-DecimalV2Value operator*(const DecimalV2Value& v1, const DecimalV2Value& v2) {
+int128_t mul(const int128_t& x, const int128_t& y) {
     int128_t result;
-    int128_t x = v1.value();
-    int128_t y = v2.value();
 
-    if (x == 0 || y == 0) return DecimalV2Value(0);
+    if (x == 0 || y == 0) return 0;
 
     bool is_positive = (x > 0 && y > 0) || (x < 0 && y < 0);
 
@@ -189,30 +204,42 @@ DecimalV2Value operator*(const DecimalV2Value& v1, const DecimalV2Value& v2) {
 
     if (!is_positive) result = -result;
 
-    return DecimalV2Value(result);
+    return result;
 }
 
-DecimalV2Value operator/(const DecimalV2Value& v1, const DecimalV2Value& v2) {
-    int128_t result;
-    int128_t x = v1.value();
-    int128_t y = v2.value();
+DecimalV2Value operator*(const DecimalV2Value& v1, const DecimalV2Value& v2) {
+#if defined(__x86_64__) && defined(__GNUC__)
+    return DecimalV2Value(mul_gcc_x86_64(v1.value(), v2.value()));
+#else
+    return DecimalV2Value(mul(v1.value(), v2.value()));
+#endif
+}
 
-    DCHECK(y != 0);
+int128_t div(const int128_t& x, const int128_t& y) {
+    int128_t result;
+    //todo: return 0 for divide zero
     if (x == 0 || y == 0) return DecimalV2Value(0);
     bool is_positive = (x > 0 && y > 0) || (x < 0 && y < 0);
     do_div(abs(x), abs(y), &result);
 
     if (!is_positive) result = -result;
 
-    return DecimalV2Value(result);
+    return result;
 }
 
+DecimalV2Value operator/(const DecimalV2Value& v1, const DecimalV2Value& v2) {
+#if defined(__x86_64__) && defined(__GNUC__)
+    return DecimalV2Value(div_gcc_x86_64(v1.value(), v2.value()));
+#else
+    return DecimalV2Value(div(v1.value(), v2.value()));
+#endif
+}
 DecimalV2Value operator%(const DecimalV2Value& v1, const DecimalV2Value& v2) {
     int128_t result;
     int128_t x = v1.value();
     int128_t y = v2.value();
 
-    DCHECK(y != 0);
+    //todo: return 0 for divide zero
     if (x == 0 || y == 0) return DecimalV2Value(0);
 
     do_mod(x, y, &result);
@@ -240,242 +267,120 @@ DecimalV2Value& DecimalV2Value::operator+=(const DecimalV2Value& other) {
     return *this;
 }
 
-// Solve a one-dimensional quadratic equation: ax2 + bx + c =0
-// Reference: https://gist.github.com/miloyip/1fcc1859c94d33a01957cf41a7c25fdf
-// Reference: https://www.zhihu.com/question/51381686
-static std::pair<double, double> quadratic_equation_naive(__uint128_t a, __uint128_t b,
-                                                          __uint128_t c) {
-    __uint128_t dis = b * b - 4 * a * c;
-    // assert(dis >= 0);
-    // not handling complex root
-    double sqrtdis = std::sqrt(static_cast<double>(dis));
-    double a_r = static_cast<double>(a);
-    double b_r = static_cast<double>(b);
-    double x1 = (-b_r - sqrtdis) / (a_r + a_r);
-    double x2 = (-b_r + sqrtdis) / (a_r + a_r);
-    return std::make_pair(x1, x2);
-}
-
-static inline double sgn(double x) {
-    if (x > 0)
-        return 1;
-    else if (x < 0)
-        return -1;
-    else
-        return 0;
-}
-
-// In the above quadratic_equation_naive solution process, we found that -b + sqrtdis will
-// get the correct answer, and -b-sqrtdis will get the wrong answer. For two close floating-point
-// decimals a, b, a-b will cause larger errors than a + b, which is called catastrophic cancellation.
-// Both -b and sqrtdis are positive numbers. We can first find the roots brought by -b + sqrtdis,
-// and then use the product of the two roots of the quadratic equation in one unknown to find another root
-static std::pair<double, double> quadratic_equation_better(int128_t a, int128_t b, int128_t c) {
-    if (b == 0) return quadratic_equation_naive(a, b, c);
-    int128_t dis = b * b - 4 * a * c;
-    // assert(dis >= 0);
-    // not handling complex root
-    if (dis < 0) return std::make_pair(0, 0);
-
-    // There may be a loss of precision, but here is used to find the mantissa of the square root.
-    // The current SCALE=9, which is less than the 15 significant digits of the double type,
-    // so theoretically the loss of precision will not be reflected in the result.
-    double sqrtdis = std::sqrt(static_cast<double>(dis));
-    double a_r = static_cast<double>(a);
-    double b_r = static_cast<double>(b);
-    double c_r = static_cast<double>(c);
-    // Here b comes from an unsigned integer, and sgn(b) is always 1,
-    // which is only used to preserve the complete algorithm
-    double x1 = (-b_r - sgn(b_r) * sqrtdis) / (a_r + a_r);
-    double x2 = c_r / (a_r * x1);
-    return std::make_pair(x1, x2);
-}
-
-// Large integer square roots, returns the integer part.
-// The time complexity is lower than the traditional dichotomy
-// and Newton iteration method, and the number of iterations is fixed.
-// in real-time systems, functions that execute an unpredictable number of iterations
-// will make the total time per task unpredictable, and introduce jitter
-// Reference: https://www.embedded.com/integer-square-roots/
-// Reference: https://link.zhihu.com/?target=https%3A//gist.github.com/miloyip/69663b78b26afa0dcc260382a6034b1a
-// Reference: https://www.zhihu.com/question/35122102
-static std::pair<__uint128_t, __uint128_t> sqrt_integer(__uint128_t n) {
-    __uint128_t remainder = 0, root = 0;
-    for (size_t i = 0; i < 64; i++) {
-        root <<= 1;
-        ++root;
-        remainder <<= 2;
-        remainder |= n >> 126;
-        n <<= 2; // Extract 2 MSB from n
-        if (root <= remainder) {
-            remainder -= root;
-            ++root;
-        } else {
-            --root;
-        }
-    }
-    return std::make_pair(root >>= 1, remainder);
-}
-
-// According to the integer part and the remainder of the square root,
-// Use one-dimensional quadratic equation to solve the fractional part of the square root
-static double sqrt_fractional(int128_t sqrt_int, int128_t remainder) {
-    std::pair<double, double> p = quadratic_equation_better(1, 2 * sqrt_int, -remainder);
-    if ((0 < p.first) && (p.first < 1)) return p.first;
-    if ((0 < p.second) && (p.second < 1)) return p.second;
-    return 0;
-}
-
-const int128_t DecimalV2Value::SQRT_MOLECULAR_MAGNIFICATION = get_scale_base(PRECISION / 2);
-const int128_t DecimalV2Value::SQRT_DENOMINATOR =
-        std::sqrt(ONE_BILLION) * get_scale_base(PRECISION / 2 - SCALE);
-
-DecimalV2Value DecimalV2Value::sqrt(const DecimalV2Value& v) {
-    int128_t x = v.value();
-    std::pair<__uint128_t, __uint128_t> sqrt_integer_ret;
-    bool is_negative = (x < 0);
-    if (x == 0) {
-        return DecimalV2Value(0);
-    }
-    sqrt_integer_ret = sqrt_integer(abs(x));
-    int128_t integer_root = static_cast<int128_t>(sqrt_integer_ret.first);
-    int128_t integer_remainder = static_cast<int128_t>(sqrt_integer_ret.second);
-    double fractional = sqrt_fractional(integer_root, integer_remainder);
-
-    // Multiplying by SQRT_MOLECULAR_MAGNIFICATION here will not overflow,
-    // because integer_root can be up to 64 bits.
-    int128_t molecular_integer = integer_root * SQRT_MOLECULAR_MAGNIFICATION;
-    int128_t molecular_fractional =
-            static_cast<int128_t>(fractional * SQRT_MOLECULAR_MAGNIFICATION);
-    int128_t ret = (molecular_integer + molecular_fractional) / SQRT_DENOMINATOR;
-    if (is_negative) ret = -ret;
-    return DecimalV2Value(ret);
+DecimalV2Value& DecimalV2Value::operator-=(const DecimalV2Value& other) {
+    *this = *this - other;
+    return *this;
 }
 
 int DecimalV2Value::parse_from_str(const char* decimal_str, int32_t length) {
     int32_t error = E_DEC_OK;
     StringParser::ParseResult result = StringParser::PARSE_SUCCESS;
 
-    _value = StringParser::string_to_decimal<__int128>(decimal_str, length, PRECISION, SCALE,
-                                                       &result);
-    if (!config::allow_invalid_decimalv2_literal && result != StringParser::PARSE_SUCCESS) {
-        error = E_DEC_BAD_NUM;
-    } else if (config::allow_invalid_decimalv2_literal && result == StringParser::PARSE_FAILURE) {
+    _value = StringParser::string_to_decimal(decimal_str, length, decimal_precision_limit<int128_t>, SCALE, &result);
+    if (result != StringParser::PARSE_SUCCESS && result != StringParser::PARSE_UNDERFLOW) {
         error = E_DEC_BAD_NUM;
     }
     return error;
 }
 
-std::string DecimalV2Value::to_string(int scale) const {
-    int64_t int_val = int_value();
-    int32_t frac_val = abs(frac_value());
-    if (scale < 0 || scale > SCALE) {
-        if (frac_val == 0) {
-            scale = 0;
-        } else {
-            scale = SCALE;
-            while (frac_val != 0 && frac_val % 10 == 0) {
-                frac_val = frac_val / 10;
-                scale--;
-            }
+std::string DecimalV2Value::to_string(int round_scale) const {
+    if (_value == 0) return std::string(1, '0');
+
+    int last_char_idx = PRECISION + 2 + (_value < 0);
+    std::string str = std::string(last_char_idx, '0');
+
+    int128_t remaining_value = _value;
+    int first_digit_idx = 0;
+    if (_value < 0) {
+        remaining_value = -_value;
+        first_digit_idx = 1;
+    }
+
+    int remaining_scale = SCALE;
+    do {
+        str[--last_char_idx] = (remaining_value % 10) + '0';
+        remaining_value /= 10;
+    } while (--remaining_scale > 0);
+    str[--last_char_idx] = '.';
+
+    do {
+        str[--last_char_idx] = (remaining_value % 10) + '0';
+        remaining_value /= 10;
+        if (remaining_value == 0) {
+            if (last_char_idx > first_digit_idx) str.erase(0, last_char_idx - first_digit_idx);
+            break;
         }
-    } else {
-        // roundup to FIX 17191
-        if (scale < SCALE) {
-            int32_t frac_val_tmp = frac_val / SCALE_TRIM_ARRAY[scale];
-            if (frac_val / SCALE_TRIM_ARRAY[scale + 1] % 10 >= 5) {
-                frac_val_tmp++;
-                if (frac_val_tmp >= SCALE_TRIM_ARRAY[9 - scale]) {
-                    frac_val_tmp = 0;
-                    _value >= 0 ? int_val++ : int_val--;
-                }
-            }
-            frac_val = frac_val_tmp;
-        }
+    } while (last_char_idx > first_digit_idx);
+
+    if (_value < 0) str[0] = '-';
+
+    // right trim and round
+    int scale = 0;
+    int len = str.size();
+    for (scale = 0; scale < SCALE && scale < len; scale++) {
+        if (str[len - scale - 1] != '0') break;
     }
-    auto f_int = fmt::format_int(int_val);
-    if (scale == 0) {
-        return f_int.str();
+    if (scale == SCALE) scale++; //integer, trim .
+    if (round_scale >= 0 && round_scale <= SCALE) {
+        scale = std::max(scale, SCALE - round_scale);
     }
-    std::string str;
-    if (_value < 0 && int_val == 0 && frac_val != 0) {
-        str.reserve(f_int.size() + scale + 2);
-        str.push_back('-');
-    } else {
-        str.reserve(f_int.size() + scale + 1);
-    }
-    str.append(f_int.data(), f_int.size());
-    str.push_back('.');
-    if (frac_val == 0) {
-        str.append(scale, '0');
-    } else {
-        auto f_frac = fmt::format_int(frac_val);
-        if (f_frac.size() < scale) {
-            str.append(scale - f_frac.size(), '0');
-        }
-        str.append(f_frac.data(), f_frac.size());
-    }
+    if (scale > 1 && scale <= len) str.erase(len - scale, len - 1);
+
     return str;
 }
 
-int32_t DecimalV2Value::to_buffer(char* buffer, int scale) const {
-    int64_t int_val = int_value();
-    int32_t frac_val = abs(frac_value());
-    if (scale < 0 || scale > SCALE) {
-        if (frac_val == 0) {
-            scale = 0;
-        } else {
-            scale = SCALE;
-            while (frac_val != 0 && frac_val % 10 == 0) {
-                frac_val = frac_val / 10;
-                scale--;
-            }
-        }
-    } else {
-        // roundup to FIX 17191
-        if (scale < SCALE) {
-            int32_t frac_val_tmp = frac_val / SCALE_TRIM_ARRAY[scale];
-            if (frac_val / SCALE_TRIM_ARRAY[scale + 1] % 10 >= 5) {
-                frac_val_tmp++;
-                if (frac_val_tmp >= SCALE_TRIM_ARRAY[9 - scale]) {
-                    frac_val_tmp = 0;
-                    _value >= 0 ? int_val++ : int_val--;
-                }
-            }
-            frac_val = frac_val_tmp;
-        }
-    }
-    int extra_sign_size = 0;
-    if (_value < 0 && int_val == 0 && frac_val != 0) {
-        *buffer++ = '-';
-        extra_sign_size = 1;
-    }
-    auto f_int = fmt::format_int(int_val);
-    memcpy(buffer, f_int.data(), f_int.size());
-    if (scale == 0) {
-        return f_int.size();
-    }
-    *(buffer + f_int.size()) = '.';
-    buffer = buffer + f_int.size() + 1;
-    if (frac_val == 0) {
-        memset(buffer, '0', scale);
-    } else {
-        auto f_frac = fmt::format_int(frac_val);
-        if (f_frac.size() < scale) {
-            memset(buffer, '0', scale - f_frac.size());
-            buffer = buffer + scale - f_frac.size();
-        }
-        memcpy(buffer, f_frac.data(), f_frac.size());
-    }
-    return f_int.size() + scale + 1 + extra_sign_size;
+std::string DecimalV2Value::to_string() const {
+    std::string s;
+    raw::make_room(&s, 64);
+    int len = to_string(s.data());
+    s.resize(len);
+    return s;
 }
 
-std::string DecimalV2Value::to_string() const {
-    return to_string(-1);
+int DecimalV2Value::to_string(char* buff) const {
+    int len = 0;
+    int128_t abs_value = _value;
+    if (_value < 0) {
+        abs_value = -abs_value;
+        buff[len++] = '-';
+    }
+
+    int128_t int_part = abs_value / ONE_BILLION;
+    auto end = fmt::format_to(buff + len, "{}", int_part);
+    len = end - buff;
+
+    int64_t scale_part = abs_value % ONE_BILLION;
+    // 0.011 should find lower boundary and upper boundary
+    // If SCALE = 9, lower is 6, upper is 7
+    int lower = 0;
+    int remainder = 0;
+    while ((lower < SCALE) && (remainder = scale_part % 10) == 0) {
+        lower += 1;
+        scale_part = scale_part / 10;
+    }
+
+    if (scale_part > 0) {
+        buff[len++] = '.';
+
+        int upper = lower;
+        int divisor = scale_part;
+        while ((divisor = divisor / 10) > 0) {
+            upper += 1;
+        }
+
+        for (int i = upper + 1; i < SCALE; i++) {
+            buff[len++] = '0';
+        }
+
+        auto end = fmt::format_to(buff + len, "{}", scale_part);
+        len = end - buff;
+    }
+    return len;
 }
 
 // NOTE: only change abstract value, do not change sign
 void DecimalV2Value::to_max_decimal(int32_t precision, int32_t scale) {
+    bool is_negtive = (_value < 0);
     static const int64_t INT_MAX_VALUE[PRECISION] = {9ll,
                                                      99ll,
                                                      999ll,
@@ -494,11 +399,10 @@ void DecimalV2Value::to_max_decimal(int32_t precision, int32_t scale) {
                                                      9999999999999999ll,
                                                      99999999999999999ll,
                                                      999999999999999999ll};
-    static const int32_t FRAC_MAX_VALUE[SCALE] = {900000000, 990000000, 999000000,
-                                                  999900000, 999990000, 999999000,
-                                                  999999900, 999999990, 999999999};
+    static const int32_t FRAC_MAX_VALUE[SCALE] = {900000000, 990000000, 999000000, 999900000, 999990000,
+                                                  999999000, 999999900, 999999990, 999999999};
 
-    // precision > 0 && scale >= 0 && scale <= SCALE
+    // precison > 0 && scale >= 0 && scale <= SCALE
     if (precision <= 0 || scale < 0) return;
     if (scale > SCALE) scale = SCALE;
 
@@ -514,6 +418,7 @@ void DecimalV2Value::to_max_decimal(int32_t precision, int32_t scale) {
     int64_t int_value = INT_MAX_VALUE[precision - scale - 1];
     int64_t frac_value = scale == 0 ? 0 : FRAC_MAX_VALUE[scale - 1];
     _value = static_cast<int128_t>(int_value) * DecimalV2Value::ONE_BILLION + frac_value;
+    if (is_negtive) _value = -_value;
 }
 
 std::size_t hash_value(DecimalV2Value const& value) {
@@ -579,12 +484,11 @@ bool DecimalV2Value::greater_than_scale(int scale) {
         return ret;
     }
 
-    static const int values[SCALE] = {1,      10,      100,      1000,     10000,
-                                      100000, 1000000, 10000000, 100000000};
+    static const int values[SCALE] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000};
 
     int base = values[SCALE - scale];
     if (frac_val % base != 0) return true;
     return false;
 }
 
-} // end namespace doris
+} // end namespace starrocks

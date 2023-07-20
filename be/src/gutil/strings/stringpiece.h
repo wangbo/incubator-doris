@@ -111,24 +111,25 @@
 
 #pragma once
 
-#include <assert.h>
-#include <stddef.h>
-#include <string.h>
-#include <iosfwd>
-#include <string>
+#include <cassert>
 #include <cstddef>
-#include <iterator>
+#include <cstring>
+#include <functional>
+#include <iosfwd>
+#include <limits>
+#include <string>
 #include <string_view>
-#include <limits> // IWYU pragma: keep
 
+#include "gutil/hash/hash.h"
+#include "gutil/integral_types.h"
+#include "gutil/port.h"
 #include "gutil/strings/fastmem.h"
-#include "gutil/hash/string_hash.h"
-#include "gutil/int128.h"
+#include "gutil/type_traits.h"
 
 class StringPiece {
 private:
-    const char* ptr_;
-    int length_;
+    const char* ptr_{nullptr};
+    int length_{0};
 
 public:
     // We provide non-explicit singleton constructors so users can pass
@@ -137,16 +138,22 @@ public:
     //
     // Style guide exception granted:
     // http://goto/style-guide-exception-20978288
-    StringPiece() : ptr_(NULL), length_(0) {}
+    StringPiece() {}
     StringPiece(const char* str) // NOLINT(runtime/explicit)
             : ptr_(str), length_(0) {
-        if (str != NULL) {
+        if (str != nullptr) {
             size_t length = strlen(str);
             assert(length <= static_cast<size_t>(std::numeric_limits<int>::max()));
             length_ = static_cast<int>(length);
         }
     }
     StringPiece(const std::string& str) // NOLINT(runtime/explicit)
+            : ptr_(str.data()), length_(0) {
+        size_t length = str.size();
+        assert(length <= static_cast<size_t>(std::numeric_limits<int>::max()));
+        length_ = static_cast<int>(length);
+    }
+    StringPiece(std::string_view str) // NOLINT(runtime/explicit)
             : ptr_(str.data()), length_(0) {
         size_t length = str.size();
         assert(length <= static_cast<size_t>(std::numeric_limits<int>::max()));
@@ -172,7 +179,7 @@ public:
     bool empty() const { return length_ == 0; }
 
     void clear() {
-        ptr_ = NULL;
+        ptr_ = nullptr;
         length_ = 0;
     }
 
@@ -184,7 +191,7 @@ public:
 
     void set(const char* str) {
         ptr_ = str;
-        if (str != NULL)
+        if (str != nullptr)
             length_ = static_cast<int>(strlen(str));
         else
             length_ = 0;
@@ -229,20 +236,17 @@ public:
     // for a StringPiece be called "as_string()".  We also leave the
     // "as_string()" method defined here for existing code.
     std::string ToString() const {
-        if (ptr_ == NULL) return std::string();
+        if (ptr_ == nullptr) return std::string();
         return std::string(data(), size());
     }
 
     void CopyToString(std::string* target) const;
     void AppendToString(std::string* target) const;
 
-    bool starts_with(StringPiece x) const {
-        return (length_ >= x.length_) && (memcmp(ptr_, x.ptr_, x.length_) == 0);
-    }
+    bool starts_with(StringPiece x) const { return (length_ >= x.length_) && (memcmp(ptr_, x.ptr_, x.length_) == 0); }
 
     bool ends_with(StringPiece x) const {
-        return ((length_ >= x.length_) &&
-                (memcmp(ptr_ + (length_ - x.length_), x.ptr_, x.length_) == 0));
+        return ((length_ >= x.length_) && (memcmp(ptr_ + (length_ - x.length_), x.ptr_, x.length_) == 0));
     }
 
     // standard STL container boilerplate
@@ -287,6 +291,10 @@ public:
     StringPiece substr(size_type pos, size_type n = npos) const;
 };
 
+#ifndef SWIG
+DECLARE_POD(StringPiece); // So vector<StringPiece> becomes really fast
+#endif
+
 // This large function is defined inline so that in a fairly common case where
 // one of the arguments is a literal, the compiler can elide a lot of the
 // following comparisons.
@@ -320,6 +328,7 @@ inline bool operator<=(StringPiece x, StringPiece y) {
 inline bool operator>=(StringPiece x, StringPiece y) {
     return !(x < y);
 }
+class StringPiece;
 template <class X>
 struct GoodFastHash;
 
@@ -333,10 +342,12 @@ struct GoodFastHash;
 // SWIG doesn't know how to parse this stuff properly. Omit it.
 #ifndef SWIG
 
+namespace std {
 template <>
-struct std::hash<StringPiece> {
+struct hash<StringPiece> {
     size_t operator()(StringPiece s) const;
 };
+} // namespace std
 
 // An implementation of GoodFastHash for StringPiece.  See
 // GoodFastHash values.

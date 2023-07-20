@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/system_metrics.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -16,361 +33,127 @@
 // under the License.
 
 #include "util/system_metrics.h"
+#ifdef USE_JEMALLOC
+#include "jemalloc/jemalloc.h"
+#else
+#include <gperftools/malloc_extension.h>
+#endif
+#include <runtime/exec_env.h>
 
-#include <ctype.h>
-// IWYU pragma: no_include <bthread/errno.h>
-#include <errno.h> // IWYU pragma: keep
-#include <glog/logging.h>
-#include <inttypes.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <memory>
 
-#include <functional>
-#include <ostream>
-#include <unordered_map>
-#include <utility>
-
+#include "column/column_pool.h"
 #include "gutil/strings/split.h" // for string split
 #include "gutil/strtoint.h"      //  for atoi64
-#include "util/mem_info.h"
-#include "util/perf_counters.h"
 
-namespace doris {
+namespace starrocks {
 
-#define DEFINE_CPU_COUNTER_METRIC(metric)                                            \
-    DEFINE_COUNTER_METRIC_PROTOTYPE_5ARG(cpu_##metric, MetricUnit::PERCENT, "", cpu, \
-                                         Labels({{"mode", #metric}}));
-DEFINE_CPU_COUNTER_METRIC(user);
-DEFINE_CPU_COUNTER_METRIC(nice);
-DEFINE_CPU_COUNTER_METRIC(system);
-DEFINE_CPU_COUNTER_METRIC(idle);
-DEFINE_CPU_COUNTER_METRIC(iowait);
-DEFINE_CPU_COUNTER_METRIC(irq);
-DEFINE_CPU_COUNTER_METRIC(soft_irq);
-DEFINE_CPU_COUNTER_METRIC(steal);
-DEFINE_CPU_COUNTER_METRIC(guest);
-DEFINE_CPU_COUNTER_METRIC(guest_nice);
+const char* const SystemMetrics::_s_hook_name = "system_metrics";
 
 // /proc/stat: http://www.linuxhowtos.org/System/procstat.htm
-struct CpuMetrics {
-    CpuMetrics(MetricEntity* ent) : entity(ent) {
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_user);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_nice);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_system);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_idle);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_iowait);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_irq);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_soft_irq);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_steal);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_guest);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, cpu_guest_nice);
-
-        metrics[0] = cpu_user;
-        metrics[1] = cpu_nice;
-        metrics[2] = cpu_system;
-        metrics[3] = cpu_idle;
-        metrics[4] = cpu_iowait;
-        metrics[5] = cpu_irq;
-        metrics[6] = cpu_soft_irq;
-        metrics[7] = cpu_steal;
-        metrics[8] = cpu_guest;
-        metrics[9] = cpu_guest_nice;
-    }
-
+class CpuMetrics {
+public:
     static constexpr int cpu_num_metrics = 10;
-
-    MetricEntity* entity = nullptr;
-    IntAtomicCounter* cpu_user;
-    IntAtomicCounter* cpu_nice;
-    IntAtomicCounter* cpu_system;
-    IntAtomicCounter* cpu_idle;
-    IntAtomicCounter* cpu_iowait;
-    IntAtomicCounter* cpu_irq;
-    IntAtomicCounter* cpu_soft_irq;
-    IntAtomicCounter* cpu_steal;
-    IntAtomicCounter* cpu_guest;
-    IntAtomicCounter* cpu_guest_nice;
-
-    IntAtomicCounter* metrics[cpu_num_metrics];
+    std::unique_ptr<IntAtomicCounter> metrics[cpu_num_metrics] = {
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT),
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT),
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT),
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT),
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT),
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT),
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT),
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT),
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT),
+            std::make_unique<IntAtomicCounter>(MetricUnit::PERCENT)};
+    static const char* const cpu_metrics[cpu_num_metrics];
 };
 
-#define DEFINE_MEMORY_GAUGE_METRIC(metric, unit) \
-    DEFINE_GAUGE_METRIC_PROTOTYPE_2ARG(memory_##metric, unit);
-DEFINE_MEMORY_GAUGE_METRIC(allocated_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(pgpgin, MetricUnit::NOUNIT);
-DEFINE_MEMORY_GAUGE_METRIC(pgpgout, MetricUnit::NOUNIT);
-DEFINE_MEMORY_GAUGE_METRIC(pswpin, MetricUnit::NOUNIT);
-DEFINE_MEMORY_GAUGE_METRIC(pswpout, MetricUnit::NOUNIT);
-#ifndef USE_JEMALLOC
-DEFINE_MEMORY_GAUGE_METRIC(tcmalloc_allocated_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(tcmalloc_total_thread_cache_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(tcmalloc_central_cache_free_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(tcmalloc_transfer_cache_free_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(tcmalloc_thread_cache_free_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(tcmalloc_pageheap_free_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(tcmalloc_pageheap_unmapped_bytes, MetricUnit::BYTES);
-#else
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_allocated_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_active_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_metadata_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_resident_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_mapped_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_retained_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_tcache_bytes, MetricUnit::BYTES);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_pactive_num, MetricUnit::NOUNIT);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_pdirty_num, MetricUnit::NOUNIT);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_pmuzzy_num, MetricUnit::NOUNIT);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_dirty_purged_num, MetricUnit::NOUNIT);
-DEFINE_MEMORY_GAUGE_METRIC(jemalloc_muzzy_purged_num, MetricUnit::NOUNIT);
-#endif
+const char* const CpuMetrics::cpu_metrics[] = {"user", "nice",     "system", "idle",  "iowait",
+                                               "irq",  "soft_irq", "steal",  "guest", "guest_nice"};
 
-struct MemoryMetrics {
-    MemoryMetrics(MetricEntity* ent) : entity(ent) {
-        INT_GAUGE_METRIC_REGISTER(entity, memory_allocated_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_pgpgin);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_pgpgout);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_pswpin);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_pswpout);
-
-#ifndef USE_JEMALLOC
-        INT_GAUGE_METRIC_REGISTER(entity, memory_tcmalloc_allocated_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_tcmalloc_total_thread_cache_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_tcmalloc_central_cache_free_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_tcmalloc_transfer_cache_free_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_tcmalloc_thread_cache_free_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_tcmalloc_pageheap_free_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_tcmalloc_pageheap_unmapped_bytes);
-#else
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_allocated_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_active_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_metadata_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_resident_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_mapped_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_retained_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_tcache_bytes);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_pactive_num);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_pdirty_num);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_pmuzzy_num);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_dirty_purged_num);
-        INT_GAUGE_METRIC_REGISTER(entity, memory_jemalloc_muzzy_purged_num);
-#endif
-    }
-
-    MetricEntity* entity = nullptr;
-    IntGauge* memory_allocated_bytes;
-    IntGauge* memory_pgpgin;
-    IntGauge* memory_pgpgout;
-    IntGauge* memory_pswpin;
-    IntGauge* memory_pswpout;
-
-#ifndef USE_JEMALLOC
-    IntGauge* memory_tcmalloc_allocated_bytes;
-    IntGauge* memory_tcmalloc_total_thread_cache_bytes;
-    IntGauge* memory_tcmalloc_central_cache_free_bytes;
-    IntGauge* memory_tcmalloc_transfer_cache_free_bytes;
-    IntGauge* memory_tcmalloc_thread_cache_free_bytes;
-    IntGauge* memory_tcmalloc_pageheap_free_bytes;
-    IntGauge* memory_tcmalloc_pageheap_unmapped_bytes;
-#else
-    IntGauge* memory_jemalloc_allocated_bytes;
-    IntGauge* memory_jemalloc_active_bytes;
-    IntGauge* memory_jemalloc_metadata_bytes;
-    IntGauge* memory_jemalloc_resident_bytes;
-    IntGauge* memory_jemalloc_mapped_bytes;
-    IntGauge* memory_jemalloc_retained_bytes;
-    IntGauge* memory_jemalloc_tcache_bytes;
-    IntGauge* memory_jemalloc_pactive_num;
-    IntGauge* memory_jemalloc_pdirty_num;
-    IntGauge* memory_jemalloc_pmuzzy_num;
-    IntGauge* memory_jemalloc_dirty_purged_num;
-    IntGauge* memory_jemalloc_muzzy_purged_num;
-#endif
+class DiskMetrics {
+public:
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(reads_completed, MetricUnit::OPERATIONS);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(bytes_read, MetricUnit::BYTES);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(read_time_ms, MetricUnit::MILLISECONDS);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(writes_completed, MetricUnit::OPERATIONS);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(bytes_written, MetricUnit::BYTES);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(write_time_ms, MetricUnit::MILLISECONDS);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(io_time_ms, MetricUnit::MILLISECONDS);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(io_time_weigthed, MetricUnit::MILLISECONDS);
 };
 
-#define DEFINE_DISK_COUNTER_METRIC(metric, unit) \
-    DEFINE_COUNTER_METRIC_PROTOTYPE_2ARG(disk_##metric, unit);
-DEFINE_DISK_COUNTER_METRIC(reads_completed, MetricUnit::OPERATIONS);
-DEFINE_DISK_COUNTER_METRIC(bytes_read, MetricUnit::BYTES);
-DEFINE_DISK_COUNTER_METRIC(read_time_ms, MetricUnit::MILLISECONDS);
-DEFINE_DISK_COUNTER_METRIC(writes_completed, MetricUnit::OPERATIONS);
-DEFINE_DISK_COUNTER_METRIC(bytes_written, MetricUnit::BYTES);
-DEFINE_DISK_COUNTER_METRIC(write_time_ms, MetricUnit::MILLISECONDS);
-DEFINE_DISK_COUNTER_METRIC(io_time_ms, MetricUnit::MILLISECONDS);
-DEFINE_DISK_COUNTER_METRIC(io_time_weigthed, MetricUnit::MILLISECONDS);
-
-struct DiskMetrics {
-    DiskMetrics(MetricEntity* ent) : entity(ent) {
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, disk_reads_completed);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, disk_bytes_read);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, disk_read_time_ms);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, disk_writes_completed);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, disk_bytes_written);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, disk_write_time_ms);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, disk_io_time_ms);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, disk_io_time_weigthed);
-    }
-
-    MetricEntity* entity = nullptr;
-    IntAtomicCounter* disk_reads_completed;
-    IntAtomicCounter* disk_bytes_read;
-    IntAtomicCounter* disk_read_time_ms;
-    IntAtomicCounter* disk_writes_completed;
-    IntAtomicCounter* disk_bytes_written;
-    IntAtomicCounter* disk_write_time_ms;
-    IntAtomicCounter* disk_io_time_ms;
-    IntAtomicCounter* disk_io_time_weigthed;
+class NetMetrics {
+public:
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(receive_bytes, MetricUnit::BYTES);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(receive_packets, MetricUnit::PACKETS);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(send_bytes, MetricUnit::BYTES);
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(send_packets, MetricUnit::PACKETS);
 };
-
-#define DEFINE_NETWORK_COUNTER_METRIC(metric, unit) \
-    DEFINE_COUNTER_METRIC_PROTOTYPE_2ARG(network_##metric, unit);
-DEFINE_NETWORK_COUNTER_METRIC(receive_bytes, MetricUnit::BYTES);
-DEFINE_NETWORK_COUNTER_METRIC(receive_packets, MetricUnit::PACKETS);
-DEFINE_NETWORK_COUNTER_METRIC(send_bytes, MetricUnit::BYTES);
-DEFINE_NETWORK_COUNTER_METRIC(send_packets, MetricUnit::PACKETS);
-
-struct NetworkMetrics {
-    NetworkMetrics(MetricEntity* ent) : entity(ent) {
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, network_receive_bytes);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, network_receive_packets);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, network_send_bytes);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, network_send_packets);
-    }
-
-    MetricEntity* entity = nullptr;
-    IntAtomicCounter* network_receive_bytes;
-    IntAtomicCounter* network_receive_packets;
-    IntAtomicCounter* network_send_bytes;
-    IntAtomicCounter* network_send_packets;
-};
-
-#define DEFINE_SNMP_COUNTER_METRIC(metric, unit, desc) \
-    DEFINE_COUNTER_METRIC_PROTOTYPE_3ARG(snmp_##metric, unit, desc);
-DEFINE_SNMP_COUNTER_METRIC(tcp_in_errs, MetricUnit::NOUNIT,
-                           "The number of all problematic TCP packets received");
-DEFINE_SNMP_COUNTER_METRIC(tcp_retrans_segs, MetricUnit::NOUNIT, "All TCP packets retransmitted");
-DEFINE_SNMP_COUNTER_METRIC(tcp_in_segs, MetricUnit::NOUNIT, "All received TCP packets");
-DEFINE_SNMP_COUNTER_METRIC(tcp_out_segs, MetricUnit::NOUNIT, "All send TCP packets with RST mark");
 
 // metrics read from /proc/net/snmp
-struct SnmpMetrics {
-    SnmpMetrics(MetricEntity* ent) : entity(ent) {
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, snmp_tcp_in_errs);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, snmp_tcp_retrans_segs);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, snmp_tcp_in_segs);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, snmp_tcp_out_segs);
-    }
-
-    MetricEntity* entity = nullptr;
-    IntAtomicCounter* snmp_tcp_in_errs;
-    IntAtomicCounter* snmp_tcp_retrans_segs;
-    IntAtomicCounter* snmp_tcp_in_segs;
-    IntAtomicCounter* snmp_tcp_out_segs;
+class SnmpMetrics {
+public:
+    // The number of all problematic TCP packets received
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(tcp_in_errs, MetricUnit::NOUNIT);
+    // All TCP packets retransmitted
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(tcp_retrans_segs, MetricUnit::NOUNIT);
+    // All received TCP packets
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(tcp_in_segs, MetricUnit::NOUNIT);
+    // All send TCP packets with RST mark
+    METRIC_DEFINE_INT_ATOMIC_COUNTER(tcp_out_segs, MetricUnit::NOUNIT);
 };
 
-#define DEFINE_FD_COUNTER_METRIC(metric, unit) \
-    DEFINE_GAUGE_METRIC_PROTOTYPE_2ARG(fd_##metric, unit);
-DEFINE_FD_COUNTER_METRIC(num_limit, MetricUnit::NOUNIT);
-DEFINE_FD_COUNTER_METRIC(num_used, MetricUnit::NOUNIT);
-
-struct FileDescriptorMetrics {
-    FileDescriptorMetrics(MetricEntity* ent) : entity(ent) {
-        INT_GAUGE_METRIC_REGISTER(entity, fd_num_limit);
-        INT_GAUGE_METRIC_REGISTER(entity, fd_num_used);
-    }
-
-    MetricEntity* entity = nullptr;
-    IntGauge* fd_num_limit;
-    IntGauge* fd_num_used;
+class FileDescriptorMetrics {
+public:
+    METRIC_DEFINE_INT_GAUGE(fd_num_limit, MetricUnit::NOUNIT);
+    METRIC_DEFINE_INT_GAUGE(fd_num_used, MetricUnit::NOUNIT);
 };
 
-#define DEFINE_LOAD_AVERAGE_DOUBLE_METRIC(metric)                                     \
-    DEFINE_GAUGE_METRIC_PROTOTYPE_5ARG(load_average_##metric, MetricUnit::NOUNIT, "", \
-                                       load_average, Labels({{"mode", #metric}}));
-DEFINE_LOAD_AVERAGE_DOUBLE_METRIC(1_minutes);
-DEFINE_LOAD_AVERAGE_DOUBLE_METRIC(5_minutes);
-DEFINE_LOAD_AVERAGE_DOUBLE_METRIC(15_minutes);
-
-struct LoadAverageMetrics {
-    LoadAverageMetrics(MetricEntity* ent) : entity(ent) {
-        INT_DOUBLE_METRIC_REGISTER(entity, load_average_1_minutes);
-        INT_DOUBLE_METRIC_REGISTER(entity, load_average_5_minutes);
-        INT_DOUBLE_METRIC_REGISTER(entity, load_average_15_minutes);
-    }
-
-    MetricEntity* entity = nullptr;
-    DoubleGauge* load_average_1_minutes;
-    DoubleGauge* load_average_5_minutes;
-    DoubleGauge* load_average_15_minutes;
+class QueryCacheMetrics {
+public:
+    METRIC_DEFINE_INT_GAUGE(query_cache_capacity, MetricUnit::BYTES);
+    METRIC_DEFINE_INT_GAUGE(query_cache_usage, MetricUnit::BYTES);
+    METRIC_DEFINE_DOUBLE_GAUGE(query_cache_usage_ratio, MetricUnit::PERCENT);
+    METRIC_DEFINE_INT_GAUGE(query_cache_lookup_count, MetricUnit::NOUNIT);
+    METRIC_DEFINE_INT_GAUGE(query_cache_hit_count, MetricUnit::NOUNIT);
+    METRIC_DEFINE_DOUBLE_GAUGE(query_cache_hit_ratio, MetricUnit::PERCENT);
 };
 
-#define DEFINE_PROC_STAT_COUNTER_METRIC(metric)                                       \
-    DEFINE_COUNTER_METRIC_PROTOTYPE_5ARG(proc_##metric, MetricUnit::NOUNIT, "", proc, \
-                                         Labels({{"mode", #metric}}));
-DEFINE_PROC_STAT_COUNTER_METRIC(interrupt);
-DEFINE_PROC_STAT_COUNTER_METRIC(ctxt_switch);
-DEFINE_PROC_STAT_COUNTER_METRIC(procs_running);
-DEFINE_PROC_STAT_COUNTER_METRIC(procs_blocked);
-
-struct ProcMetrics {
-    ProcMetrics(MetricEntity* ent) : entity(ent) {
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, proc_interrupt);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, proc_ctxt_switch);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, proc_procs_running);
-        INT_ATOMIC_COUNTER_METRIC_REGISTER(entity, proc_procs_blocked);
-    }
-
-    MetricEntity* entity = nullptr;
-
-    IntAtomicCounter* proc_interrupt;
-    IntAtomicCounter* proc_ctxt_switch;
-    IntAtomicCounter* proc_procs_running;
-    IntAtomicCounter* proc_procs_blocked;
-};
-
-DEFINE_GAUGE_CORE_METRIC_PROTOTYPE_2ARG(max_disk_io_util_percent, MetricUnit::PERCENT);
-DEFINE_GAUGE_CORE_METRIC_PROTOTYPE_2ARG(max_network_send_bytes_rate, MetricUnit::BYTES);
-DEFINE_GAUGE_CORE_METRIC_PROTOTYPE_2ARG(max_network_receive_bytes_rate, MetricUnit::BYTES);
-
-const char* SystemMetrics::_s_hook_name = "system_metrics";
-
-SystemMetrics::SystemMetrics(MetricRegistry* registry, const std::set<std::string>& disk_devices,
-                             const std::vector<std::string>& network_interfaces) {
-    DCHECK(registry != nullptr);
-    _registry = registry;
-    _server_entity = _registry->register_entity("server");
-    DCHECK(_server_entity != nullptr);
-    _server_entity->register_hook(_s_hook_name, std::bind(&SystemMetrics::update, this));
-    _install_cpu_metrics();
-    _install_memory_metrics(_server_entity.get());
-    _install_disk_metrics(disk_devices);
-    _install_net_metrics(network_interfaces);
-    _install_fd_metrics(_server_entity.get());
-    _install_snmp_metrics(_server_entity.get());
-    _install_load_avg_metrics(_server_entity.get());
-    _install_proc_metrics(_server_entity.get());
-
-    INT_GAUGE_METRIC_REGISTER(_server_entity.get(), max_disk_io_util_percent);
-    INT_GAUGE_METRIC_REGISTER(_server_entity.get(), max_network_send_bytes_rate);
-    INT_GAUGE_METRIC_REGISTER(_server_entity.get(), max_network_receive_bytes_rate);
-}
+SystemMetrics::SystemMetrics() = default;
 
 SystemMetrics::~SystemMetrics() {
-    DCHECK(_server_entity != nullptr);
-    _server_entity->deregister_hook(_s_hook_name);
-
-    for (auto& it : _cpu_metrics) {
-        delete it.second;
+    // we must deregister us from registry
+    if (_registry != nullptr) {
+        _registry->deregister_hook(_s_hook_name);
+        _registry = nullptr;
     }
     for (auto& it : _disk_metrics) {
         delete it.second;
     }
-    for (auto& it : _network_metrics) {
+    for (auto& it : _net_metrics) {
         delete it.second;
     }
     if (_line_ptr != nullptr) {
         free(_line_ptr);
     }
+}
+
+void SystemMetrics::install(MetricRegistry* registry, const std::set<std::string>& disk_devices,
+                            const std::vector<std::string>& network_interfaces) {
+    DCHECK(_registry == nullptr);
+    if (!registry->register_hook(_s_hook_name, [this] { update(); })) {
+        return;
+    }
+    _install_cpu_metrics(registry);
+    _install_memory_metrics(registry);
+    _install_disk_metrics(registry, disk_devices);
+    _install_net_metrics(registry, network_interfaces);
+    _install_fd_metrics(registry);
+    _install_snmp_metrics(registry);
+    _install_query_cache_metrics(registry);
+    _registry = registry;
 }
 
 void SystemMetrics::update() {
@@ -380,27 +163,24 @@ void SystemMetrics::update() {
     _update_net_metrics();
     _update_fd_metrics();
     _update_snmp_metrics();
-    _update_load_avg_metrics();
-    _update_proc_metrics();
+    _update_query_cache_metrics();
 }
 
-void SystemMetrics::_install_cpu_metrics() {
-    get_cpu_name();
-    for (auto cpu_name : _cpu_names) {
-        auto cpu_entity = _registry->register_entity(cpu_name, {{"device", cpu_name}});
-        CpuMetrics* metrics = new CpuMetrics(cpu_entity.get());
-        _cpu_metrics.emplace(cpu_name, metrics);
+void SystemMetrics::_install_cpu_metrics(MetricRegistry* registry) {
+    _cpu_metrics = std::make_unique<CpuMetrics>();
+
+    for (int i = 0; i < CpuMetrics::cpu_num_metrics; ++i) {
+        registry->register_metric("cpu", MetricLabels().add("mode", CpuMetrics::cpu_metrics[i]),
+                                  _cpu_metrics->metrics[i].get());
     }
 }
 
 #ifdef BE_TEST
-const char* k_ut_stat_path;
-const char* k_ut_diskstats_path;
-const char* k_ut_net_dev_path;
-const char* k_ut_fd_path;
-const char* k_ut_net_snmp_path;
-const char* k_ut_load_avg_path;
-const char* k_ut_vmstat_path;
+const char* k_ut_stat_path;      // NOLINT
+const char* k_ut_diskstats_path; // NOLINT
+const char* k_ut_net_dev_path;   // NOLINT
+const char* k_ut_fd_path;        // NOLINT
+const char* k_ut_net_snmp_path;  // NOLINT
 #endif
 
 void SystemMetrics::_update_cpu_metrics() {
@@ -410,107 +190,213 @@ void SystemMetrics::_update_cpu_metrics() {
     FILE* fp = fopen("/proc/stat", "r");
 #endif
     if (fp == nullptr) {
-        char buf[64];
-        LOG(WARNING) << "open /proc/stat failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "open /proc/stat failed";
         return;
     }
 
-    while (getline(&_line_ptr, &_line_buf_size, fp) > 0) {
-        char cpu[16];
-        int64_t values[CpuMetrics::cpu_num_metrics];
-        memset(values, 0, sizeof(values));
-        int num = sscanf(_line_ptr,
-                         "%15s"
-                         " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
-                         " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
-                         cpu, &values[0], &values[1], &values[2], &values[3], &values[4],
-                         &values[5], &values[6], &values[7], &values[8], &values[9]);
-        if (num < 4) {
-            continue;
-        }
-
-        std::string cpu_name(cpu);
-        auto it = _cpu_metrics.find(cpu_name);
-        if (it == _cpu_metrics.end()) {
-            continue;
-        }
-
-        for (int i = 0; i < CpuMetrics::cpu_num_metrics; ++i) {
-            it->second->metrics[i]->set_value(values[i]);
-        }
+    if (getline(&_line_ptr, &_line_buf_size, fp) < 0) {
+        PLOG(WARNING) << "getline failed";
+        fclose(fp);
+        return;
     }
 
-    if (ferror(fp) != 0) {
-        char buf[64];
-        LOG(WARNING) << "getline failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+    char cpu[16];
+    int64_t values[CpuMetrics::cpu_num_metrics];
+    memset(values, 0, sizeof(values));
+    sscanf(_line_ptr,
+           "%15s"
+           " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
+           " %" PRId64,
+           cpu, &values[0], &values[1], &values[2], &values[3], &values[4], &values[5], &values[6], &values[7],
+           &values[8], &values[9]);
+
+    for (int i = 0; i < CpuMetrics::cpu_num_metrics; ++i) {
+        _cpu_metrics->metrics[i]->set_value(values[i]);
     }
 
     fclose(fp);
 }
 
-void SystemMetrics::_install_memory_metrics(MetricEntity* entity) {
-    _memory_metrics.reset(new MemoryMetrics(entity));
+void SystemMetrics::_install_memory_metrics(MetricRegistry* registry) {
+    _memory_metrics = std::make_unique<MemoryMetrics>();
+#ifndef USE_JEMALLOC
+    registry->register_metric("memory_allocated_bytes", &_memory_metrics->allocated_bytes);
+    registry->register_metric("total_thread_cache_bytes", &_memory_metrics->total_thread_cache_bytes);
+    registry->register_metric("central_cache_free_bytes", &_memory_metrics->central_cache_free_bytes);
+    registry->register_metric("transfer_cache_free_bytes", &_memory_metrics->transfer_cache_free_bytes);
+    registry->register_metric("thread_cache_free_bytes", &_memory_metrics->thread_cache_free_bytes);
+    registry->register_metric("pageheap_free_bytes", &_memory_metrics->pageheap_free_bytes);
+    registry->register_metric("pageheap_unmapped_bytes", &_memory_metrics->pageheap_unmapped_bytes);
+#else
+    registry->register_metric("jemalloc_allocated_bytes", &_memory_metrics->jemalloc_allocated_bytes);
+    registry->register_metric("jemalloc_active_bytes", &_memory_metrics->jemalloc_active_bytes);
+    registry->register_metric("jemalloc_metadata_bytes", &_memory_metrics->jemalloc_metadata_bytes);
+    registry->register_metric("jemalloc_metadata_thp", &_memory_metrics->jemalloc_metadata_thp);
+    registry->register_metric("jemalloc_resident_bytes", &_memory_metrics->jemalloc_resident_bytes);
+    registry->register_metric("jemalloc_mapped_bytes", &_memory_metrics->jemalloc_mapped_bytes);
+    registry->register_metric("jemalloc_retained_bytes", &_memory_metrics->jemalloc_retained_bytes);
+#endif
+
+    registry->register_metric("process_mem_bytes", &_memory_metrics->process_mem_bytes);
+    registry->register_metric("query_mem_bytes", &_memory_metrics->query_mem_bytes);
+    registry->register_metric("load_mem_bytes", &_memory_metrics->load_mem_bytes);
+    registry->register_metric("metadata_mem_bytes", &_memory_metrics->metadata_mem_bytes);
+    registry->register_metric("tablet_metadata_mem_bytes", &_memory_metrics->tablet_metadata_mem_bytes);
+    registry->register_metric("rowset_metadata_mem_bytes", &_memory_metrics->rowset_metadata_mem_bytes);
+    registry->register_metric("segment_metadata_mem_bytes", &_memory_metrics->segment_metadata_mem_bytes);
+    registry->register_metric("column_metadata_mem_bytes", &_memory_metrics->column_metadata_mem_bytes);
+    registry->register_metric("tablet_schema_mem_bytes", &_memory_metrics->tablet_schema_mem_bytes);
+    registry->register_metric("column_zonemap_index_mem_bytes", &_memory_metrics->column_zonemap_index_mem_bytes);
+    registry->register_metric("ordinal_index_mem_bytes", &_memory_metrics->ordinal_index_mem_bytes);
+    registry->register_metric("bitmap_index_mem_bytes", &_memory_metrics->bitmap_index_mem_bytes);
+    registry->register_metric("bloom_filter_index_mem_bytes", &_memory_metrics->bloom_filter_index_mem_bytes);
+    registry->register_metric("segment_zonemap_mem_bytes", &_memory_metrics->segment_zonemap_mem_bytes);
+    registry->register_metric("short_key_index_mem_bytes", &_memory_metrics->short_key_index_mem_bytes);
+    registry->register_metric("compaction_mem_bytes", &_memory_metrics->compaction_mem_bytes);
+    registry->register_metric("schema_change_mem_bytes", &_memory_metrics->schema_change_mem_bytes);
+    registry->register_metric("column_pool_mem_bytes", &_memory_metrics->column_pool_mem_bytes);
+    registry->register_metric("storage_page_cache_mem_bytes", &_memory_metrics->storage_page_cache_mem_bytes);
+    registry->register_metric("update_mem_bytes", &_memory_metrics->update_mem_bytes);
+    registry->register_metric("chunk_allocator_mem_bytes", &_memory_metrics->chunk_allocator_mem_bytes);
+    registry->register_metric("clone_mem_bytes", &_memory_metrics->clone_mem_bytes);
+    registry->register_metric("consistency_mem_bytes", &_memory_metrics->consistency_mem_bytes);
+
+    registry->register_metric("total_column_pool_bytes", &_memory_metrics->column_pool_total_bytes);
+    registry->register_metric("local_column_pool_bytes", &_memory_metrics->column_pool_local_bytes);
+    registry->register_metric("central_column_pool_bytes", &_memory_metrics->column_pool_central_bytes);
+    registry->register_metric("binary_column_pool_bytes", &_memory_metrics->column_pool_binary_bytes);
+    registry->register_metric("uint8_column_pool_bytes", &_memory_metrics->column_pool_uint8_bytes);
+    registry->register_metric("int8_column_pool_bytes", &_memory_metrics->column_pool_int8_bytes);
+    registry->register_metric("int16_column_pool_bytes", &_memory_metrics->column_pool_int16_bytes);
+    registry->register_metric("int32_column_pool_bytes", &_memory_metrics->column_pool_int32_bytes);
+    registry->register_metric("int64_column_pool_bytes", &_memory_metrics->column_pool_int64_bytes);
+    registry->register_metric("int128_column_pool_bytes", &_memory_metrics->column_pool_int128_bytes);
+    registry->register_metric("float_column_pool_bytes", &_memory_metrics->column_pool_float_bytes);
+    registry->register_metric("double_column_pool_bytes", &_memory_metrics->column_pool_double_bytes);
+    registry->register_metric("decimal_column_pool_bytes", &_memory_metrics->column_pool_decimal_bytes);
+    registry->register_metric("date_column_pool_bytes", &_memory_metrics->column_pool_date_bytes);
+    registry->register_metric("datetime_column_pool_bytes", &_memory_metrics->column_pool_datetime_bytes);
 }
 
 void SystemMetrics::_update_memory_metrics() {
-    _memory_metrics->memory_allocated_bytes->set_value(PerfCounters::get_vm_rss());
-    get_metrics_from_proc_vmstat();
-}
-
-void SystemMetrics::update_allocator_metrics() {
+    size_t value = 0;
 #if defined(ADDRESS_SANITIZER) || defined(LEAK_SANITIZER) || defined(THREAD_SANITIZER)
     LOG(INFO) << "Memory tracking is not available with address sanitizer builds.";
 #elif defined(USE_JEMALLOC)
-    _memory_metrics->memory_jemalloc_allocated_bytes->set_value(
-            MemInfo::get_je_metrics("stats.allocated"));
-    _memory_metrics->memory_jemalloc_active_bytes->set_value(
-            MemInfo::get_je_metrics("stats.active"));
-    _memory_metrics->memory_jemalloc_metadata_bytes->set_value(
-            MemInfo::get_je_metrics("stats.metadata"));
-    _memory_metrics->memory_jemalloc_resident_bytes->set_value(
-            MemInfo::get_je_metrics("stats.resident"));
-    _memory_metrics->memory_jemalloc_mapped_bytes->set_value(
-            MemInfo::get_je_metrics("stats.mapped"));
-    _memory_metrics->memory_jemalloc_retained_bytes->set_value(
-            MemInfo::get_je_metrics("stats.retained"));
-    _memory_metrics->memory_jemalloc_tcache_bytes->set_value(
-            MemInfo::get_je_all_arena_metrics("tcache_bytes"));
-    _memory_metrics->memory_jemalloc_pactive_num->set_value(
-            MemInfo::get_je_all_arena_metrics("pactive"));
-    _memory_metrics->memory_jemalloc_pdirty_num->set_value(
-            MemInfo::get_je_all_arena_metrics("pdirty"));
-    _memory_metrics->memory_jemalloc_pmuzzy_num->set_value(
-            MemInfo::get_je_all_arena_metrics("pmuzzy"));
-    _memory_metrics->memory_jemalloc_dirty_purged_num->set_value(
-            MemInfo::get_je_all_arena_metrics("dirty_purged"));
-    _memory_metrics->memory_jemalloc_muzzy_purged_num->set_value(
-            MemInfo::get_je_all_arena_metrics("muzzy_purged"));
+    // Update the statistics cached by mallctl.
+    uint64_t epoch = 1;
+    size_t sz = sizeof(epoch);
+    je_mallctl("epoch", &epoch, &sz, &epoch, sz);
+    sz = sizeof(size_t);
+    if (je_mallctl("stats.allocated", &value, &sz, nullptr, 0) == 0) {
+        _memory_metrics->jemalloc_allocated_bytes.set_value(value);
+    }
+    if (je_mallctl("stats.active", &value, &sz, nullptr, 0) == 0) {
+        _memory_metrics->jemalloc_active_bytes.set_value(value);
+    }
+    if (je_mallctl("stats.metadata", &value, &sz, nullptr, 0) == 0) {
+        _memory_metrics->jemalloc_metadata_bytes.set_value(value);
+    }
+    if (je_mallctl("stats.metadata_thp", &value, &sz, nullptr, 0) == 0) {
+        _memory_metrics->jemalloc_metadata_thp.set_value(value);
+    }
+    if (je_mallctl("stats.resident", &value, &sz, nullptr, 0) == 0) {
+        _memory_metrics->jemalloc_resident_bytes.set_value(value);
+    }
+    if (je_mallctl("stats.mapped", &value, &sz, nullptr, 0) == 0) {
+        _memory_metrics->jemalloc_mapped_bytes.set_value(value);
+    }
+    if (je_mallctl("stats.retained", &value, &sz, nullptr, 0) == 0) {
+        _memory_metrics->jemalloc_retained_bytes.set_value(value);
+    }
 #else
-    _memory_metrics->memory_tcmalloc_allocated_bytes->set_value(
-            MemInfo::get_tc_metrics("generic.total_physical_bytes"));
-    _memory_metrics->memory_tcmalloc_total_thread_cache_bytes->set_value(
-            MemInfo::allocator_cache_mem());
-    _memory_metrics->memory_tcmalloc_central_cache_free_bytes->set_value(
-            MemInfo::get_tc_metrics("tcmalloc.central_cache_free_bytes"));
-    _memory_metrics->memory_tcmalloc_transfer_cache_free_bytes->set_value(
-            MemInfo::get_tc_metrics("tcmalloc.transfer_cache_free_bytes"));
-    _memory_metrics->memory_tcmalloc_thread_cache_free_bytes->set_value(
-            MemInfo::get_tc_metrics("tcmalloc.thread_cache_free_bytes"));
-    _memory_metrics->memory_tcmalloc_pageheap_free_bytes->set_value(
-            MemInfo::get_tc_metrics("tcmalloc.pageheap_free_bytes"));
-    _memory_metrics->memory_tcmalloc_pageheap_unmapped_bytes->set_value(
-            MemInfo::get_tc_metrics("tcmalloc.pageheap_unmapped_bytes"));
+    MallocExtension* ext = MallocExtension::instance();
+    (void)ext->GetNumericProperty("generic.current_allocated_bytes", &value);
+    _memory_metrics->allocated_bytes.set_value(value);
+
+    (void)ext->GetNumericProperty("tcmalloc.current_total_thread_cache_bytes", &value);
+    _memory_metrics->total_thread_cache_bytes.set_value(value);
+
+    (void)ext->GetNumericProperty("tcmalloc.central_cache_free_bytes", &value);
+    _memory_metrics->central_cache_free_bytes.set_value(value);
+
+    (void)ext->GetNumericProperty("tcmalloc.transfer_cache_free_bytes", &value);
+    _memory_metrics->transfer_cache_free_bytes.set_value(value);
+
+    (void)ext->GetNumericProperty("tcmalloc.thread_cache_free_bytes", &value);
+    _memory_metrics->thread_cache_free_bytes.set_value(value);
+
+    (void)ext->GetNumericProperty("tcmalloc.pageheap_free_bytes", &value);
+    _memory_metrics->pageheap_free_bytes.set_value(value);
+
+    (void)ext->GetNumericProperty("tcmalloc.pageheap_unmapped_bytes", &value);
+    _memory_metrics->pageheap_unmapped_bytes.set_value(value);
 #endif
+
+#define SET_MEM_METRIC_VALUE(tracker, key)                                                \
+    if (ExecEnv::GetInstance()->tracker() != nullptr) {                                   \
+        _memory_metrics->key.set_value(ExecEnv::GetInstance()->tracker()->consumption()); \
+    }
+
+    SET_MEM_METRIC_VALUE(process_mem_tracker, process_mem_bytes)
+    SET_MEM_METRIC_VALUE(query_pool_mem_tracker, query_mem_bytes)
+    SET_MEM_METRIC_VALUE(load_mem_tracker, load_mem_bytes)
+    SET_MEM_METRIC_VALUE(metadata_mem_tracker, metadata_mem_bytes)
+    SET_MEM_METRIC_VALUE(tablet_metadata_mem_tracker, tablet_metadata_mem_bytes)
+    SET_MEM_METRIC_VALUE(rowset_metadata_mem_tracker, rowset_metadata_mem_bytes)
+    SET_MEM_METRIC_VALUE(segment_metadata_mem_tracker, segment_metadata_mem_bytes)
+    SET_MEM_METRIC_VALUE(column_metadata_mem_tracker, column_metadata_mem_bytes)
+    SET_MEM_METRIC_VALUE(tablet_schema_mem_tracker, tablet_schema_mem_bytes)
+    SET_MEM_METRIC_VALUE(column_zonemap_index_mem_tracker, column_zonemap_index_mem_bytes)
+    SET_MEM_METRIC_VALUE(ordinal_index_mem_tracker, ordinal_index_mem_bytes)
+    SET_MEM_METRIC_VALUE(bitmap_index_mem_tracker, bitmap_index_mem_bytes)
+    SET_MEM_METRIC_VALUE(bloom_filter_index_mem_tracker, bloom_filter_index_mem_bytes)
+    SET_MEM_METRIC_VALUE(segment_zonemap_mem_tracker, segment_zonemap_mem_bytes)
+    SET_MEM_METRIC_VALUE(short_key_index_mem_tracker, short_key_index_mem_bytes)
+    SET_MEM_METRIC_VALUE(compaction_mem_tracker, compaction_mem_bytes)
+    SET_MEM_METRIC_VALUE(schema_change_mem_tracker, schema_change_mem_bytes)
+    SET_MEM_METRIC_VALUE(page_cache_mem_tracker, storage_page_cache_mem_bytes)
+    SET_MEM_METRIC_VALUE(update_mem_tracker, update_mem_bytes)
+    SET_MEM_METRIC_VALUE(chunk_allocator_mem_tracker, chunk_allocator_mem_bytes)
+    SET_MEM_METRIC_VALUE(clone_mem_tracker, clone_mem_bytes)
+    SET_MEM_METRIC_VALUE(column_pool_mem_tracker, column_pool_mem_bytes)
+    SET_MEM_METRIC_VALUE(consistency_mem_tracker, consistency_mem_bytes)
+#undef SET_MEM_METRIC_VALUE
+
+#define UPDATE_COLUMN_POOL_METRIC(var, type)                 \
+    value = describe_column_pool<type>().central_free_bytes; \
+    var.set_value(value);
+
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_binary_bytes, BinaryColumn)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_uint8_bytes, UInt8Column)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_int8_bytes, Int8Column)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_int16_bytes, Int16Column)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_int32_bytes, Int32Column)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_int64_bytes, Int64Column)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_int128_bytes, Int128Column)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_float_bytes, FloatColumn)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_double_bytes, DoubleColumn)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_decimal_bytes, DecimalColumn)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_date_bytes, DateColumn)
+    UPDATE_COLUMN_POOL_METRIC(_memory_metrics->column_pool_datetime_bytes, TimestampColumn)
+
+#undef UPDATE_COLUMN_POOL_METRIC
 }
 
-void SystemMetrics::_install_disk_metrics(const std::set<std::string>& disk_devices) {
-    for (auto& disk_device : disk_devices) {
-        auto disk_entity = _registry->register_entity(std::string("disk_metrics.") + disk_device,
-                                                      {{"device", disk_device}});
-        DiskMetrics* metrics = new DiskMetrics(disk_entity.get());
-        _disk_metrics.emplace(disk_device, metrics);
+void SystemMetrics::_install_disk_metrics(MetricRegistry* registry, const std::set<std::string>& devices) {
+    for (auto& disk : devices) {
+        auto* metrics = new DiskMetrics();
+#define REGISTER_DISK_METRIC(name) \
+    registry->register_metric("disk_" #name, MetricLabels().add("device", disk), &metrics->name)
+        REGISTER_DISK_METRIC(reads_completed);
+        REGISTER_DISK_METRIC(bytes_read);
+        REGISTER_DISK_METRIC(read_time_ms);
+        REGISTER_DISK_METRIC(writes_completed);
+        REGISTER_DISK_METRIC(bytes_written);
+        REGISTER_DISK_METRIC(write_time_ms);
+        REGISTER_DISK_METRIC(io_time_ms);
+        REGISTER_DISK_METRIC(io_time_weigthed);
+        _disk_metrics.emplace(disk, metrics);
     }
 }
 
@@ -521,9 +407,7 @@ void SystemMetrics::_update_disk_metrics() {
     FILE* fp = fopen("/proc/diskstats", "r");
 #endif
     if (fp == nullptr) {
-        char buf[64];
-        LOG(WARNING) << "open /proc/diskstats failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "open /proc/diskstats failed";
         return;
     }
 
@@ -542,7 +426,7 @@ void SystemMetrics::_update_disk_metrics() {
     // 12 - I/Os currently in progress
     // 13 - time spent doing I/Os (ms)
     // 14 - weighted time spent doing I/Os (ms)
-    // I think 1024 is enough for device name
+    // I think 1024 is enougth for device name
     int major = 0;
     int minor = 0;
     char device[1024];
@@ -551,55 +435,62 @@ void SystemMetrics::_update_disk_metrics() {
         memset(values, 0, sizeof(values));
         int num = sscanf(_line_ptr,
                          "%d %d %1023s"
-                         " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
-                         " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
-                         &major, &minor, device, &values[0], &values[1], &values[2], &values[3],
-                         &values[4], &values[5], &values[6], &values[7], &values[8], &values[9],
-                         &values[10]);
+                         " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
+                         " %" PRId64 " %" PRId64 " %" PRId64,
+                         &major, &minor, device, &values[0], &values[1], &values[2], &values[3], &values[4], &values[5],
+                         &values[6], &values[7], &values[8], &values[9], &values[10]);
         if (num < 4) {
             continue;
         }
         auto it = _disk_metrics.find(device);
-        if (it == _disk_metrics.end()) {
+        if (it == std::end(_disk_metrics)) {
             continue;
         }
         // update disk metrics
         // reads_completed: 4 reads completed successfully
-        it->second->disk_reads_completed->set_value(values[0]);
+        it->second->reads_completed.set_value(values[0]);
         // bytes_read: 6 sectors read * 512; 5 reads merged is ignored
-        it->second->disk_bytes_read->set_value(values[2] * 512);
+        it->second->bytes_read.set_value(values[2] * 512);
         // read_time_ms: 7 time spent reading (ms)
-        it->second->disk_read_time_ms->set_value(values[3]);
+        it->second->read_time_ms.set_value(values[3]);
         // writes_completed: 8 writes completed
-        it->second->disk_writes_completed->set_value(values[4]);
+        it->second->writes_completed.set_value(values[4]);
         // bytes_written: 10 sectors write * 512; 9 writes merged is ignored
-        it->second->disk_bytes_written->set_value(values[6] * 512);
+        it->second->bytes_written.set_value(values[6] * 512);
         // write_time_ms: 11 time spent writing (ms)
-        it->second->disk_write_time_ms->set_value(values[7]);
+        it->second->write_time_ms.set_value(values[7]);
         // io_time_ms: 13 time spent doing I/Os (ms)
-        it->second->disk_io_time_ms->set_value(values[9]);
+        it->second->io_time_ms.set_value(values[9]);
         // io_time_weigthed: 14 - weighted time spent doing I/Os (ms)
-        it->second->disk_io_time_weigthed->set_value(values[10]);
+        it->second->io_time_weigthed.set_value(values[10]);
     }
     if (ferror(fp) != 0) {
-        char buf[64];
-        LOG(WARNING) << "getline failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "getline failed";
     }
     fclose(fp);
 }
 
-void SystemMetrics::_install_net_metrics(const std::vector<std::string>& interfaces) {
-    for (auto& interface : interfaces) {
-        auto interface_entity = _registry->register_entity(
-                std::string("network_metrics.") + interface, {{"device", interface}});
-        NetworkMetrics* metrics = new NetworkMetrics(interface_entity.get());
-        _network_metrics.emplace(interface, metrics);
+void SystemMetrics::_install_net_metrics(MetricRegistry* registry, const std::vector<std::string>& interfaces) {
+    for (const auto& net : interfaces) {
+        auto* metrics = new NetMetrics();
+#define REGISTER_NETWORK_METRIC(name) \
+    registry->register_metric("network_" #name, MetricLabels().add("device", net), &metrics->name)
+        REGISTER_NETWORK_METRIC(receive_bytes);
+        REGISTER_NETWORK_METRIC(receive_packets);
+        REGISTER_NETWORK_METRIC(send_bytes);
+        REGISTER_NETWORK_METRIC(send_packets);
+        _net_metrics.emplace(net, metrics);
     }
 }
 
-void SystemMetrics::_install_snmp_metrics(MetricEntity* entity) {
-    _snmp_metrics.reset(new SnmpMetrics(entity));
+void SystemMetrics::_install_snmp_metrics(MetricRegistry* registry) {
+    _snmp_metrics = std::make_unique<SnmpMetrics>();
+#define REGISTER_SNMP_METRIC(name) \
+    registry->register_metric("snmp", MetricLabels().add("name", #name), &_snmp_metrics->name)
+    REGISTER_SNMP_METRIC(tcp_in_errs);
+    REGISTER_SNMP_METRIC(tcp_retrans_segs);
+    REGISTER_SNMP_METRIC(tcp_in_segs);
+    REGISTER_SNMP_METRIC(tcp_out_segs);
 }
 
 void SystemMetrics::_update_net_metrics() {
@@ -610,18 +501,13 @@ void SystemMetrics::_update_net_metrics() {
     FILE* fp = fopen("/proc/net/dev", "r");
 #endif
     if (fp == nullptr) {
-        char buf[64];
-        LOG(WARNING) << "open /proc/net/dev failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "open /proc/net/dev failed";
         return;
     }
 
     // Ignore header
-    if (getline(&_line_ptr, &_line_buf_size, fp) < 0 ||
-        getline(&_line_ptr, &_line_buf_size, fp) < 0) {
-        char buf[64];
-        LOG(WARNING) << "read /proc/net/dev first two line failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+    if (getline(&_line_ptr, &_line_buf_size, fp) < 0 || getline(&_line_ptr, &_line_buf_size, fp) < 0) {
+        PLOG(WARNING) << "read /proc/net/dev first two line failed";
         fclose(fp);
         return;
     }
@@ -645,8 +531,8 @@ void SystemMetrics::_update_net_metrics() {
             start++;
         }
         std::string interface(start, ptr - start);
-        auto it = _network_metrics.find(interface);
-        if (it == _network_metrics.end()) {
+        auto it = _net_metrics.find(interface);
+        if (it == std::end(_net_metrics)) {
             continue;
         }
         ptr++;
@@ -685,15 +571,13 @@ void SystemMetrics::_update_net_metrics() {
         default:
             break;
         }
-        it->second->network_receive_bytes->set_value(receive_bytes);
-        it->second->network_receive_packets->set_value(receive_packets);
-        it->second->network_send_bytes->set_value(send_bytes);
-        it->second->network_send_packets->set_value(send_packets);
+        it->second->receive_bytes.set_value(receive_bytes);
+        it->second->receive_packets.set_value(receive_packets);
+        it->second->send_bytes.set_value(send_bytes);
+        it->second->send_packets.set_value(send_packets);
     }
     if (ferror(fp) != 0) {
-        char buf[64];
-        LOG(WARNING) << "getline failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "getline failed";
     }
     fclose(fp);
 }
@@ -706,23 +590,19 @@ void SystemMetrics::_update_snmp_metrics() {
     FILE* fp = fopen("/proc/net/snmp", "r");
 #endif
     if (fp == nullptr) {
-        char buf[64];
-        LOG(WARNING) << "open /proc/net/snmp failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "open /proc/net/snmp failed";
         return;
     }
 
     // We only care about Tcp lines, so skip other lines in front of Tcp line
-    int res = 0;
+    int res;
     while ((res = getline(&_line_ptr, &_line_buf_size, fp)) > 0) {
         if (strstr(_line_ptr, "Tcp") != nullptr) {
             break;
         }
     }
     if (res <= 0) {
-        char buf[64];
-        LOG(WARNING) << "failed to skip lines of /proc/net/snmp, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "failed to skip lines of /proc/net/snmp";
         fclose(fp);
         return;
     }
@@ -738,9 +618,7 @@ void SystemMetrics::_update_snmp_metrics() {
 
     // read the metrics of TCP
     if (getline(&_line_ptr, &_line_buf_size, fp) < 0) {
-        char buf[64];
-        LOG(WARNING) << "failed to skip Tcp header line of /proc/net/snmp, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "failed to skip Tcp header line of /proc/net/snmp";
         fclose(fp);
         return;
     }
@@ -757,21 +635,50 @@ void SystemMetrics::_update_snmp_metrics() {
     int64_t in_errs = atoi64(metrics[header_map["InErrs"]]);
     int64_t in_segs = atoi64(metrics[header_map["InSegs"]]);
     int64_t out_segs = atoi64(metrics[header_map["OutSegs"]]);
-    _snmp_metrics->snmp_tcp_retrans_segs->set_value(retrans_segs);
-    _snmp_metrics->snmp_tcp_in_errs->set_value(in_errs);
-    _snmp_metrics->snmp_tcp_in_segs->set_value(in_segs);
-    _snmp_metrics->snmp_tcp_out_segs->set_value(out_segs);
+    _snmp_metrics->tcp_retrans_segs.set_value(retrans_segs);
+    _snmp_metrics->tcp_in_errs.set_value(in_errs);
+    _snmp_metrics->tcp_in_segs.set_value(in_segs);
+    _snmp_metrics->tcp_out_segs.set_value(out_segs);
 
     if (ferror(fp) != 0) {
-        char buf[64];
-        LOG(WARNING) << "getline failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "getline failed";
     }
     fclose(fp);
 }
 
-void SystemMetrics::_install_fd_metrics(MetricEntity* entity) {
-    _fd_metrics.reset(new FileDescriptorMetrics(entity));
+void SystemMetrics::_update_query_cache_metrics() {
+    auto* cache_mgr = ExecEnv::GetInstance()->cache_mgr();
+    if (UNLIKELY(cache_mgr == nullptr)) {
+        return;
+    }
+    auto capacity = cache_mgr->capacity();
+    auto usage = cache_mgr->memory_usage();
+    auto lookup_count = cache_mgr->lookup_count();
+    auto hit_count = cache_mgr->hit_count();
+    auto usage_ratio = (capacity == 0L) ? 0.0 : double(usage) / double(capacity);
+    auto hit_ratio = (lookup_count == 0L) ? 0.0 : double(hit_count) / double(lookup_count);
+    _query_cache_metrics->query_cache_capacity.set_value(capacity);
+    _query_cache_metrics->query_cache_usage.set_value(usage);
+    _query_cache_metrics->query_cache_usage_ratio.set_value(usage_ratio);
+    _query_cache_metrics->query_cache_lookup_count.set_value(lookup_count);
+    _query_cache_metrics->query_cache_hit_count.set_value(hit_count);
+    _query_cache_metrics->query_cache_hit_ratio.set_value(hit_ratio);
+}
+
+void SystemMetrics::_install_fd_metrics(MetricRegistry* registry) {
+    _fd_metrics = std::make_unique<FileDescriptorMetrics>();
+    registry->register_metric("fd_num_limit", &_fd_metrics->fd_num_limit);
+    registry->register_metric("fd_num_used", &_fd_metrics->fd_num_used);
+}
+
+void SystemMetrics::_install_query_cache_metrics(starrocks::MetricRegistry* registry) {
+    _query_cache_metrics = std::make_unique<QueryCacheMetrics>();
+    registry->register_metric("query_cache_capacity", &_query_cache_metrics->query_cache_capacity);
+    registry->register_metric("query_cache_usage", &_query_cache_metrics->query_cache_usage);
+    registry->register_metric("query_cache_usage_ratio", &_query_cache_metrics->query_cache_usage_ratio);
+    registry->register_metric("query_cache_lookup_count", &_query_cache_metrics->query_cache_lookup_count);
+    registry->register_metric("query_cache_hit_count", &_query_cache_metrics->query_cache_hit_count);
+    registry->register_metric("query_cache_hit_ratio", &_query_cache_metrics->query_cache_hit_ratio);
 }
 
 void SystemMetrics::_update_fd_metrics() {
@@ -781,9 +688,7 @@ void SystemMetrics::_update_fd_metrics() {
     FILE* fp = fopen("/proc/sys/fs/file-nr", "r");
 #endif
     if (fp == nullptr) {
-        char buf[64];
-        LOG(WARNING) << "open /proc/sys/fs/file-nr failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "open /proc/sys/fs/file-nr failed";
         return;
     }
 
@@ -795,63 +700,23 @@ void SystemMetrics::_update_fd_metrics() {
     int64_t values[3];
     if (getline(&_line_ptr, &_line_buf_size, fp) > 0) {
         memset(values, 0, sizeof(values));
-        int num = sscanf(_line_ptr, "%" PRId64 " %" PRId64 " %" PRId64, &values[0], &values[1],
-                         &values[2]);
+        int num = sscanf(_line_ptr, "%" PRId64 " %" PRId64 " %" PRId64, &values[0], &values[1], &values[2]);
         if (num == 3) {
-            _fd_metrics->fd_num_limit->set_value(values[2]);
-            _fd_metrics->fd_num_used->set_value(values[0] - values[1]);
+            _fd_metrics->fd_num_limit.set_value(values[2]);
+            _fd_metrics->fd_num_used.set_value(values[0] - values[1]);
         }
     }
 
     if (ferror(fp) != 0) {
-        char buf[64];
-        LOG(WARNING) << "getline failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
+        PLOG(WARNING) << "getline failed";
     }
     fclose(fp);
 }
 
-void SystemMetrics::_install_load_avg_metrics(MetricEntity* entity) {
-    _load_average_metrics.reset(new LoadAverageMetrics(entity));
-}
-
-void SystemMetrics::_update_load_avg_metrics() {
-#ifdef BE_TEST
-    FILE* fp = fopen(k_ut_load_avg_path, "r");
-#else
-    FILE* fp = fopen("/proc/loadavg", "r");
-#endif
-    if (fp == nullptr) {
-        char buf[64];
-        LOG(WARNING) << "open /proc/loadavg failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
-        return;
-    }
-
-    double values[3];
-    if (getline(&_line_ptr, &_line_buf_size, fp) > 0) {
-        memset(values, 0, sizeof(values));
-        int num = sscanf(_line_ptr, "%lf %lf %lf", &values[0], &values[1], &values[2]);
-        if (num == 3) {
-            _load_average_metrics->load_average_1_minutes->set_value(values[0]);
-            _load_average_metrics->load_average_5_minutes->set_value(values[1]);
-            _load_average_metrics->load_average_15_minutes->set_value(values[2]);
-        }
-    }
-
-    if (ferror(fp) != 0) {
-        char buf[64];
-        LOG(WARNING) << "getline failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
-    }
-    fclose(fp);
-}
-
-int64_t SystemMetrics::get_max_io_util(const std::map<std::string, int64_t>& lst_value,
-                                       int64_t interval_sec) {
+int64_t SystemMetrics::get_max_io_util(const std::map<std::string, int64_t>& lst_value, int64_t interval_sec) {
     int64_t max = 0;
     for (auto& it : _disk_metrics) {
-        int64_t cur = it.second->disk_io_time_ms->value();
+        int64_t cur = it.second->io_time_ms.value();
         const auto find = lst_value.find(it.first);
         if (find == lst_value.end()) {
             continue;
@@ -865,7 +730,7 @@ int64_t SystemMetrics::get_max_io_util(const std::map<std::string, int64_t>& lst
 void SystemMetrics::get_disks_io_time(std::map<std::string, int64_t>* map) {
     map->clear();
     for (auto& it : _disk_metrics) {
-        map->emplace(it.first, it.second->disk_io_time_ms->value());
+        map->emplace(it.first, it.second->io_time_ms.value());
     }
 }
 
@@ -873,24 +738,23 @@ void SystemMetrics::get_network_traffic(std::map<std::string, int64_t>* send_map
                                         std::map<std::string, int64_t>* rcv_map) {
     send_map->clear();
     rcv_map->clear();
-    for (auto& it : _network_metrics) {
+    for (auto& it : _net_metrics) {
         if (it.first == "lo") {
             continue;
         }
-        send_map->emplace(it.first, it.second->network_send_bytes->value());
-        rcv_map->emplace(it.first, it.second->network_receive_bytes->value());
+        send_map->emplace(it.first, it.second->send_bytes.value());
+        rcv_map->emplace(it.first, it.second->receive_bytes.value());
     }
 }
 
 void SystemMetrics::get_max_net_traffic(const std::map<std::string, int64_t>& lst_send_map,
-                                        const std::map<std::string, int64_t>& lst_rcv_map,
-                                        int64_t interval_sec, int64_t* send_rate,
-                                        int64_t* rcv_rate) {
+                                        const std::map<std::string, int64_t>& lst_rcv_map, int64_t interval_sec,
+                                        int64_t* send_rate, int64_t* rcv_rate) {
     int64_t max_send = 0;
     int64_t max_rcv = 0;
-    for (auto& it : _network_metrics) {
-        int64_t cur_send = it.second->network_send_bytes->value();
-        int64_t cur_rcv = it.second->network_receive_bytes->value();
+    for (auto& it : _net_metrics) {
+        int64_t cur_send = it.second->send_bytes.value();
+        int64_t cur_rcv = it.second->receive_bytes.value();
 
         const auto find_send = lst_send_map.find(it.first);
         if (find_send != lst_send_map.end()) {
@@ -907,146 +771,4 @@ void SystemMetrics::get_max_net_traffic(const std::map<std::string, int64_t>& ls
     *send_rate = max_send / interval_sec;
     *rcv_rate = max_rcv / interval_sec;
 }
-
-void SystemMetrics::update_max_disk_io_util_percent(const std::map<std::string, int64_t>& lst_value,
-                                                    int64_t interval_sec) {
-    max_disk_io_util_percent->set_value(get_max_io_util(lst_value, interval_sec));
-}
-
-void SystemMetrics::update_max_network_send_bytes_rate(int64_t max_send_bytes_rate) {
-    max_network_send_bytes_rate->set_value(max_send_bytes_rate);
-}
-
-void SystemMetrics::update_max_network_receive_bytes_rate(int64_t max_receive_bytes_rate) {
-    max_network_receive_bytes_rate->set_value(max_receive_bytes_rate);
-}
-
-void SystemMetrics::_install_proc_metrics(MetricEntity* entity) {
-    _proc_metrics.reset(new ProcMetrics(entity));
-}
-
-void SystemMetrics::_update_proc_metrics() {
-#ifdef BE_TEST
-    FILE* fp = fopen(k_ut_stat_path, "r");
-#else
-    FILE* fp = fopen("/proc/stat", "r");
-#endif
-    if (fp == nullptr) {
-        char buf[64];
-        LOG(WARNING) << "open /proc/stat failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
-        return;
-    }
-
-    uint64_t inter = 0, ctxt = 0, procs_r = 0, procs_b = 0;
-    while (getline(&_line_ptr, &_line_buf_size, fp) > 0) {
-        char* start_pos = nullptr;
-        start_pos = strstr(_line_ptr, "intr ");
-        if (start_pos) {
-            sscanf(start_pos, "intr %" PRIu64, &inter);
-            _proc_metrics->proc_interrupt->set_value(inter);
-        }
-
-        start_pos = strstr(_line_ptr, "ctxt ");
-        if (start_pos) {
-            sscanf(start_pos, "ctxt %" PRIu64, &ctxt);
-            _proc_metrics->proc_ctxt_switch->set_value(ctxt);
-        }
-
-        start_pos = strstr(_line_ptr, "procs_running ");
-        if (start_pos) {
-            sscanf(start_pos, "procs_running %" PRIu64, &procs_r);
-            _proc_metrics->proc_procs_running->set_value(procs_r);
-        }
-
-        start_pos = strstr(_line_ptr, "procs_blocked ");
-        if (start_pos) {
-            sscanf(start_pos, "procs_blocked %" PRIu64, &procs_b);
-            _proc_metrics->proc_procs_blocked->set_value(procs_b);
-        }
-    }
-
-    if (ferror(fp) != 0) {
-        char buf[64];
-        LOG(WARNING) << "getline failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
-    }
-
-    fclose(fp);
-}
-
-void SystemMetrics::get_metrics_from_proc_vmstat() {
-#ifdef BE_TEST
-    FILE* fp = fopen(k_ut_vmstat_path, "r");
-#else
-    FILE* fp = fopen("/proc/vmstat", "r");
-#endif
-    if (fp == nullptr) {
-        char buf[64];
-        LOG(WARNING) << "open /proc/vmstat failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
-        return;
-    }
-
-    while (getline(&_line_ptr, &_line_buf_size, fp) > 0) {
-        uint64_t value;
-        char name[64];
-        int num = sscanf(_line_ptr, "%s %" PRIu64, name, &value);
-        if (num < 2) {
-            continue;
-        }
-
-        if (strcmp(name, "pgpgin") == 0) {
-            _memory_metrics->memory_pgpgin->set_value(value);
-        } else if (strcmp(name, "pgpgout") == 0) {
-            _memory_metrics->memory_pgpgout->set_value(value);
-        } else if (strcmp(name, "pswpin") == 0) {
-            _memory_metrics->memory_pswpin->set_value(value);
-        } else if (strcmp(name, "pswpout") == 0) {
-            _memory_metrics->memory_pswpout->set_value(value);
-        }
-    }
-
-    if (ferror(fp) != 0) {
-        char buf[64];
-        LOG(WARNING) << "getline failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
-    }
-
-    fclose(fp);
-}
-
-void SystemMetrics::get_cpu_name() {
-#ifdef BE_TEST
-    FILE* fp = fopen(k_ut_stat_path, "r");
-#else
-    FILE* fp = fopen("/proc/stat", "r");
-#endif
-    if (fp == nullptr) {
-        char buf[64];
-        LOG(WARNING) << "open /proc/stat failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
-        return;
-    }
-
-    while (getline(&_line_ptr, &_line_buf_size, fp) > 0) {
-        char cpu[16];
-        char* start_pos = nullptr;
-        start_pos = strstr(_line_ptr, "cpu");
-        if (start_pos) {
-            sscanf(_line_ptr, "%15s", cpu);
-            std::string cpu_name(cpu);
-            _cpu_names.push_back(cpu_name);
-        }
-    }
-
-    if (ferror(fp) != 0) {
-        char buf[64];
-        LOG(WARNING) << "getline failed, errno=" << errno
-                     << ", message=" << strerror_r(errno, buf, 64);
-    }
-
-    fclose(fp);
-}
-
-} // namespace doris
+} // namespace starrocks

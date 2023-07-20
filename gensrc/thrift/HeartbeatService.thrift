@@ -1,6 +1,3 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
 // regarding copyright ownership.  The ASF licenses this file
 // to you under the Apache License, Version 2.0 (the
 // "License"); you may not use this file except in compliance
@@ -15,10 +12,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-namespace cpp doris
-namespace java org.apache.doris.thrift
+namespace cpp starrocks
+namespace java com.starrocks.thrift
 
-include "AgentService.thrift"
 include "Status.thrift"
 include "Types.thrift"
 
@@ -29,10 +25,11 @@ struct TMasterInfo {
     2: required Types.TClusterId cluster_id
     3: required Types.TEpoch epoch
     4: optional string token 
-    5: optional string backend_ip //This may be an IP or domain name, and it should be renamed 'backend_host', as it requires compatibility with historical versions, the name is still 'backend_ ip'
+    5: optional string backend_ip
     6: optional Types.TPort http_port
     7: optional i64 heartbeat_flags
     8: optional i64 backend_id
+    9: optional i64 min_active_txn_id = 0
 }
 
 struct TBackendInfo {
@@ -41,8 +38,9 @@ struct TBackendInfo {
     3: optional Types.TPort be_rpc_port
     4: optional Types.TPort brpc_port
     5: optional string version
-    6: optional i64 be_start_time
-    7: optional string be_node_role
+    6: optional i32 num_hardware_cores
+    7: optional Types.TPort starlet_port
+    8: optional i64 reboot_time
 }
 
 struct THeartbeatResult {

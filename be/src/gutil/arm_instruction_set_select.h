@@ -11,14 +11,13 @@
 #define ARMV7 1
 #endif
 
-#if defined(ARMV7) || defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_6J__) ||                 \
-        defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6Z__) || defined(__ARM_ARCH_6T2__) || \
-        defined(__ARM_ARCH_6ZK__)
+#if defined(ARMV7) || defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_6J__) || defined(__ARM_ARCH_6K__) || \
+        defined(__ARM_ARCH_6Z__) || defined(__ARM_ARCH_6T2__) || defined(__ARM_ARCH_6ZK__)
 #define ARMV6 1
 #endif
 
-#if defined(ARMV6) || defined(__ARM_ARCH_5T__) || defined(__ARM_ARCH_5E__) || \
-        defined(__ARM_ARCH_5TE__) || defined(__ARM_ARCH_5TEJ__)
+#if defined(ARMV6) || defined(__ARM_ARCH_5T__) || defined(__ARM_ARCH_5E__) || defined(__ARM_ARCH_5TE__) || \
+        defined(__ARM_ARCH_5TEJ__)
 #define ARMV5 1
 #endif
 

@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/frame_of_reference_coding.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,19 +34,13 @@
 
 #include "util/frame_of_reference_coding.h"
 
-#include <glog/logging.h>
-#include <sys/types.h>
-
 #include <algorithm>
 #include <cstring>
-#include <iostream>
-#include <iterator>
-#include <limits>
 
 #include "util/bit_util.h"
 #include "util/coding.h"
 
-namespace doris {
+namespace starrocks {
 
 template <typename T>
 const T* ForEncoder<T>::copy_value(const T* p_data, size_t count) {
@@ -241,6 +252,9 @@ bool ForDecoder<T>::init() {
     _last_frame_size = _max_frame_size - (_max_frame_size * _frame_count - _values_num);
 
     size_t bit_width_offset = _buffer_len - 5 - _frame_count * 2;
+    if (bit_width_offset < 0) {
+        return false;
+    }
 
     // read _storage_formats, bit_widths and compute frame_offsets
     u_int32_t frame_start_offset = 0;
@@ -262,7 +276,7 @@ bool ForDecoder<T>::init() {
         }
     }
 
-    _out_buffer.resize(_max_frame_size);
+    _out_buffer.reserve(_max_frame_size);
     _parsed = true;
 
     return true;
@@ -285,8 +299,7 @@ void ForDecoder<T>::bit_unpack(const uint8_t* input, uint8_t in_num, int bit_wid
                 input++;
                 bit_index = 0;
             }
-            *output |= ((T)((*input & (in_mask >> bit_index)) >> (7 - bit_index)))
-                       << (bit_width - i - 1);
+            *output |= ((T)((*input & (in_mask >> bit_index)) >> (7 - bit_index))) << (bit_width - i - 1);
             bit_index++;
         }
         output++;
@@ -401,7 +414,7 @@ bool ForDecoder<T>::get_batch(T* val, size_t count) {
 
 template <typename T>
 bool ForDecoder<T>::skip(int32_t skip_num) {
-    if (_current_index + skip_num >= _values_num) {
+    if (_current_index + skip_num >= _values_num || _current_index + skip_num < 0) {
         return false;
     }
     _current_index = _current_index + skip_num;
@@ -432,8 +445,7 @@ uint32_t ForDecoder<T>::seek_last_frame_before_value(T target) {
 }
 
 template <typename T>
-bool ForDecoder<T>::seek_lower_bound_inside_frame(uint32_t frame_index, T target,
-                                                  bool* exact_match) {
+bool ForDecoder<T>::seek_lower_bound_inside_frame(uint32_t frame_index, T target, bool* exact_match) {
     _current_index = frame_index * _max_frame_size;
     decode_current_frame(_out_buffer.data());
     auto end = _out_buffer.begin() + frame_size(frame_index);
@@ -494,4 +506,4 @@ template class ForDecoder<uint32_t>;
 template class ForDecoder<uint64_t>;
 template class ForDecoder<uint24_t>;
 template class ForDecoder<uint128_t>;
-} // namespace doris
+} // namespace starrocks

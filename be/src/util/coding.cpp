@@ -2,13 +2,14 @@
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
+//
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file. See the AUTHORS file for names of contributors.
+// Use of this source code is governed by a BSD-style license.
+// (https://developers.google.com/open-source/licenses/bsd)
 
 #include "util/coding.h"
 
-namespace doris {
+namespace starrocks {
 
 uint8_t* encode_varint32(uint8_t* dst, uint32_t v) {
     // Operate on characters as unsigneds
@@ -37,8 +38,7 @@ uint8_t* encode_varint32(uint8_t* dst, uint32_t v) {
     return dst;
 }
 
-const uint8_t* decode_varint32_ptr_fallback(const uint8_t* p, const uint8_t* limit,
-                                            uint32_t* value) {
+const uint8_t* decode_varint32_ptr_fallback(const uint8_t* p, const uint8_t* limit, uint32_t* value) {
     uint32_t result = 0;
     for (uint32_t shift = 0; shift <= 28 && p < limit; shift += 7) {
         uint32_t byte = *p;
@@ -72,4 +72,4 @@ const uint8_t* decode_varint64_ptr(const uint8_t* p, const uint8_t* limit, uint6
     return nullptr;
 }
 
-} // namespace doris
+} // namespace starrocks

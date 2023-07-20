@@ -17,27 +17,25 @@
 
 #pragma once
 
-#include <memory>
-#include <mutex>
+#include <event2/event.h>
+
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "common/status.h"
 #include "http/http_method.h"
 #include "util/path_trie.hpp"
 
-struct event_base;
-
-namespace doris {
+namespace starrocks {
 
 class HttpHandler;
 class HttpRequest;
-class ThreadPool;
 
 class EvHttpServer {
 public:
     EvHttpServer(int port, int num_workers = 1);
-    EvHttpServer(const std::string& host, int port, int num_workers = 1);
+    EvHttpServer(std::string host, int port, int num_workers = 1);
     ~EvHttpServer();
 
     // register handler for an a path-method pair
@@ -45,7 +43,7 @@ public:
 
     void register_static_file_handler(HttpHandler* handler);
 
-    void start();
+    Status start();
     void stop();
     void join();
 
@@ -68,11 +66,10 @@ private:
     int _real_port;
 
     int _server_fd = -1;
-    std::unique_ptr<ThreadPool> _workers;
-    std::mutex _event_bases_lock; // protect _event_bases
-    std::vector<std::shared_ptr<event_base>> _event_bases;
+    std::vector<std::thread> _workers;
 
-    std::mutex _handler_lock;
+    pthread_rwlock_t _rw_lock;
+
     PathTrie<HttpHandler*> _get_handlers;
     HttpHandler* _static_file_handler = nullptr;
     PathTrie<HttpHandler*> _put_handlers;
@@ -80,7 +77,8 @@ private:
     PathTrie<HttpHandler*> _delete_handlers;
     PathTrie<HttpHandler*> _head_handlers;
     PathTrie<HttpHandler*> _options_handlers;
-    bool _started = false;
+    std::vector<struct event_base*> _event_bases;
+    std::vector<struct evhttp*> _https;
 };
 
-} // namespace doris
+} // namespace starrocks

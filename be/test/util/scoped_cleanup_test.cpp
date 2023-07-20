@@ -17,14 +17,9 @@
 
 #include "util/scoped_cleanup.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include <gtest/gtest.h>
 
-#include <memory>
-
-#include "gtest/gtest_pred_impl.h"
-
-namespace doris {
+namespace starrocks {
 
 TEST(ScopedCleanup, TestCleanup) {
     int var = 0;
@@ -33,7 +28,7 @@ TEST(ScopedCleanup, TestCleanup) {
         auto cleanup = MakeScopedCleanup([&]() { var = saved; });
         var = 42;
     }
-    EXPECT_EQ(0, var);
+    ASSERT_EQ(0, var);
 }
 
 TEST(ScopedCleanup, TestCleanupMacro) {
@@ -43,7 +38,7 @@ TEST(ScopedCleanup, TestCleanupMacro) {
         SCOPED_CLEANUP({ var = saved; });
         var = 42;
     }
-    EXPECT_EQ(0, var);
+    ASSERT_EQ(0, var);
 }
 
 TEST(ScopedCleanup, TestCancelCleanup) {
@@ -54,7 +49,7 @@ TEST(ScopedCleanup, TestCancelCleanup) {
         var = 42;
         cleanup.cancel();
     }
-    EXPECT_EQ(42, var);
+    ASSERT_EQ(42, var);
 }
 
-} // namespace doris
+} // namespace starrocks

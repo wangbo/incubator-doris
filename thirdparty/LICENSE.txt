@@ -1,11 +1,11 @@
 ==========================================================
-License information for Doris third-party dependencies
+License information for StarRocks third-party dependencies
 ==========================================================
 
 This directory contains scripts which download and install several third-party
-dependencies of Doris. And for producation builds, most of these dependencies
-are statically linked into the Doris binaries. Some of dependencies are optional
-for Doris build.
+dependencies of StarRocks. And for producation builds, most of these dependencies
+are statically linked into the StarRocks binaries. Some of dependencies are optional
+for StarRocks build.
 
 Most of these dependencies' licenses are compatible with Apache License Version 2.0.
 But serverl dependencies are under imcompatible licenses.
@@ -20,7 +20,7 @@ This repository uses 2 different licenses :
 - all files in the `lib` directory use a BSD 2-Clause license
 - all other files use a GPLv2 license, unless explicitly stated otherwise
 
-Doris only dependents on features implemented in the `lib` directory, which are under BSD 2-Clause license.
+StarRocks only dependents on features implemented in the `lib` directory, which are under BSD 2-Clause license.
 
 ============================================================================================
 RapidJSON
@@ -32,7 +32,7 @@ compliance with the MIT License, as well as the other licenses applicable to the
 within RapidJSON. To avoid the problematic JSON license in your own projects, it's sufficient to exclude the
 bin/jsonchecker/ directory, as it's the only code under the JSON license.
 
-Doris only dependents on the source files in `include/rapidjson` directory, which are under MIT License.
+StarRocks only dependents on the source files in `include/rapidjson` directory, which are under MIT License.
 
 ============================================================================================
 RocksDB
@@ -41,31 +41,24 @@ source: https://github.com/facebook/rocksdb
 RocksDB is dual-licensed under both the GPLv2 (found in the COPYING file in the root directory) and
 Apache 2.0 License (found in the LICENSE.Apache file in the root directory)
 
-Doris selects Apache 2.0 License of RocksDB.
+StarRocks selects Apache 2.0 License of RocksDB.
 
 ============================================================================================
-LZO
-source: https://github.com/nemequ/lzo
+mariadb-connector-c
+source: https://github.com/mariadb-corporation/mariadb-connector-c
 
-LZO is under GNU General Public License Version 2(GPL-2), which is not compatible with Apache 2.0 License.
+This is LGPL MariaDB client library that can be used to connect to MySQL
+or MariaDB.
 
-So LZO is an optional feature when building Doris from source. And default is disabled.
-You can also enable the LZO support by adding env variable:
+This code is based on the LGPL libmysql client library from MySQL 3.23
+and PHP's mysqlnd extension.
 
-`WITH_LZO=1 sh build.sh`.
+This product includes PHP software, freely available from
+<http://www.php.net/software/>
 
-Disable LZO support does not affect normal use of Doris.
+If you want to be part of this development effort, you can discuss this at
+maria-developers@lists.launchpad.org.
 
-============================================================================================
-MySQL
-source: https://github.com/mysql/mysql-server
+To report a bug you'll need to signup for an account at https://jira.mariadb.org
 
-MySQL is under GNU General Public License Version 2(GPL-2), which is not compatible with Apache 2.0 License. 
-
-So MySQL is an optional feature when building Doris from source. And default is disabled.
-You can also enable the MySQL support by adding env variable:
-
-`WITH_MYSQL=1 sh build.sh`
-
-Disable MySQL support with disable the feature of visiting a MySQL table as an external table in Doris.
-But you can visit MySQL external table via ODBC.
+The MariaDB team

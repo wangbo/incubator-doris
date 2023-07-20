@@ -17,15 +17,18 @@
 
 #pragma once
 
-#include <stdint.h>
-
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "common/status.h"
+#include "gen_cpp/Types_types.h"
+#include "runtime/client_cache.h"
 
-namespace doris {
+namespace starrocks {
 
 class ExecEnv;
 
@@ -40,7 +43,7 @@ struct CacheEntry {
  */
 class SmallFileMgr {
 public:
-    SmallFileMgr(ExecEnv* env, const std::string& local_path);
+    SmallFileMgr(ExecEnv* env, std::string local_path);
 
     ~SmallFileMgr();
 
@@ -63,10 +66,10 @@ private:
 
 private:
     std::mutex _lock;
-    ExecEnv* _exec_env;
+    [[maybe_unused]] ExecEnv* _exec_env;
     std::string _local_path;
     // file id -> small file
     std::unordered_map<int64_t, CacheEntry> _file_cache;
 };
 
-} // end namespace doris
+} // end namespace starrocks

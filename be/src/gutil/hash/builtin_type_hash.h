@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #include "gutil/casts.h"
 #include "gutil/hash/jenkins_lookup2.h"

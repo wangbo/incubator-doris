@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/thrift_server.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,24 +34,16 @@
 
 #pragma once
 
+#include <thrift/TProcessor.h>
 #include <thrift/server/TServer.h>
 
-#include <memory>
-#include <mutex>
-#include <string>
 #include <thread>
 #include <unordered_map>
 
 #include "common/status.h"
 #include "util/metrics.h"
 
-namespace apache {
-namespace thrift {
-class TProcessor;
-} // namespace thrift
-} // namespace apache
-
-namespace doris {
+namespace starrocks {
 // Utility class for all Thrift servers. Runs a TNonblockingServer(default) or a
 // TThreadPoolServer with, by default, 2 worker threads, that exposes the interface
 // described by a user-supplied TProcessor object.
@@ -43,12 +52,11 @@ namespace doris {
 class ThriftServer {
 public:
     // An opaque identifier for the current session, which identifies a client connection.
-    using SessionKey = std::string;
+    typedef std::string SessionKey;
 
     // Interface class for receiving session creation / termination events.
     class SessionHandlerIf {
     public:
-        virtual ~SessionHandlerIf() = default;
         // Called when a session is established (when a client connects).
         virtual void session_start(const SessionKey& session_key) = 0;
 
@@ -73,14 +81,14 @@ public:
     //  - name: human-readable name of this server. Should not contain spaces
     //  - processor: Thrift processor to handle RPCs
     //  - port: The port the server will listen for connections on
+    //  - metrics: if not nullptr, the server will register metrics on this object
     //  - num_worker_threads: the number of worker threads to use in any thread pool
     //  - server_type: the type of IO strategy this server should employ
-    ThriftServer(const std::string& name,
-                 const std::shared_ptr<apache::thrift::TProcessor>& processor, int port,
-                 int num_worker_threads = DEFAULT_WORKER_THREADS,
+    ThriftServer(const std::string& name, std::shared_ptr<apache::thrift::TProcessor> processor, int port,
+                 MetricRegistry* metrics = nullptr, int num_worker_threads = DEFAULT_WORKER_THREADS,
                  ServerType server_type = THREADED);
 
-    ~ThriftServer() {}
+    ~ThriftServer() = default;
 
     int port() const { return _port; }
 
@@ -111,6 +119,9 @@ private:
     // True if the server has been successfully started, for internal use only
     bool _started;
 
+    // True if the server has been stop()
+    bool _stopped = false;
+
     // The port on which the server interface is exposed
     int _port;
 
@@ -139,20 +150,22 @@ private:
 
     // Map of active session keys to shared_ptr containing that key; when a key is
     // removed it is automatically freed.
-    typedef std::unordered_map<SessionKey*, std::shared_ptr<SessionKey>> SessionKeySet;
+    typedef std::unordered_map<SessionKey*, std::shared_ptr<SessionKey> > SessionKeySet;
     SessionKeySet _session_keys;
+
+    // True if metrics are enabled
+    bool _metrics_enabled;
+
+    // Number of currently active connections
+    std::unique_ptr<IntGauge> _current_connections;
+
+    // Total connections made over the lifetime of this server
+    std::unique_ptr<IntCounter> _connections_total;
 
     // Helper class which monitors starting servers. Needs access to internal members, and
     // is not used outside of this class.
     class ThriftServerEventProcessor;
-
     friend class ThriftServerEventProcessor;
-
-    std::shared_ptr<MetricEntity> _thrift_server_metric_entity;
-    // Number of currently active connections
-    IntGauge* thrift_current_connections;
-    // Total connections made over the lifetime of this server
-    IntCounter* thrift_connections_total;
 };
 
-} // namespace doris
+} // namespace starrocks

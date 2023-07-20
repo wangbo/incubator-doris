@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/uid_util.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,26 +34,10 @@
 
 #include "util/uid_util.h"
 
-#include <gen_cpp/Types_types.h>
-#include <gen_cpp/types.pb.h>
-#include <glog/logging.h>
+#include "gutil/endian.h"
+#include "util/uuid_generator.h"
 
-#include <cstdlib>
-
-#include "util/hash_util.hpp"
-
-namespace doris {
-
-size_t UniqueId::hash(size_t seed) const {
-    return doris::HashUtil::hash(this, sizeof(*this), seed);
-}
-
-std::size_t hash_value(const doris::TUniqueId& id) {
-    std::size_t seed = 0;
-    HashUtil::hash_combine(seed, id.lo);
-    HashUtil::hash_combine(seed, id.hi);
-    return seed;
-}
+namespace starrocks {
 
 std::ostream& operator<<(std::ostream& os, const UniqueId& uid) {
     os << uid.to_string();
@@ -44,38 +45,43 @@ std::ostream& operator<<(std::ostream& os, const UniqueId& uid) {
 }
 
 std::string print_id(const TUniqueId& id) {
-    std::stringstream out;
-    out << std::hex << id.hi << "-" << id.lo;
-    return out.str();
+    boost::uuids::uuid uuid{};
+    int64_t hi = gbswap_64(id.hi);
+    int64_t lo = gbswap_64(id.lo);
+    memcpy(uuid.data + 0, &hi, 8);
+    memcpy(uuid.data + 8, &lo, 8);
+    return boost::uuids::to_string(uuid);
 }
 
 std::string print_id(const PUniqueId& id) {
-    std::stringstream out;
-    out << std::hex << id.hi() << "-" << id.lo();
-    return out.str();
+    boost::uuids::uuid uuid{};
+    int64_t lo = gbswap_64(id.lo());
+    int64_t hi = gbswap_64(id.hi());
+    memcpy(uuid.data + 0, &hi, 8);
+    memcpy(uuid.data + 8, &lo, 8);
+    return boost::uuids::to_string(uuid);
 }
 
-bool parse_id(const std::string& s, TUniqueId* id) {
-    DCHECK(id != nullptr);
-
-    const char* hi_part = s.c_str();
-    char* colon = const_cast<char*>(strchr(hi_part, '-'));
-
-    if (colon == nullptr) {
-        return false;
-    }
-
-    const char* lo_part = colon + 1;
-    *colon = '\0';
-
-    char* error_hi = nullptr;
-    char* error_lo = nullptr;
-    id->hi = strtoul(hi_part, &error_hi, 16);
-    id->lo = strtoul(lo_part, &error_lo, 16);
-
-    bool valid = *error_hi == '\0' && *error_lo == '\0';
-    *colon = ':';
-    return valid;
+UniqueId UniqueId::gen_uid() {
+    UniqueId uid(0, 0);
+    auto uuid = ThreadLocalUUIDGenerator::next_uuid();
+    memcpy(&uid.hi, uuid.data, sizeof(int64_t));
+    memcpy(&uid.lo, uuid.data + sizeof(int64_t), sizeof(int64_t));
+    return uid;
 }
 
-} // namespace doris
+/// generates a 16 byte
+std::string generate_uuid_string() {
+    return boost::uuids::to_string(ThreadLocalUUIDGenerator::next_uuid());
+}
+
+/// generates a 16 byte UUID
+TUniqueId generate_uuid() {
+    auto uuid = ThreadLocalUUIDGenerator::next_uuid();
+    TUniqueId uid;
+    memcpy(&uid.hi, uuid.data, sizeof(int64_t));
+    memcpy(&uid.lo, uuid.data + sizeof(int64_t), sizeof(int64_t));
+    return uid;
+}
+
+} // namespace starrocks

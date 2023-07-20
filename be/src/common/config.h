@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/common/config.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,97 +34,59 @@
 
 #pragma once
 
-#include <cstdint>
-#include <functional>
-#include <map>
-#include <mutex>
-#include <string>
-#include <utility>
-#include <vector>
+#include "configbase.h"
 
-#define DECLARE_FIELD(FIELD_TYPE, FIELD_NAME) extern FIELD_TYPE FIELD_NAME
+namespace starrocks::config {
+// The cluster id.
+CONF_Int32(cluster_id, "-1");
+// The port on which ImpalaInternalService is exported.
+CONF_Int32(be_port, "9060");
+CONF_Int32(thrift_port, "9060");
 
-#define DECLARE_Bool(name) DECLARE_FIELD(bool, name)
-#define DECLARE_Int16(name) DECLARE_FIELD(int16_t, name)
-#define DECLARE_Int32(name) DECLARE_FIELD(int32_t, name)
-#define DECLARE_Int64(name) DECLARE_FIELD(int64_t, name)
-#define DECLARE_Double(name) DECLARE_FIELD(double, name)
-#define DECLARE_String(name) DECLARE_FIELD(std::string, name)
-#define DECLARE_Bools(name) DECLARE_FIELD(std::vector<bool>, name)
-#define DECLARE_Int16s(name) DECLARE_FIELD(std::vector<int16_t>, name)
-#define DECLARE_Int32s(name) DECLARE_FIELD(std::vector<int32_t>, name)
-#define DECLARE_Int64s(name) DECLARE_FIELD(std::vector<int64_t>, name)
-#define DECLARE_Doubles(name) DECLARE_FIELD(std::vector<double>, name)
-#define DECLARE_Strings(name) DECLARE_FIELD(std::vector<std::string>, name)
-#define DECLARE_mBool(name) DECLARE_FIELD(bool, name)
-#define DECLARE_mInt16(name) DECLARE_FIELD(int16_t, name)
-#define DECLARE_mInt32(name) DECLARE_FIELD(int32_t, name)
-#define DECLARE_mInt64(name) DECLARE_FIELD(int64_t, name)
-#define DECLARE_mDouble(name) DECLARE_FIELD(double, name)
-#define DECLARE_mString(name) DECLARE_FIELD(std::string, name)
+// The port for brpc.
+CONF_Int32(brpc_port, "8060");
 
-#define DEFINE_FIELD(FIELD_TYPE, FIELD_NAME, FIELD_DEFAULT, VALMUTABLE)                      \
-    FIELD_TYPE FIELD_NAME;                                                                   \
-    static Register reg_##FIELD_NAME(#FIELD_TYPE, #FIELD_NAME, &(FIELD_NAME), FIELD_DEFAULT, \
-                                     VALMUTABLE);
-
-#define DEFINE_VALIDATOR(FIELD_NAME, VALIDATOR)              \
-    static auto validator_##FIELD_NAME = VALIDATOR;          \
-    static RegisterConfValidator reg_validator_##FIELD_NAME( \
-            #FIELD_NAME, []() -> bool { return validator_##FIELD_NAME(FIELD_NAME); });
-
-#define DEFINE_Int16(name, defaultstr) DEFINE_FIELD(int16_t, name, defaultstr, false)
-#define DEFINE_Bools(name, defaultstr) DEFINE_FIELD(std::vector<bool>, name, defaultstr, false)
-#define DEFINE_Doubles(name, defaultstr) DEFINE_FIELD(std::vector<double>, name, defaultstr, false)
-#define DEFINE_Int16s(name, defaultstr) DEFINE_FIELD(std::vector<int16_t>, name, defaultstr, false)
-#define DEFINE_Int32s(name, defaultstr) DEFINE_FIELD(std::vector<int32_t>, name, defaultstr, false)
-#define DEFINE_Int64s(name, defaultstr) DEFINE_FIELD(std::vector<int64_t>, name, defaultstr, false)
-#define DEFINE_Bool(name, defaultstr) DEFINE_FIELD(bool, name, defaultstr, false)
-#define DEFINE_Double(name, defaultstr) DEFINE_FIELD(double, name, defaultstr, false)
-#define DEFINE_Int32(name, defaultstr) DEFINE_FIELD(int32_t, name, defaultstr, false)
-#define DEFINE_Int64(name, defaultstr) DEFINE_FIELD(int64_t, name, defaultstr, false)
-#define DEFINE_String(name, defaultstr) DEFINE_FIELD(std::string, name, defaultstr, false)
-#define DEFINE_Strings(name, defaultstr) \
-    DEFINE_FIELD(std::vector<std::string>, name, defaultstr, false)
-#define DEFINE_mBool(name, defaultstr) DEFINE_FIELD(bool, name, defaultstr, true)
-#define DEFINE_mInt16(name, defaultstr) DEFINE_FIELD(int16_t, name, defaultstr, true)
-#define DEFINE_mInt32(name, defaultstr) DEFINE_FIELD(int32_t, name, defaultstr, true)
-#define DEFINE_mInt64(name, defaultstr) DEFINE_FIELD(int64_t, name, defaultstr, true)
-#define DEFINE_mDouble(name, defaultstr) DEFINE_FIELD(double, name, defaultstr, true)
-#define DEFINE_mString(name, defaultstr) DEFINE_FIELD(std::string, name, defaultstr, true)
-#define DEFINE_Validator(name, validator) DEFINE_VALIDATOR(name, validator)
-
-namespace doris {
-class Status;
-
-// If you want to modify the value of config, please go to common/config.cpp to modify.
-namespace config {
-// Dir of custom config file
-DECLARE_String(custom_config_dir);
-
-// Dir of jdbc drivers
-DECLARE_String(jdbc_drivers_dir);
-
-// cluster id
-DECLARE_Int32(cluster_id);
-// port on which BackendService is exported
-DECLARE_Int32(be_port);
-
-// port for brpc
-DECLARE_Int32(brpc_port);
-
-// the number of bthreads for brpc, the default value is set to -1,
-// which means the number of bthreads is #cpu-cores
-DECLARE_Int32(brpc_num_threads);
+// The number of bthreads for brpc, the default value is set to -1, which means the number of bthreads is #cpu-cores.
+CONF_Int32(brpc_num_threads, "-1");
 
 // Declare a selection strategy for those servers have many ips.
 // Note that there should at most one ip match this list.
 // this is a list in semicolon-delimited format, in CIDR notation, e.g. 10.10.10.0/24
 // If no ip match this rule, will choose one randomly.
-DECLARE_String(priority_networks);
+CONF_String(priority_networks, "");
 
-// performance moderate or or compact, only tcmalloc compile
-DECLARE_String(memory_mode);
+////
+//// tcmalloc gc parameter
+////
+// Min memory for TCmalloc, when used memory is smaller than this, do not returned to OS.
+CONF_mInt64(tc_use_memory_min, "0");
+// free memory rate.[0-100]
+CONF_mInt64(tc_free_memory_rate, "0");
+// tcmalloc gc period, default 60, it should be between [1, 180]
+CONF_mInt64(tc_gc_period, "60");
+
+CONF_mBool(enable_auto_adjust_pagecache, "true");
+// Memory urget water level, if the memory usage exceeds this level, reduce the size of
+// the Pagecache immediately, it should be between (memory_high_level, 100].
+CONF_mInt64(memory_urgent_level, "85");
+// Memory high water level, if the memory usage exceeds this level, reduce the size of
+// the Pagecache slowly, it should be between [1, memory_urgent_level).
+CONF_mInt64(memory_high_level, "75");
+// Pagecache size adjust period, default 20, it should be between [1, 180].
+CONF_mInt64(pagecache_adjust_period, "20");
+// Sleep time in seconds between pagecache adjust iterations.
+CONF_mInt64(auto_adjust_pagecache_interval_seconds, "10");
+
+// Bound on the total amount of bytes allocated to thread caches.
+// This bound is not strict, so it is possible for the cache to go over this bound
+// in certain circumstances. The maximum value of this flag is capped to 1GB.
+// This value defaults to 1GB.
+// If you suspect your application is not scaling to many threads due to lock contention in TCMalloc,
+// you can try increasing this value. This may improve performance, at a cost of extra memory
+// use by TCMalloc.
+// reference: https://gperftools.github.io/gperftools/tcmalloc.html: TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES
+//            https://github.com/gperftools/gperftools/issues/1111
+CONF_Int64(tc_max_total_thread_cache_bytes, "1073741824");
 
 // process memory limit specified as number of bytes
 // ('<int>[bB]?'), megabytes ('<float>[mM]'), gigabytes ('<float>[gG]'),
@@ -115,1060 +94,891 @@ DECLARE_String(memory_mode);
 // defaults to bytes if no unit is given"
 // must larger than 0. and if larger than physical memory size,
 // it will be set to physical memory size.
-DECLARE_String(mem_limit);
+CONF_String(mem_limit, "90%");
 
-// Soft memory limit as a fraction of hard memory limit.
-DECLARE_Double(soft_mem_limit_frac);
+// The port heartbeat service used.
+CONF_Int32(heartbeat_service_port, "9050");
+// The count of heart beat service.
+CONF_Int32(heartbeat_service_thread_count, "1");
+// The count of thread to create table.
+CONF_Int32(create_tablet_worker_count, "3");
+// The count of thread to drop table.
+CONF_Int32(drop_tablet_worker_count, "3");
+// The count of thread to batch load.
+CONF_Int32(push_worker_count_normal_priority, "3");
+// The count of thread to high priority batch load.
+CONF_Int32(push_worker_count_high_priority, "3");
 
-// Many modern allocators (for example) do not do a mremap for
-// realloc, even in case of large enough chunks of memory. Although this allows
-// you to increase performance and reduce memory consumption during realloc.
-// To fix this, we do mremap manually if the chunk of memory is large enough.
-//
-// The threshold (128 MB, 128 * (1ULL << 20)) is chosen quite large, since changing the address
-// space is very slow, especially in the case of a large number of threads. We
-// expect that the set of operations mmap/something to do/mremap can only be
-// performed about 1000 times per second.
-//
-// P.S. This is also required, because tcmalloc can not allocate a chunk of
-// memory greater than 16 GB.
-DECLARE_mInt64(mmap_threshold); // bytes
+// The count of thread to publish version per transaction
+CONF_mInt32(transaction_publish_version_worker_count, "0");
 
-// When hash table capacity is greater than 2^double_grow_degree(default 2G), grow when 75% of the capacity is satisfied.
-// Increase can reduce the number of hash table resize, but may waste more memory.
-DECLARE_mInt32(hash_table_double_grow_degree);
+CONF_mInt32(get_pindex_worker_count, "0");
+// The count of thread to apply rowset in primary key table
+// 0 means apply worker count is equal to cpu core count
+CONF_mInt32(transaction_apply_worker_count, "0");
 
-// The max fill rate for hash table
-DECLARE_mInt32(max_fill_rate);
+// The count of thread to clear transaction task.
+CONF_Int32(clear_transaction_task_worker_count, "1");
+// The count of thread to delete.
+CONF_Int32(delete_worker_count_normal_priority, "2");
+// The count of thread to high priority delete.
+CONF_Int32(delete_worker_count_high_priority, "1");
+// The count of thread to alter table.
+CONF_mInt32(alter_tablet_worker_count, "3");
+// The count of parallel clone task per storage path
+CONF_mInt32(parallel_clone_task_per_path, "8");
+// The count of thread to clone. Deprecated
+CONF_Int32(clone_worker_count, "3");
+// The count of thread to clone.
+CONF_Int32(storage_medium_migrate_count, "3");
+// The count of thread to check consistency.
+CONF_Int32(check_consistency_worker_count, "1");
+// The count of thread to upload.
+CONF_Int32(upload_worker_count, "1");
+// The count of thread to download.
+CONF_Int32(download_worker_count, "1");
+// The count of thread to make snapshot.
+CONF_Int32(make_snapshot_worker_count, "5");
+// The count of thread to release snapshot.
+CONF_Int32(release_snapshot_worker_count, "5");
+// The interval time(seconds) for agent report tasks signatrue to FE.
+CONF_mInt32(report_task_interval_seconds, "10");
+// The interval time(seconds) for agent report disk state to FE.
+CONF_mInt32(report_disk_state_interval_seconds, "60");
+// The interval time(seconds) for agent report olap table to FE.
+CONF_mInt32(report_tablet_interval_seconds, "60");
+// The interval time(seconds) for agent report workgroup to FE.
+CONF_mInt32(report_workgroup_interval_seconds, "5");
+// The interval time (millisecond) for agent report resource usage to FE.
+CONF_mInt32(report_resource_usage_interval_ms, "1000");
+// The max download speed(KB/s).
+CONF_mInt32(max_download_speed_kbps, "50000");
+// The download low speed limit(KB/s).
+CONF_mInt32(download_low_speed_limit_kbps, "50");
+// The download low speed time(seconds).
+CONF_mInt32(download_low_speed_time, "300");
+// The sleep time for one second.
+CONF_Int32(sleep_one_second, "1");
+// The sleep time for five seconds.
+CONF_Int32(sleep_five_seconds, "5");
 
-DECLARE_mInt32(double_resize_threshold);
+// The count of thread to compact
+CONF_Int32(compact_threads, "4");
+CONF_Int32(compact_thread_pool_queue_size, "100");
 
-// Expand the hash table before inserting data, the maximum expansion size.
-// There are fewer duplicate keys, reducing the number of resize hash tables
-// There are many duplicate keys, and the hash table filled bucket is far less than the hash table build bucket.
-DECLARE_mInt64(hash_table_pre_expanse_max_rows);
-
-// The maximum low water mark of the system `/proc/meminfo/MemAvailable`, Unit byte, default 1.6G,
-// actual low water mark=min(1.6G, MemTotal * 10%), avoid wasting too much memory on machines
-// with large memory larger than 16G.
-// Turn up max. On machines with more than 16G memory, more memory buffers will be reserved for Full GC.
-// Turn down max. will use as much memory as possible.
-DECLARE_Int64(max_sys_mem_available_low_water_mark_bytes);
-
-// The size of the memory that gc wants to release each time, as a percentage of the mem limit.
-DECLARE_mString(process_minor_gc_size);
-DECLARE_mString(process_full_gc_size);
-
-// If true, when the process does not exceed the soft mem limit, the query memory will not be limited;
-// when the process memory exceeds the soft mem limit, the query with the largest ratio between the currently
-// used memory and the exec_mem_limit will be canceled.
-// If false, cancel query when the memory used exceeds exec_mem_limit, same as before.
-DECLARE_mBool(enable_query_memory_overcommit);
-
-// gc will release cache, cancel task, and task will wait for gc to release memory,
-// default gc strategy is conservative, if you want to exclude the interference of gc, let it be true
-DECLARE_mBool(disable_memory_gc);
-
-// The maximum time a thread waits for a full GC. Currently only query will wait for full gc.
-DECLARE_mInt32(thread_wait_gc_max_milliseconds);
-
-// reach mem limit, don't serialize in batch
-DECLARE_mInt64(pre_serialize_keys_limit_bytes);
-
-// the port heartbeat service used
-DECLARE_Int32(heartbeat_service_port);
-// the count of heart beat service
-DECLARE_Int32(heartbeat_service_thread_count);
-// the count of thread to create table
-DECLARE_Int32(create_tablet_worker_count);
-// the count of thread to drop table
-DECLARE_Int32(drop_tablet_worker_count);
-// the count of thread to batch load
-DECLARE_Int32(push_worker_count_normal_priority);
-// the count of thread to high priority batch load
-DECLARE_Int32(push_worker_count_high_priority);
-// the count of thread to publish version
-DECLARE_Int32(publish_version_worker_count);
-// the count of tablet thread to publish version
-DECLARE_Int32(tablet_publish_txn_max_thread);
-// the timeout of EnginPublishVersionTask
-DECLARE_Int32(publish_version_task_timeout_s);
-// the count of thread to calc delete bitmap
-DECLARE_Int32(calc_delete_bitmap_max_thread);
-// the count of thread to clear transaction task
-DECLARE_Int32(clear_transaction_task_worker_count);
-// the count of thread to delete
-DECLARE_Int32(delete_worker_count);
-// the count of thread to alter table
-DECLARE_Int32(alter_tablet_worker_count);
-// the count of thread to alter inverted index
-DECLARE_Int32(alter_inverted_index_worker_count);
-// the count of thread to clone
-DECLARE_Int32(clone_worker_count);
-// the count of thread to clone
-DECLARE_Int32(storage_medium_migrate_count);
-// the count of thread to check consistency
-DECLARE_Int32(check_consistency_worker_count);
-// the count of thread to upload
-DECLARE_Int32(upload_worker_count);
-// the count of thread to download
-DECLARE_Int32(download_worker_count);
-// the count of thread to make snapshot
-DECLARE_Int32(make_snapshot_worker_count);
-// the count of thread to release snapshot
-DECLARE_Int32(release_snapshot_worker_count);
-// the interval time(seconds) for agent report tasks signature to FE
-DECLARE_mInt32(report_task_interval_seconds);
-// the interval time(seconds) for refresh storage policy from FE
-DECLARE_mInt32(storage_refresh_storage_policy_task_interval_seconds);
-// the interval time(seconds) for agent report disk state to FE
-DECLARE_mInt32(report_disk_state_interval_seconds);
-// the interval time(seconds) for agent report olap table to FE
-DECLARE_mInt32(report_tablet_interval_seconds);
-// the max download speed(KB/s)
-DECLARE_mInt32(max_download_speed_kbps);
-// download low speed limit(KB/s)
-DECLARE_mInt32(download_low_speed_limit_kbps);
-// download low speed time(seconds)
-DECLARE_mInt32(download_low_speed_time);
-// sleep time for one second
-DECLARE_Int32(sleep_one_second);
-
-// log dir
-DECLARE_String(sys_log_dir);
-DECLARE_String(user_function_dir);
-// INFO, WARNING, ERROR, FATAL
-DECLARE_String(sys_log_level);
+// The log dir.
+CONF_String(sys_log_dir, "${STARROCKS_HOME}/log");
+// The user function dir.
+CONF_String(user_function_dir, "${STARROCKS_HOME}/lib/udf");
+// The sys log level, INFO, WARNING, ERROR, FATAL.
+CONF_String(sys_log_level, "INFO");
 // TIME-DAY, TIME-HOUR, SIZE-MB-nnn
-DECLARE_String(sys_log_roll_mode);
-// log roll num
-DECLARE_Int32(sys_log_roll_num);
-// verbose log
-DECLARE_Strings(sys_log_verbose_modules);
-// verbose log level
-DECLARE_Int32(sys_log_verbose_level);
-// log buffer level
-DECLARE_String(log_buffer_level);
+CONF_String(sys_log_roll_mode, "SIZE-MB-1024");
+// The log roll num.
+CONF_Int32(sys_log_roll_num, "10");
+// Verbose log.
+CONF_Strings(sys_log_verbose_modules, "");
+// Verbose log level.
+CONF_Int32(sys_log_verbose_level, "10");
+// The log buffer level.
+CONF_String(log_buffer_level, "");
 
-// number of threads available to serve backend execution requests
-DECLARE_Int32(be_service_threads);
+// Pull load task dir.
+CONF_String(pull_load_task_dir, "${STARROCKS_HOME}/var/pull_load");
+
+// The maximum number of bytes to display on the debug webserver's log page.
+CONF_Int64(web_log_bytes, "1048576");
+// The number of threads available to serve backend execution requests.
+CONF_Int32(be_service_threads, "64");
+// key=value pair of default query options for StarRocks, separated by ','
+CONF_String(default_query_options, "");
+
+// If non-zero, StarRocks will output memory usage every log_mem_usage_interval'th fragment completion.
+// CONF_Int32(log_mem_usage_interval, "0");
 
 // Controls the number of threads to run work per core.  It's common to pick 2x
 // or 3x the number of cores.  This keeps the cores busy without causing excessive
 // thrashing.
-DECLARE_Int32(num_threads_per_core);
-// if true, compresses tuple data in Serialize
-DECLARE_mBool(compress_rowbatches);
-DECLARE_mBool(rowbatch_align_tuple_offset);
-// interval between profile reports; in seconds
-DECLARE_mInt32(status_report_interval);
-// if true, each disk will have a separate thread pool for scanner
-DECLARE_Bool(doris_enable_scanner_thread_pool_per_disk);
-// the timeout of a work thread to wait the blocking priority queue to get a task
-DECLARE_mInt64(doris_blocking_priority_queue_wait_timeout_ms);
-// number of scanner thread pool size for olap table
-// and the min thread num of remote scanner thread pool
-DECLARE_Int32(doris_scanner_thread_pool_thread_num);
-// max number of remote scanner thread pool size
-DECLARE_Int32(doris_max_remote_scanner_thread_pool_thread_num);
-// number of olap scanner thread pool queue size
-DECLARE_Int32(doris_scanner_thread_pool_queue_size);
-// default thrift client connect timeout(in seconds)
-DECLARE_mInt32(thrift_connect_timeout_seconds);
-DECLARE_mInt32(fetch_rpc_timeout_seconds);
-// default thrift client retry interval (in milliseconds)
-DECLARE_mInt64(thrift_client_retry_interval_ms);
-// max row count number for single scan range, used in segmentv1
-DECLARE_mInt32(doris_scan_range_row_count);
-// max bytes number for single scan range, used in segmentv2
-DECLARE_mInt32(doris_scan_range_max_mb);
-// max bytes number for single scan block, used in segmentv2
-DECLARE_mInt32(doris_scan_block_max_mb);
-// size of scanner queue between scanner thread and compute thread
-DECLARE_mInt32(doris_scanner_queue_size);
-// single read execute fragment row number
-DECLARE_mInt32(doris_scanner_row_num);
-// single read execute fragment row bytes
-DECLARE_mInt32(doris_scanner_row_bytes);
-// number of max scan keys
-DECLARE_mInt32(doris_max_scan_key_num);
-// the max number of push down values of a single column.
+CONF_Int32(num_threads_per_core, "3");
+// If true, compresses tuple data in Serialize.
+CONF_Bool(compress_rowbatches, "true");
+// Compress ratio when shuffle row_batches in network, not in storage engine.
+// If ratio is less than this value, use uncompressed data instead.
+CONF_mDouble(rpc_compress_ratio_threshold, "1.1");
+// Serialize and deserialize each returned row batch.
+CONF_Bool(serialize_batch, "false");
+// Interval between profile reports; in seconds.
+CONF_mInt32(status_report_interval, "5");
+// Local directory to copy UDF libraries from HDFS into.
+CONF_String(local_library_dir, "${UDF_RUNTIME_DIR}");
+// Number of olap/external scanner thread pool size.
+CONF_mInt32(scanner_thread_pool_thread_num, "48");
+// Number of olap/external scanner thread pool size.
+CONF_Int32(scanner_thread_pool_queue_size, "102400");
+CONF_Int32(udf_thread_pool_size, "1");
+// Port on which to run StarRocks test backend.
+CONF_Int32(port, "20001");
+// Default thrift client connect timeout(in seconds).
+CONF_Int32(thrift_connect_timeout_seconds, "3");
+// Broker write timeout in seconds.
+CONF_Int32(broker_write_timeout_seconds, "30");
+// Default thrift client retry interval (in milliseconds).
+CONF_mInt64(thrift_client_retry_interval_ms, "100");
+// Single read execute fragment row size.
+CONF_mInt32(scanner_row_num, "16384");
+// Number of max hdfs scanners.
+CONF_Int32(max_hdfs_scanner_num, "50");
+// Number of max scan keys.
+CONF_mInt32(max_scan_key_num, "1024");
+// The max number of push down values of a single column.
 // if exceed, no conditions will be pushed down for that column.
-DECLARE_mInt32(max_pushdown_conditions_per_column);
-// return_row / total_row
-DECLARE_mInt32(doris_max_pushdown_conjuncts_return_rate);
-// (Advanced) Maximum size of per-query receive-side buffer
-DECLARE_mInt32(exchg_node_buffer_size_bytes);
+CONF_mInt32(max_pushdown_conditions_per_column, "1024");
+// (Advanced) Maximum size of per-query receive-side buffer.
+CONF_mInt32(exchg_node_buffer_size_bytes, "10485760");
+// The block_size every block allocate for sorter.
+CONF_Int32(sorter_block_size, "8388608");
 
-DECLARE_mInt64(column_dictionary_key_ratio_threshold);
-DECLARE_mInt64(column_dictionary_key_size_threshold);
-// memory_limitation_per_thread_for_schema_change_bytes unit bytes
-DECLARE_mInt64(memory_limitation_per_thread_for_schema_change_bytes);
-DECLARE_mInt64(memory_limitation_per_thread_for_storage_migration_bytes);
+CONF_mInt64(column_dictionary_key_ratio_threshold, "0");
+CONF_mInt64(column_dictionary_key_size_threshold, "0");
+// The memory_limitation_per_thread_for_schema_change unit GB.
+CONF_mInt32(memory_limitation_per_thread_for_schema_change, "2");
+CONF_mDouble(memory_ratio_for_sorting_schema_change, "0.8");
 
-// the clean interval of file descriptor cache and segment cache
-DECLARE_mInt32(cache_clean_interval);
-// the clean interval of tablet lookup cache
-DECLARE_mInt32(tablet_lookup_cache_clean_interval);
-DECLARE_mInt32(disk_stat_monitor_interval);
-DECLARE_mInt32(unused_rowset_monitor_interval);
-DECLARE_String(storage_root_path);
-
-// Config is used to check incompatible old format hdr_ format
-// whether doris uses strict way. When config is true, process will log fatal
-// and exit. When config is false, process will only log warning.
-DECLARE_Bool(storage_strict_check_incompatible_old_format);
-
+CONF_mInt32(update_cache_expire_sec, "360");
+CONF_mInt32(file_descriptor_cache_clean_interval, "3600");
+CONF_mInt32(disk_stat_monitor_interval, "5");
+CONF_mInt32(profile_report_interval, "30");
+CONF_mInt32(unused_rowset_monitor_interval, "30");
+CONF_String(storage_root_path, "${STARROCKS_HOME}/storage");
 // BE process will exit if the percentage of error disk reach this value.
-DECLARE_mInt32(max_percentage_of_error_disk);
-DECLARE_mInt32(default_num_rows_per_column_file_block);
+CONF_mInt32(max_percentage_of_error_disk, "0");
+// CONF_Int32(default_num_rows_per_data_block, "1024");
+CONF_mInt32(default_num_rows_per_column_file_block, "1024");
+CONF_Int32(max_tablet_num_per_shard, "1024");
 // pending data policy
-DECLARE_mInt32(pending_data_expire_time_sec);
+CONF_mInt32(pending_data_expire_time_sec, "1800");
+// inc_rowset expired interval
+CONF_mInt32(inc_rowset_expired_sec, "1800");
 // inc_rowset snapshot rs sweep time interval
-DECLARE_mInt32(tablet_rowset_stale_sweep_time_sec);
+CONF_mInt32(tablet_rowset_stale_sweep_time_sec, "1800");
 // garbage sweep policy
-DECLARE_Int32(max_garbage_sweep_interval);
-DECLARE_Int32(min_garbage_sweep_interval);
-DECLARE_mInt32(snapshot_expire_time_sec);
-// It is only a recommended value. When the disk space is insufficient,
-// the file storage period under trash dose not have to comply with this parameter.
-DECLARE_mInt32(trash_file_expire_time_sec);
+CONF_mInt32(max_garbage_sweep_interval, "3600");
+CONF_mInt32(min_garbage_sweep_interval, "180");
+CONF_mInt32(snapshot_expire_time_sec, "172800");
+CONF_mInt32(trash_file_expire_time_sec, "259200");
+//file descriptors cache, by default, cache 16384 descriptors
+CONF_Int32(file_descriptor_cache_capacity, "16384");
 // minimum file descriptor number
 // modify them upon necessity
-DECLARE_Int32(min_file_descriptor_number);
-DECLARE_Int64(index_stream_cache_capacity);
-DECLARE_String(row_cache_mem_limit);
+CONF_Int32(min_file_descriptor_number, "60000");
+CONF_Int64(index_stream_cache_capacity, "10737418240");
+// CONF_Int64(max_packed_row_block_size, "20971520");
 
 // Cache for storage page size
-DECLARE_String(storage_page_cache_limit);
-// Shard size for page cache, the value must be power of two.
-// It's recommended to set it to a value close to the number of BE cores in order to reduce lock contentions.
-DECLARE_Int32(storage_page_cache_shard_size);
-// Percentage for index page cache
-// all storage page cache will be divided into data_page_cache and index_page_cache
-DECLARE_Int32(index_page_cache_percentage);
+CONF_mString(storage_page_cache_limit, "20%");
 // whether to disable page cache feature in storage
-DECLARE_Bool(disable_storage_page_cache);
-// whether to disable row cache feature in storage
-DECLARE_Bool(disable_storage_row_cache);
+CONF_Bool(disable_storage_page_cache, "false");
+// whether to disable column pool
+CONF_Bool(disable_column_pool, "false");
 
-// Cache for mow primary key storage page size, it's seperated from
-// storage_page_cache_limit
-DECLARE_String(pk_storage_page_cache_limit);
-// data page size for primary key index
-DECLARE_Int32(primary_key_data_page_size);
+CONF_mInt32(base_compaction_check_interval_seconds, "60");
+CONF_mInt64(min_base_compaction_num_singleton_deltas, "5");
+CONF_mInt64(max_base_compaction_num_singleton_deltas, "100");
+// This config is to limit the max concurrency of running base compaction tasks.
+// -1 means no limit if enable event_based_compaction_framework, and the max concurrency will be:
+CONF_Int32(base_compaction_num_threads_per_disk, "1");
+CONF_mDouble(base_cumulative_delta_ratio, "0.3");
+CONF_mInt64(base_compaction_interval_seconds_since_last_operation, "86400");
 
-// inc_rowset snapshot rs sweep time interval
-DECLARE_mInt32(data_page_cache_stale_sweep_time_sec);
-DECLARE_mInt32(index_page_cache_stale_sweep_time_sec);
-// great impact on the performance of MOW, so it can be longer.
-DECLARE_mInt32(pk_index_page_cache_stale_sweep_time_sec);
+// cumulative compaction policy: max delta file's size unit:B
+CONF_mInt32(cumulative_compaction_check_interval_seconds, "1");
+CONF_mInt64(min_cumulative_compaction_num_singleton_deltas, "5");
+CONF_mInt64(max_cumulative_compaction_num_singleton_deltas, "1000");
+// This config is to limit the max concurrency of running cumulative compaction tasks.
+// -1 means no limit if enable event_based_compaction_framework, and the max concurrency will be:
+CONF_Int32(cumulative_compaction_num_threads_per_disk, "1");
+// CONF_Int32(cumulative_compaction_write_mbytes_per_sec, "100");
 
-DECLARE_Bool(enable_low_cardinality_optimize);
-DECLARE_Bool(enable_low_cardinality_cache_code);
+CONF_mInt32(update_compaction_check_interval_seconds, "60");
+CONF_mInt32(update_compaction_num_threads_per_disk, "1");
+CONF_Int32(update_compaction_per_tablet_min_interval_seconds, "120"); // 2min
+CONF_mInt64(max_update_compaction_num_singleton_deltas, "1000");
+CONF_mInt64(update_compaction_size_threshold, "268435456");
+CONF_mInt64(update_compaction_result_bytes, "1073741824");
 
-// be policy
-// whether check compaction checksum
-DECLARE_mBool(enable_compaction_checksum);
-// whether disable automatic compaction task
-DECLARE_mBool(disable_auto_compaction);
-// whether enable vertical compaction
-DECLARE_mBool(enable_vertical_compaction);
-// whether enable ordered data compaction
-DECLARE_mBool(enable_ordered_data_compaction);
-// In vertical compaction, column number for every group
-DECLARE_mInt32(vertical_compaction_num_columns_per_group);
-// In vertical compaction, max memory usage for row_source_buffer
-DECLARE_Int32(vertical_compaction_max_row_source_memory_mb);
-// In vertical compaction, max dest segment file size
-DECLARE_mInt64(vertical_compaction_max_segment_size);
+CONF_mInt32(repair_compaction_interval_seconds, "600"); // 10 min
+CONF_Int32(manual_compaction_threads, "4");
 
-// In ordered data compaction, min segment size for input rowset
-DECLARE_mInt32(ordered_data_compaction_min_segment_size);
+// if compaction of a tablet failed, this tablet should not be chosen to
+// compaction until this interval passes.
+CONF_mInt64(min_compaction_failure_interval_sec, "120"); // 2 min
 
-// This config can be set to limit thread number in compaction thread pool.
-DECLARE_mInt32(max_base_compaction_threads);
-DECLARE_mInt32(max_cumu_compaction_threads);
-DECLARE_mInt32(max_single_replica_compaction_threads);
+CONF_mInt64(min_cumulative_compaction_failure_interval_sec, "30"); // 30s
 
-DECLARE_Bool(enable_base_compaction_idle_sched);
-DECLARE_mInt64(base_compaction_min_rowset_num);
-DECLARE_mDouble(base_compaction_min_data_ratio);
-DECLARE_mInt64(base_compaction_dup_key_max_file_size_mbytes);
-
-DECLARE_Bool(enable_skip_tablet_compaction);
-// output rowset of cumulative compaction total disk size exceed this config size,
-// this rowset will be given to base compaction, unit is m byte.
-DECLARE_mInt64(compaction_promotion_size_mbytes);
-
-// output rowset of cumulative compaction total disk size exceed this config ratio of
-// base rowset's total disk size, this rowset will be given to base compaction. The value must be between
-// 0 and 1.
-DECLARE_mDouble(compaction_promotion_ratio);
-
-// the smallest size of rowset promotion. When the rowset is less than this config, this
-// rowset will be not given to base compaction. The unit is m byte.
-DECLARE_mInt64(compaction_promotion_min_size_mbytes);
-
-// The lower bound size to do cumulative compaction. When total disk size of candidate rowsets is less than
-// this size, size_based policy may not do to cumulative compaction. The unit is m byte.
-DECLARE_mInt64(compaction_min_size_mbytes);
-
-// cumulative compaction policy: min and max delta file's number
-DECLARE_mInt64(cumulative_compaction_min_deltas);
-DECLARE_mInt64(cumulative_compaction_max_deltas);
-
-// This config can be set to limit thread number in  segcompaction thread pool.
-DECLARE_mInt32(seg_compaction_max_threads);
-
-// This config can be set to limit thread number in  multiget thread pool.
-DECLARE_mInt32(multi_get_max_threads);
-
-// The upper limit of "permits" held by all compaction tasks. This config can be set to limit memory consumption for compaction.
-DECLARE_mInt64(total_permits_for_compaction_score);
-
-// sleep interval in ms after generated compaction tasks
-DECLARE_mInt32(generate_compaction_tasks_interval_ms);
-// sleep interval in second after update replica infos
-DECLARE_mInt32(update_replica_infos_interval_seconds);
-
-// Compaction task number per disk.
-// Must be greater than 2, because Base compaction and Cumulative compaction have at least one thread each.
-DECLARE_mInt32(compaction_task_num_per_disk);
-// compaction thread num for fast disk(typically .SSD), must be greater than 2.
-DECLARE_mInt32(compaction_task_num_per_fast_disk);
-
-// How many rounds of cumulative compaction for each round of base compaction when compaction tasks generation.
-DECLARE_mInt32(cumulative_compaction_rounds_for_each_base_compaction_round);
+// Too many compaction tasks may run out of memory.
+// This config is to limit the max concurrency of running compaction tasks.
+// -1 means no limit, and the max concurrency will be:
+//      C = (cumulative_compaction_num_threads_per_disk + base_compaction_num_threads_per_disk) * dir_num
+// set it to larger than C will be set to equal to C.
+// This config can be set to 0, which means to forbid any compaction, for some special cases.
+CONF_mInt32(max_compaction_concurrency, "-1");
 
 // Threshold to logging compaction trace, in seconds.
-DECLARE_mInt32(base_compaction_trace_threshold);
-DECLARE_mInt32(cumulative_compaction_trace_threshold);
-DECLARE_mBool(disable_compaction_trace_log);
+CONF_mInt32(compaction_trace_threshold, "60");
 
-// Interval to picking rowset to compact, in seconds
-DECLARE_mInt64(pick_rowset_to_compact_interval_sec);
+// Max columns of each compaction group.
+// If the number of schema columns is greater than this,
+// the columns will be divided into groups for vertical compaction.
+CONF_Int64(vertical_compaction_max_columns_per_group, "5");
 
-// Thread count to do tablet meta checkpoint, -1 means use the data directories count.
-DECLARE_Int32(max_meta_checkpoint_threads);
+CONF_Bool(enable_event_based_compaction_framework, "true");
 
-// Threshold to logging agent task trace, in seconds.
-DECLARE_mInt32(agent_task_trace_threshold_sec);
+CONF_Bool(enable_size_tiered_compaction_strategy, "true");
+CONF_mInt64(size_tiered_min_level_size, "131072");
+CONF_mInt64(size_tiered_level_multiple, "5");
+CONF_mInt64(size_tiered_level_multiple_dupkey, "10");
+CONF_mInt64(size_tiered_level_num, "7");
 
-// This config can be set to limit thread number in tablet migration thread pool.
-DECLARE_Int32(min_tablet_migration_threads);
-DECLARE_Int32(max_tablet_migration_threads);
+CONF_Bool(enable_check_string_lengths, "true");
+// 5GB
+CONF_mInt64(min_cumulative_compaction_size, "5368709120");
+// 20GB
+CONF_mInt64(min_base_compaction_size, "21474836480");
 
-DECLARE_mInt32(finished_migration_tasks_size);
-// If size less than this, the remaining rowsets will be force to complete
-DECLARE_mInt32(migration_remaining_size_threshold_mb);
-// If the task runs longer than this time, the task will be terminated, in seconds.
-// tablet max size / migration min speed * factor = 10GB / 1MBps * 2 = 20480 seconds
-DECLARE_mInt32(migration_task_timeout_secs);
+// Max row source mask memory bytes, default is 200M.
+// Should be smaller than compaction_mem_limit.
+// When the row source mask buffer exceeds this, it will be persisted to a temporary file on the disk.
+CONF_Int64(max_row_source_mask_memory_bytes, "209715200");
 
-// Port to start debug webserver on
-DECLARE_Int32(webserver_port);
-// Https enable flag
-DECLARE_Bool(enable_https);
-// Path of certificate
-DECLARE_String(ssl_certificate_path);
-// Path of private key
-DECLARE_String(ssl_private_key_path);
-// Whether to check authorization
-DECLARE_Bool(enable_all_http_auth);
-// Number of webserver workers
-DECLARE_Int32(webserver_num_workers);
+// Port to start debug http server in BE
+CONF_Int32(be_http_port, "8040");
+// Number of http workers in BE
+CONF_Int32(be_http_num_workers, "48");
 // Period to update rate counters and sampling counters in ms.
-DECLARE_mInt32(periodic_counter_update_period_ms);
-
-DECLARE_Bool(enable_single_replica_load);
-// Number of download workers for single replica load
-DECLARE_Int32(single_replica_load_download_num_workers);
+CONF_mInt32(periodic_counter_update_period_ms, "500");
 
 // Used for mini Load. mini load data file will be removed after this time.
-DECLARE_Int64(load_data_reserve_hours);
+CONF_Int64(load_data_reserve_hours, "4");
 // log error log will be removed after this time
-DECLARE_mInt64(load_error_log_reserve_hours);
+CONF_mInt64(load_error_log_reserve_hours, "48");
+CONF_Int32(number_tablet_writer_threads, "16");
 
-// be brpc interface is classified into two categories: light and heavy
-// each category has diffrent thread number
-// threads to handle heavy api interface, such as transmit_data/transmit_block etc
-DECLARE_Int32(brpc_heavy_work_pool_threads);
-// threads to handle light api interface, such as exec_plan_fragment_prepare/exec_plan_fragment_start
-DECLARE_Int32(brpc_light_work_pool_threads);
-DECLARE_Int32(brpc_heavy_work_pool_max_queue_size);
-DECLARE_Int32(brpc_light_work_pool_max_queue_size);
+// delta writer hang after this time, be will exit since storage is in error state
+CONF_Int32(be_exit_after_disk_write_hang_second, "60");
+
+// Automatically detect whether a char/varchar column to use dictionary encoding
+// If the number of keys in a dictionary is greater than this fraction of the total number of rows
+// turn off dictionary dictionary encoding. This only will detect first chunk
+// set to 1 means always use dictionary encoding
+CONF_Double(dictionary_encoding_ratio, "0.7");
+// The minimum chunk size for dictionary encoding speculation
+CONF_Int32(dictionary_speculate_min_chunk_size, "10000");
 
 // The maximum amount of data that can be processed by a stream load
-DECLARE_mInt64(streaming_load_max_mb);
+CONF_mInt64(streaming_load_max_mb, "102400");
 // Some data formats, such as JSON, cannot be streamed.
 // Therefore, it is necessary to limit the maximum number of
 // such data when using stream load to prevent excessive memory consumption.
-DECLARE_mInt64(streaming_load_json_max_mb);
-// the alive time of a TabletsChannel.
+CONF_mInt64(streaming_load_max_batch_size_mb, "100");
+// The alive time of a TabletsChannel.
 // If the channel does not receive any data till this time,
 // the channel will be removed.
-DECLARE_mInt32(streaming_load_rpc_max_alive_time_sec);
-// the timeout of a rpc to open the tablet writer in remote BE.
+CONF_Int32(streaming_load_rpc_max_alive_time_sec, "1200");
+// The timeout of a rpc to open the tablet writer in remote BE.
 // short operation time, can set a short timeout
-DECLARE_Int32(tablet_writer_open_rpc_timeout_sec);
-// The configuration is used to enable lazy open feature, and the default value is false.
-// When there is mixed deployment in the upgraded version, it needs to be set to false.
-DECLARE_mBool(enable_lazy_open_partition);
-// You can ignore brpc error '[E1011]The server is overcrowded' when writing data.
-DECLARE_mBool(tablet_writer_ignore_eovercrowded);
-DECLARE_mInt32(slave_replica_writer_rpc_timeout_sec);
-// Whether to enable stream load record function, the default is false.
-// False: disable stream load record
-DECLARE_mBool(enable_stream_load_record);
-// batch size of stream load record reported to FE
-DECLARE_mInt32(stream_load_record_batch_size);
-// expire time of stream load record in rocksdb.
-DECLARE_Int32(stream_load_record_expire_time_secs);
-// time interval to clean expired stream load records
-DECLARE_mInt64(clean_stream_load_record_interval_secs);
-
+CONF_Int32(tablet_writer_open_rpc_timeout_sec, "60");
+// make_snapshot rpc timeout
+CONF_Int32(make_snapshot_rpc_timeout_ms, "20000");
+// Deprecated, use query_timeout instread
+// the timeout of a rpc to process one batch in tablet writer.
+// you may need to increase this timeout if using larger 'streaming_load_max_mb',
+// or encounter 'tablet writer write failed' error when loading.
+// CONF_Int32(tablet_writer_rpc_timeout_sec, "600");
 // OlapTableSink sender's send interval, should be less than the real response time of a tablet writer rpc.
-// You may need to lower the speed when the sink receiver bes are too busy.
-DECLARE_mInt32(olap_table_sink_send_interval_ms);
+CONF_mInt32(olap_table_sink_send_interval_ms, "10");
 
 // Fragment thread pool
-DECLARE_Int32(fragment_pool_thread_num_min);
-DECLARE_Int32(fragment_pool_thread_num_max);
-DECLARE_Int32(fragment_pool_queue_size);
+CONF_Int32(fragment_pool_thread_num_min, "64");
+CONF_Int32(fragment_pool_thread_num_max, "4096");
+CONF_Int32(fragment_pool_queue_size, "2048");
 
-// Control the number of disks on the machine.  If 0, this comes from the system settings.
-DECLARE_Int32(num_disks);
-// The maximum number of the threads per disk is also the max queue depth per disk.
-DECLARE_Int32(num_threads_per_disk);
-// The read size is the size of the reads sent to os.
-// There is a trade off of latency and throughout, trying to keep disks busy but
-// not introduce seeks.  The literature seems to agree that with 8 MB reads, random
-// io and sequential io perform similarly.
-DECLARE_Int32(read_size);       // 8 * 1024 * 1024, Read Size (in bytes)
-DECLARE_Int32(min_buffer_size); // 1024, The minimum read buffer size (in bytes)
+// Spill to disk when query
+// Writable scratch directories, splitted by ";"
+CONF_String(query_scratch_dirs, "${STARROCKS_HOME}");
 
 // For each io buffer size, the maximum number of buffers the IoMgr will hold onto
 // With 1024B through 8MB buffers, this is up to ~2GB of buffers.
-DECLARE_Int32(max_free_io_buffers);
+CONF_Int32(max_free_io_buffers, "128");
 
-// The probing algorithm of partitioned hash table.
-// Enable quadratic probing hash table
-DECLARE_Bool(enable_quadratic_probing);
+CONF_Bool(disable_mem_pools, "false");
+
+// Whether to allocate chunk using mmap. If you enable this, you'd better to
+// increase vm.max_map_count's value whose default value is 65530.
+// you can do it as root via "sysctl -w vm.max_map_count=262144" or
+// "echo 262144 > /proc/sys/vm/max_map_count"
+// NOTE: When this is set to true, you must set chunk_reserved_bytes_limit
+// to a relative large number or the performace is very very bad.
+CONF_Bool(use_mmap_allocate_chunk, "false");
+
+// Chunk Allocator's reserved bytes limit,
+// Default value is 2GB, increase this variable can improve performance, but will
+// acquire more free memory which can not be used by other modules
+CONF_Int64(chunk_reserved_bytes_limit, "2147483648");
 
 // for pprof
-DECLARE_String(pprof_profile_dir);
-// for jeprofile in jemalloc
-DECLARE_mString(jeprofile_dir);
+CONF_String(pprof_profile_dir, "${STARROCKS_HOME}/log");
 
 // to forward compatibility, will be removed later
-DECLARE_mBool(enable_token_check);
+CONF_mBool(enable_token_check, "true");
 
 // to open/close system metrics
-DECLARE_Bool(enable_system_metrics);
+CONF_Bool(enable_system_metrics, "true");
 
-DECLARE_mBool(enable_prefetch);
+CONF_mBool(enable_prefetch, "true");
 
-// Number of cores Doris will used, this will effect only when it's greater than 0.
-// Otherwise, Doris will use all cores returned from "/proc/cpuinfo".
-DECLARE_Int32(num_cores);
+// Number of cores StarRocks will used, this will effect only when it's greater than 0.
+// Otherwise, StarRocks will use all cores returned from "/proc/cpuinfo".
+CONF_Int32(num_cores, "0");
 
 // When BE start, If there is a broken disk, BE process will exit by default.
 // Otherwise, we will ignore the broken disk,
-DECLARE_Bool(ignore_broken_disk);
+CONF_Bool(ignore_broken_disk, "false");
 
-// linux transparent huge page
-DECLARE_Bool(madvise_huge_pages);
+// Writable scratch directories
+CONF_String(scratch_dirs, "/tmp");
 
-// whether use mmap to allocate memory
-DECLARE_Bool(mmap_buffers);
+// If false and --scratch_dirs contains multiple directories on the same device,
+// then only the first writable directory is used
+// CONF_Bool(allow_multiple_scratch_dirs_per_device, "false");
 
-// Sleep time in milliseconds between memory maintenance iterations
-DECLARE_mInt32(memory_maintenance_sleep_time_ms);
+// Linux transparent huge page.
+CONF_Bool(madvise_huge_pages, "false");
 
-// After full gc, no longer full gc and minor gc during sleep.
-// After minor gc, no minor gc during sleep, but full gc is possible.
-DECLARE_mInt32(memory_gc_sleep_time_ms);
+// Whether use mmap to allocate memory.
+CONF_Bool(mmap_buffers, "false");
 
-// Sleep time in milliseconds between load channel memory refresh iterations
-DECLARE_mInt64(load_channel_memory_refresh_sleep_time_ms);
+// Sleep time in seconds between memory maintenance iterations
+CONF_mInt64(memory_maintenance_sleep_time_s, "10");
 
-// Alignment
-DECLARE_Int32(memory_max_alignment);
+// Aligement
+CONF_Int32(memory_max_alignment, "16");
 
-// max write buffer size before flush, default 200MB
-DECLARE_mInt64(write_buffer_size);
-// max buffer size used in memtable for the aggregated table, default 400MB
-DECLARE_mInt64(write_buffer_size_for_agg);
+// write buffer size before flush
+CONF_mInt64(write_buffer_size, "104857600");
 
-DECLARE_Int32(load_process_max_memory_limit_percent); // 50%
+// Following 2 configs limit the memory consumption of load process on a Backend.
+// eg: memory limit to 80% of mem limit config but up to 100GB(default)
+// NOTICE(cmy): set these default values very large because we don't want to
+// impact the load performace when user upgrading StarRocks.
+// user should set these configs properly if necessary.
+CONF_Int32(query_max_memory_limit_percent, "90");
+CONF_Int64(load_process_max_memory_limit_bytes, "107374182400"); // 100GB
+CONF_Int32(load_process_max_memory_limit_percent, "30");         // 30%
+CONF_mBool(enable_new_load_on_memory_limit_exceeded, "true");
+CONF_Int64(compaction_max_memory_limit, "-1");
+CONF_Int32(compaction_max_memory_limit_percent, "100");
+CONF_Int64(compaction_memory_limit_per_worker, "2147483648"); // 2GB
+CONF_String(consistency_max_memory_limit, "10G");
+CONF_Int32(consistency_max_memory_limit_percent, "20");
+CONF_Int32(update_memory_limit_percent, "60");
 
-// If the memory consumption of load jobs exceed load_process_max_memory_limit,
-// all load jobs will hang there to wait for memtable flush. We should have a
-// soft limit which can trigger the memtable flush for the load channel who
-// consumes lagest memory size before we reach the hard limit. The soft limit
-// might avoid all load jobs hang at the same time.
-DECLARE_Int32(load_process_soft_mem_limit_percent);
+// Update interval of tablet stat cache.
+CONF_mInt32(tablet_stat_cache_update_interval_second, "300");
 
-// result buffer cancelled time (unit: second)
-DECLARE_mInt32(result_buffer_cancelled_interval_time);
+// Result buffer cancelled time (unit: second).
+CONF_mInt32(result_buffer_cancelled_interval_time, "300");
 
-// the increased frequency of priority for remaining tasks in BlockingPriorityQueue
-DECLARE_mInt32(priority_queue_remaining_tasks_increased_frequency);
+// The increased frequency of priority for remaining tasks in BlockingPriorityQueue.
+CONF_mInt32(priority_queue_remaining_tasks_increased_frequency, "512");
 
-// sync tablet_meta when modifying meta
-DECLARE_mBool(sync_tablet_meta);
+// Sync tablet_meta when modifing meta.
+CONF_mBool(sync_tablet_meta, "false");
 
-// default thrift rpc timeout ms
-DECLARE_mInt32(thrift_rpc_timeout_ms);
+// Default thrift rpc timeout ms.
+CONF_mInt32(thrift_rpc_timeout_ms, "5000");
 
 // txn commit rpc timeout
-DECLARE_mInt32(txn_commit_rpc_timeout_ms);
+CONF_mInt32(txn_commit_rpc_timeout_ms, "20000");
 
 // If set to true, metric calculator will run
-DECLARE_Bool(enable_metric_calculator);
+CONF_Bool(enable_metric_calculator, "true");
 
-// max consumer num in one data consumer group, for routine load
-DECLARE_mInt32(max_consumer_num_per_group);
+// Max consumer num in one data consumer group, for routine load.
+CONF_mInt32(max_consumer_num_per_group, "3");
 
-// the size of thread pool for routine load task.
-// this should be larger than FE config 'max_routine_load_task_num_per_be' (default 5)
-DECLARE_Int32(routine_load_thread_pool_size);
+// Max pulsar consumer num in one data consumer group, for routine load.
+CONF_mInt32(max_pulsar_consumer_num_per_group, "10");
 
-// max external scan cache batch count, means cache max_memory_cache_batch_count * batch_size row
-// default is 20, batch_size's default value is 1024 means 20 * 1024 rows will be cached
-DECLARE_mInt32(max_memory_sink_batch_count);
+// The size of thread pool for routine load task.
+// this should be larger than FE config 'max_concurrent_task_num_per_be' (default 5).
+CONF_Int32(routine_load_thread_pool_size, "10");
+
+// kafka request timeout
+CONF_Int32(routine_load_kafka_timeout_second, "10");
+
+// pulsar request timeout
+CONF_Int32(routine_load_pulsar_timeout_second, "10");
+
+// Is set to true, index loading failure will not cause BE exit,
+// and the tablet will be marked as bad, so that FE will try to repair it.
+// CONF_Bool(auto_recover_index_loading_failure, "false");
+
+// Max external scan cache batch count, means cache max_memory_cache_batch_count * batch_size row
+// default is 20, batch_size's defualt value is 1024 means 20 * 1024 rows will be cached
+CONF_mInt32(max_memory_sink_batch_count, "20");
 
 // This configuration is used for the context gc thread schedule period
 // note: unit is minute, default is 5min
-DECLARE_mInt32(scan_context_gc_interval_min);
+CONF_mInt32(scan_context_gc_interval_min, "5");
 
-// es scroll keep-alive
-DECLARE_String(es_scroll_keepalive);
+// es scroll keep-alive.
+CONF_String(es_scroll_keepalive, "5m");
 
-// HTTP connection timeout for es
-DECLARE_mInt32(es_http_timeout_ms);
+// HTTP connection timeout for es.
+CONF_Int32(es_http_timeout_ms, "5000");
 
-// the max client cache number per each host
+// es index max result window, and this value affects batch size.
+// if request batch size exceeds this value, ES will return bad request(400)
+// https://www.elastic.co/guide/en/elasticsearch/reference/current/index-modules.html
+CONF_Int32(es_index_max_result_window, "10000");
+
+// The max client cache number per each host.
 // There are variety of client cache in BE, but currently we use the
 // same cache size configuration.
 // TODO(cmy): use different config to set different client cache if necessary.
-DECLARE_Int32(max_client_cache_size_per_host);
+CONF_Int32(max_client_cache_size_per_host, "10");
 
 // Dir to save files downloaded by SmallFileMgr
-DECLARE_String(small_file_dir);
+CONF_String(small_file_dir, "${STARROCKS_HOME}/lib/small_file/");
 // path gc
-DECLARE_Bool(path_gc_check);
-DECLARE_mInt32(path_gc_check_interval_second);
-DECLARE_mInt32(path_gc_check_step);
-DECLARE_mInt32(path_gc_check_step_interval_ms);
-DECLARE_mInt32(path_scan_interval_second);
-DECLARE_mInt32(path_scan_step_interval_ms);
+CONF_Bool(path_gc_check, "true");
+CONF_Int32(path_gc_check_interval_second, "86400");
+CONF_mInt32(path_gc_check_step, "1000");
+CONF_mInt32(path_gc_check_step_interval_ms, "10");
+CONF_mInt32(path_scan_interval_second, "86400");
 
 // The following 2 configs limit the max usage of disk capacity of a data dir.
 // If both of these 2 threshold reached, no more data can be writen into that data dir.
 // The percent of max used capacity of a data dir
-DECLARE_mInt32(storage_flood_stage_usage_percent); // 90%
+CONF_mInt32(storage_flood_stage_usage_percent, "95"); // 95%
 // The min bytes that should be left of a data dir
-DECLARE_mInt64(storage_flood_stage_left_capacity_bytes); // 1GB
-// number of thread for flushing memtable per store
-DECLARE_Int32(flush_thread_num_per_store);
-// number of thread for flushing memtable per store, for high priority load task
-DECLARE_Int32(high_priority_flush_thread_num_per_store);
+CONF_mInt64(storage_flood_stage_left_capacity_bytes, "107374182400"); // 100GB
+// When choosing storage root path for tablet creation, disks with usage larger than the
+// average value by `storage_high_usage_disk_protect_ratio` won't be chosen at first.
+CONF_mDouble(storage_high_usage_disk_protect_ratio, "0.1"); // 10%
 
-// config for tablet meta checkpoint
-DECLARE_mInt32(tablet_meta_checkpoint_min_new_rowsets_num);
-DECLARE_mInt32(tablet_meta_checkpoint_min_interval_secs);
-DECLARE_Int32(generate_tablet_meta_checkpoint_tasks_interval_secs);
+// Number of thread for flushing memtable per store.
+CONF_mInt32(flush_thread_num_per_store, "2");
 
-// config for default rowset type
-// Valid configs: ALPHA, BETA
-DECLARE_String(default_rowset_type);
+// Config for tablet meta checkpoint.
+CONF_mInt32(tablet_meta_checkpoint_min_new_rowsets_num, "10");
+CONF_mInt32(tablet_meta_checkpoint_min_interval_secs, "600");
 
-// Maximum size of a single message body in all protocols
-DECLARE_Int64(brpc_max_body_size);
-// Max unwritten bytes in each socket, if the limit is reached, Socket.Write fails with EOVERCROWDED
-DECLARE_Int64(brpc_socket_max_unwritten_bytes);
-// TODO(zxy): expect to be true in v1.3
-// Whether to embed the ProtoBuf Request serialized string together with Tuple/Block data into
-// Controller Attachment and send it through http brpc when the length of the Tuple/Block data
-// is greater than 1.8G. This is to avoid the error of Request length overflow (2G).
-DECLARE_mBool(transfer_large_data_by_brpc);
+// Maximum size of a single message body in all protocols.
+CONF_Int64(brpc_max_body_size, "2147483648");
+// Max unwritten bytes in each socket, if the limit is reached, Socket.Write fails with EOVERCROWDED.
+CONF_Int64(brpc_socket_max_unwritten_bytes, "1073741824");
 
-// max number of txns for every txn_partition_map in txn manager
-// this is a self protection to avoid too many txns saving in manager
-DECLARE_mInt64(max_runnings_transactions_per_txn_map);
+// Max number of txns for every txn_partition_map in txn manager.
+// this is a self-protection to avoid too many txns saving in manager.
+CONF_mInt64(max_runnings_transactions_per_txn_map, "100");
 
-// tablet_map_lock shard size, the value is 2^n, n=0,1,2,3,4
-// this is a an enhancement for better performance to manage tablet
-DECLARE_Int32(tablet_map_shard_size);
+// The tablet map shard size, the value must be power of two.
+// this is an enhancement for better performance to manage tablet.
+CONF_Int32(tablet_map_shard_size, "32");
+
+CONF_String(plugin_path, "${STARROCKS_HOME}/plugin");
 
 // txn_map_lock shard size, the value is 2^n, n=0,1,2,3,4
-// this is a an enhancement for better performance to manage txn
-DECLARE_Int32(txn_map_shard_size);
+// this is an enhancement for better performance to manage txn.
+CONF_Int32(txn_map_shard_size, "128");
 
 // txn_lock shard size, the value is 2^n, n=0,1,2,3,4
-// this is a an enhancement for better performance to commit and publish txn
-DECLARE_Int32(txn_shard_size);
+// this is an enhancement for better performance to commit and publish txn.
+CONF_Int32(txn_shard_size, "1024");
 
 // Whether to continue to start be when load tablet from header failed.
-DECLARE_Bool(ignore_load_tablet_failure);
+CONF_Bool(ignore_load_tablet_failure, "false");
 
 // Whether to continue to start be when load tablet from header failed.
-DECLARE_mBool(ignore_rowset_stale_unconsistent_delete);
-
-// Set max cache's size of query results, the unit is M byte
-DECLARE_Int32(query_cache_max_size_mb);
-
-// Cache memory is pruned when reach query_cache_max_size_mb + query_cache_elasticity_size_mb
-DECLARE_Int32(query_cache_elasticity_size_mb);
-
-// Maximum number of cache partitions corresponding to a SQL
-DECLARE_Int32(query_cache_max_partition_count);
-
-// Maximum number of version of a tablet. If the version num of a tablet exceed limit,
-// the load process will reject new incoming load job of this tablet.
-// This is to avoid too many version num.
-DECLARE_mInt32(max_tablet_version_num);
-
-// Frontend mainly use two thrift sever type: THREAD_POOL, THREADED_SELECTOR. if fe use THREADED_SELECTOR model for thrift server,
-// the thrift_server_type_of_fe should be set THREADED_SELECTOR to make be thrift client to fe constructed with TFramedTransport
-DECLARE_String(thrift_server_type_of_fe);
-
-// disable zone map index when page row is too few
-DECLARE_mInt32(zone_map_row_num_threshold);
-
-// aws sdk log level
-//    Off = 0,
-//    Fatal = 1,
-//    Error = 2,
-//    Warn = 3,
-//    Info = 4,
-//    Debug = 5,
-//    Trace = 6
-DECLARE_Int32(aws_log_level);
-
-// the buffer size when read data from remote storage like s3
-DECLARE_mInt32(remote_storage_read_buffer_mb);
-
-// The minimum length when TCMalloc Hook consumes/releases MemTracker, consume size
-// smaller than this value will continue to accumulate. specified as number of bytes.
-// Decreasing this value will increase the frequency of consume/release.
-// Increasing this value will cause MemTracker statistics to be inaccurate.
-DECLARE_mInt32(mem_tracker_consume_min_size_bytes);
-
-// The version information of the tablet will be stored in the memory
-// in an adjacency graph data structure.
-// And as the new version is written and the old version is deleted,
-// the data structure will begin to have empty vertex with no edge associations(orphan vertex).
-// This config is used to control that when the proportion of orphan vertex is greater than the threshold,
-// the adjacency graph will be rebuilt to ensure that the data structure will not expand indefinitely.
-// This config usually only needs to be modified during testing.
-// In most cases, it does not need to be modified.
-DECLARE_mDouble(tablet_version_graph_orphan_vertex_ratio);
-
-// max send batch parallelism for OlapTableSink
-// The value set by the user for send_batch_parallelism is not allowed to exceed max_send_batch_parallelism_per_job,
-// if exceed, the value of send_batch_parallelism would be max_send_batch_parallelism_per_job
-DECLARE_mInt32(max_send_batch_parallelism_per_job);
-
-// number of send batch thread pool size
-DECLARE_Int32(send_batch_thread_pool_thread_num);
-// number of send batch thread pool queue size
-DECLARE_Int32(send_batch_thread_pool_queue_size);
-// number of download cache thread pool size
-DECLARE_Int32(download_cache_thread_pool_thread_num);
-// number of download cache thread pool queue size
-DECLARE_Int32(download_cache_thread_pool_queue_size);
-// download cache buffer size
-DECLARE_Int64(download_cache_buffer_size);
-
-// Limit the number of segment of a newly created rowset.
-// The newly created rowset may to be compacted after loading,
-// so if there are too many segment in a rowset, the compaction process
-// will run out of memory.
-// When doing compaction, each segment may take at least 1MB buffer.
-DECLARE_mInt32(max_segment_num_per_rowset);
-
-// Store segment without compression if a segment is smaller than
-// segment_compression_threshold_kb.
-DECLARE_mInt32(segment_compression_threshold_kb);
-
-// The connection timeout when connecting to external table such as odbc table.
-DECLARE_mInt32(external_table_connect_timeout_sec);
-
-// Global bitmap cache capacity for aggregation cache, size in bytes
-DECLARE_Int64(delete_bitmap_agg_cache_capacity);
-
-// s3 config
-DECLARE_mInt32(max_remote_storage_count);
-
-// reference https://github.com/edenhill/librdkafka/blob/master/INTRODUCTION.md#broker-version-compatibility
-// If the dependent kafka broker version older than 0.10.0.0,
-// the value of kafka_api_version_request should be false, and the
-// value set by the fallback version kafka_broker_version_fallback will be used,
-// and the valid values are: 0.9.0.x, 0.8.x.y.
-DECLARE_String(kafka_api_version_request);
-DECLARE_String(kafka_broker_version_fallback);
-
-// The number of pool siz of routine load consumer.
-// If you meet the error describe in https://github.com/edenhill/librdkafka/issues/3608
-// Change this size to 0 to fix it temporarily.
-DECLARE_Int32(routine_load_consumer_pool_size);
-
-// Used in single-stream-multi-table load. When receive a batch of messages from kafka,
-// if the size of batch is more than this threshold, we will request plans for all related tables.
-DECLARE_Int32(multi_table_batch_plan_threshold);
-
-// When the timeout of a load task is less than this threshold,
-// Doris treats it as a high priority task.
-// high priority tasks use a separate thread pool for flush and do not block rpc by memory cleanup logic.
-// this threshold is mainly used to identify routine load tasks and should not be modified if not necessary.
-DECLARE_mInt32(load_task_high_priority_threshold_second);
-
-// The min timeout of load rpc (add batch, close)
-// Because a load rpc may be blocked for a while.
-// Increase this config may avoid rpc timeout.
-DECLARE_mInt32(min_load_rpc_timeout_ms);
-
-// use which protocol to access function service, candicate is baidu_std/h2:grpc
-DECLARE_String(function_service_protocol);
-
-// use which load balancer to select server to connect
-DECLARE_String(rpc_load_balancer);
-
-// Enable tracing
-// If this configuration is enabled, you should also specify the trace_export_url.
-DECLARE_Bool(enable_tracing);
-
-// Enable opentelemtry collector
-DECLARE_Bool(enable_otel_collector);
-
-// Current support for exporting traces:
-// zipkin: Export traces directly to zipkin, which is used to enable the tracing feature quickly.
-// collector: The collector can be used to receive and process traces and support export to a variety of
-//   third-party systems.
-DECLARE_mString(trace_exporter);
-
-// The endpoint to export spans to.
-// export to zipkin like: http://127.0.0.1:9411/api/v2/spans
-// export to collector like: http://127.0.0.1:4318/v1/traces
-DECLARE_String(trace_export_url);
-
-// The maximum buffer/queue size to collect span. After the size is reached, spans are dropped.
-// An export will be triggered when the number of spans in the queue reaches half of the maximum.
-DECLARE_Int32(max_span_queue_size);
-
-// The maximum batch size of every export spans. It must be smaller or equal to max_queue_size.
-DECLARE_Int32(max_span_export_batch_size);
-
-// The time interval between two consecutive export spans.
-DECLARE_Int32(export_span_schedule_delay_millis);
-
-// a soft limit of string type length, the hard limit is 2GB - 4, but if too long will cause very low performance,
-// so we set a soft limit, default is 1MB
-DECLARE_mInt32(string_type_length_soft_limit_bytes);
-
-DECLARE_mInt32(jsonb_type_length_soft_limit_bytes);
-
-// used for olap scanner to save memory, when the size of unused_object_pool
-// is greater than object_pool_buffer_size, release the object in the unused_object_pool.
-DECLARE_Int32(object_pool_buffer_size);
-
-// ParquetReaderWrap prefetch buffer size
-DECLARE_Int32(parquet_reader_max_buffer_size);
-// Max size of parquet page header in bytes
-DECLARE_mInt32(parquet_header_max_size_mb);
-// Max buffer size for parquet row group
-DECLARE_mInt32(parquet_rowgroup_max_buffer_mb);
-// Max buffer size for parquet chunk column
-DECLARE_mInt32(parquet_column_max_buffer_mb);
-// Merge small IO, the max amplified read ratio
-DECLARE_mDouble(max_amplified_read_ratio);
-
-// OrcReader
-DECLARE_mInt32(orc_natural_read_size_mb);
-DECLARE_mInt64(big_column_size_buffer);
-DECLARE_mInt64(small_column_size_buffer);
-
-// When the rows number reached this limit, will check the filter rate the of bloomfilter
-// if it is lower than a specific threshold, the predicate will be disabled.
-DECLARE_mInt32(bloom_filter_predicate_check_row_num);
-
-// cooldown task configs
-DECLARE_Int32(cooldown_thread_num);
-DECLARE_mInt64(generate_cooldown_task_interval_sec);
-DECLARE_mInt32(remove_unused_remote_files_interval_sec); // 6h
-DECLARE_mInt32(confirm_unused_remote_files_interval_sec);
-DECLARE_Int32(cold_data_compaction_thread_num);
-DECLARE_mInt32(cold_data_compaction_interval_sec);
-DECLARE_mInt64(generate_cache_cleaner_task_interval_sec); // 12 h
-DECLARE_Int32(concurrency_per_dir);
-DECLARE_mInt64(cooldown_lag_time_sec);     // 3h
-DECLARE_mInt64(max_sub_cache_file_size);   // 100MB
-DECLARE_mInt64(file_cache_alive_time_sec); // 1 week
-// file_cache_type is used to set the type of file cache for remote files.
-// "": no cache, "sub_file_cache": split sub files from remote file.
-// "whole_file_cache": the whole file.
-DECLARE_mString(file_cache_type);
-DECLARE_mInt64(file_cache_max_size_per_disk); // zero for no limit
-
-DECLARE_Int32(s3_transfer_executor_pool_size);
-
-DECLARE_Bool(enable_time_lut);
-DECLARE_Bool(enable_simdjson_reader);
-
-DECLARE_mBool(enable_query_like_bloom_filter);
-// number of s3 scanner thread pool size
-DECLARE_Int32(doris_remote_scanner_thread_pool_thread_num);
-// number of s3 scanner thread pool queue size
-DECLARE_Int32(doris_remote_scanner_thread_pool_queue_size);
-
-// limit the queue of pending batches which will be sent by a single nodechannel
-DECLARE_mInt64(nodechannel_pending_queue_max_bytes);
-
-// Max waiting time to wait the "plan fragment start" rpc.
-// If timeout, the fragment will be cancelled.
-// This parameter is usually only used when the FE loses connection,
-// and the BE can automatically cancel the relevant fragment after the timeout,
-// so as to avoid occupying the execution thread for a long time.
-DECLARE_mInt32(max_fragment_start_wait_time_seconds);
-
-// Node role tag for backend. Mix role is the default role, and computation role have no
-// any tablet.
-DECLARE_String(be_node_role);
-
-// Hide webserver page for safety.
-// Hide the be config page for webserver.
-DECLARE_Bool(hide_webserver_config_page);
-
-DECLARE_Bool(enable_segcompaction);
-
-// Trigger segcompaction if the num of segments in a rowset exceeds this threshold.
-DECLARE_Int32(segcompaction_threshold_segment_num);
-
-// The segment whose row number above the threshold will be compacted during segcompaction
-DECLARE_Int32(segcompaction_small_threshold);
-
-// enable java udf and jdbc scannode
-DECLARE_Bool(enable_java_support);
-
-// Set config randomly to check more issues in github workflow
-DECLARE_Bool(enable_fuzzy_mode);
-
-DECLARE_Int32(pipeline_executor_size);
-DECLARE_Bool(enable_workload_group_for_scan);
-
-// Temp config. True to use optimization for bitmap_index apply predicate except leaf node of the and node.
-// Will remove after fully test.
-DECLARE_Bool(enable_index_apply_preds_except_leafnode_of_andnode);
-
-// block file cache
-DECLARE_Bool(enable_file_cache);
-// format: [{"path":"/path/to/file_cache","total_size":21474836480,"query_limit":10737418240}]
-// format: [{"path":"/path/to/file_cache","total_size":21474836480,"query_limit":10737418240},{"path":"/path/to/file_cache2","total_size":21474836480,"query_limit":10737418240}]
-DECLARE_String(file_cache_path);
-DECLARE_Int64(file_cache_min_file_segment_size);
-DECLARE_Int64(file_cache_max_file_segment_size);
-DECLARE_Bool(clear_file_cache);
-DECLARE_Bool(enable_file_cache_query_limit);
-
-// inverted index searcher cache
-// cache entry stay time after lookup
-DECLARE_mInt32(index_cache_entry_stay_time_after_lookup_s);
-// cache entry that have not been visited for a certain period of time can be cleaned up by GC thread
-DECLARE_mInt32(inverted_index_cache_stale_sweep_time_sec);
-// inverted index searcher cache size
-DECLARE_String(inverted_index_searcher_cache_limit);
-// set `true` to enable insert searcher into cache when write inverted index data
-DECLARE_Bool(enable_write_index_searcher_cache);
-DECLARE_Bool(enable_inverted_index_cache_check_timestamp);
-DECLARE_Int32(inverted_index_fd_number_limit_percent); // 50%
-
-// inverted index match bitmap cache size
-DECLARE_String(inverted_index_query_cache_limit);
-
-// inverted index
-DECLARE_mDouble(inverted_index_ram_buffer_size);
-DECLARE_Int32(query_bkd_inverted_index_limit_percent); // 5%
-// dict path for chinese analyzer
-DECLARE_String(inverted_index_dict_path);
-DECLARE_Int32(inverted_index_read_buffer_size);
-// tree depth for bkd index
-DECLARE_Int32(max_depth_in_bkd_tree);
-// index compaction
-DECLARE_Bool(inverted_index_compaction_enable);
-// use num_broadcast_buffer blocks as buffer to do broadcast
-DECLARE_Int32(num_broadcast_buffer);
-// semi-structure configs
-DECLARE_Bool(enable_parse_multi_dimession_array);
-
-// Currently, two compaction strategies are implemented, SIZE_BASED and TIME_SERIES.
-// In the case of time series compaction, the execution of compaction is adjusted
-// using parameters that have the prefix time_series_compaction.
-DECLARE_mString(compaction_policy);
-// the size of input files for each compaction
-DECLARE_mInt64(time_series_compaction_goal_size_mbytes);
-// the minimum number of input files for each compaction if time_series_compaction_goal_size_mbytes not meets
-DECLARE_mInt64(time_series_compaction_file_count_threshold);
-// if compaction has not been performed within 3600 seconds, a compaction will be triggered
-DECLARE_mInt64(time_series_compaction_time_threshold_seconds);
-
-// max depth of expression tree allowed.
-DECLARE_Int32(max_depth_of_expr_tree);
-
-// Report a tablet as bad when io errors occurs more than this value.
-DECLARE_mInt64(max_tablet_io_errors);
-
-// Report a tablet as bad when its path not found
-DECLARE_Int32(tablet_path_check_interval_seconds);
-DECLARE_mInt32(tablet_path_check_batch_size);
-
-// Page size of row column, default 4KB
-DECLARE_mInt64(row_column_page_size);
-// it must be larger than or equal to 5MB
-DECLARE_mInt32(s3_write_buffer_size);
-// the size of the whole s3 buffer pool, which indicates the s3 file writer
-// can at most buffer 50MB data. And the num of multi part upload task is
-// s3_write_buffer_whole_size / s3_write_buffer_size
-DECLARE_mInt32(s3_write_buffer_whole_size);
-//enable shrink memory
-DECLARE_Bool(enable_shrink_memory);
-// enable cache for high concurrent point query work load
-DECLARE_mInt32(schema_cache_capacity);
-DECLARE_mInt32(schema_cache_sweep_time_sec);
-
-// enable binlog
-DECLARE_Bool(enable_feature_binlog);
-
-// enable set in BitmapValue
-DECLARE_Bool(enable_set_in_bitmap_value);
-
-// max number of hdfs file handle in cache
-DECLARE_Int64(max_hdfs_file_handle_cache_num);
-// max number of meta info of external files, such as parquet footer
-DECLARE_Int64(max_external_file_meta_cache_num);
-
-// max_write_buffer_number for rocksdb
-DECLARE_Int32(rocksdb_max_write_buffer_number);
-
-// Allow invalid decimalv2 literal for compatible with old version. Recommend set it false strongly.
-DECLARE_mBool(allow_invalid_decimalv2_literal);
-// the max expiration time of kerberos ticket.
-// If a hdfs filesytem with kerberos authentication live longer
-// than this time, it will be expired.
-DECLARE_mInt64(kerberos_expiration_time_seconds);
-
-#ifdef BE_TEST
-// test s3
-DECLARE_String(test_s3_resource);
-DECLARE_String(test_s3_ak);
-DECLARE_String(test_s3_sk);
-DECLARE_String(test_s3_endpoint);
-DECLARE_String(test_s3_region);
-DECLARE_String(test_s3_bucket);
-DECLARE_String(test_s3_prefix);
+CONF_Bool(ignore_rowset_stale_unconsistent_delete, "false");
+
+// The chunk size for vector query engine
+CONF_Int32(vector_chunk_size, "4096");
+
+// Valid range: [0-1000].
+// `0` will disable late materialization.
+// `1000` will enable late materialization always.
+CONF_Int32(late_materialization_ratio, "10");
+
+// Valid range: [0-1000].
+// `0` will disable late materialization select metric type.
+// `1000` will enable late materialization always select metric type.
+CONF_Int32(metric_late_materialization_ratio, "1000");
+
+// Max batched bytes for each transmit request. (256KB)
+CONF_Int64(max_transmit_batched_bytes, "262144");
+
+CONF_Int16(bitmap_max_filter_items, "30");
+
+// The bitmap max filter ratio, valid value range is: [0-1000].
+CONF_Int16(bitmap_max_filter_ratio, "1");
+
+CONF_Bool(bitmap_filter_enable_not_equal, "false");
+
+// Only 1 and 2 is valid.
+// When storage_format_version is 1, use origin storage format for Date, Datetime and Decimal
+// type.
+// When storage_format_version is 2, DATE_V2, TIMESTAMP and DECIMAL_V2 will be used as
+// storage format.
+CONF_mInt16(storage_format_version, "2");
+
+// IMPORTANT NOTE: changing this config to 1 must require all BEs to be upgraded to new version,
+// which support this config.
+// DO NOT change this config unless you known how.
+// 0 for BITSHUFFLE_NULL
+// 1 for LZ4_NULL
+CONF_mInt16(null_encoding, "0");
+
+// Do pre-aggregate if effect greater than the factor, factor range:[1-100].
+CONF_Int16(pre_aggregate_factor, "80");
+
+#ifdef __x86_64__
+// Enable genearate minidump for crash.
+CONF_Bool(sys_minidump_enable, "false");
+
+// The minidump dir(generated by google_breakpad).
+CONF_String(sys_minidump_dir, "${STARROCKS_HOME}");
+
+// The max minidump files number could exist.
+CONF_mInt32(sys_minidump_max_files, "16");
+
+// The max minidump file size could exist.
+CONF_mInt32(sys_minidump_limit, "20480");
+
+// Interval(seconds) for cleaning old minidumps.
+CONF_mInt32(sys_minidump_interval, "600");
+#endif
+// dump trace info such as query-id and some runtime state
+CONF_Bool(dump_trace_info, "true");
+// The maximum number of version per tablet. If the
+// number of version exceeds this value, new write
+// requests will fail.
+CONF_mInt16(tablet_max_versions, "1000");
+
+// The maximum number of pending versions allowed for a primary key tablet
+CONF_mInt32(tablet_max_pending_versions, "1000");
+
+// NOTE: it will be deleted.
+CONF_mBool(enable_bitmap_union_disk_format_with_set, "false");
+
+// The number of scan threads pipeline engine.
+CONF_Int64(pipeline_scan_thread_pool_thread_num, "0");
+CONF_Double(pipeline_connector_scan_thread_num_per_cpu, "8");
+// Queue size of scan thread pool for pipeline engine.
+CONF_Int64(pipeline_scan_thread_pool_queue_size, "102400");
+// The number of execution threads for pipeline engine.
+CONF_Int64(pipeline_exec_thread_pool_thread_num, "0");
+// The number of threads for preparing fragment instances in pipeline engine, vCPUs by default.
+CONF_Int64(pipeline_prepare_thread_pool_thread_num, "0");
+CONF_Int64(pipeline_prepare_thread_pool_queue_size, "102400");
+// The number of threads for executing sink io task in pipeline engine, vCPUs by default.
+CONF_Int64(pipeline_sink_io_thread_pool_thread_num, "0");
+CONF_Int64(pipeline_sink_io_thread_pool_queue_size, "102400");
+// The buffer size of SinkBuffer.
+CONF_Int64(pipeline_sink_buffer_size, "64");
+// The degree of parallelism of brpc.
+CONF_Int64(pipeline_sink_brpc_dop, "64");
+// Used to reject coming fragment instances, when the number of running drivers
+// exceeds it*pipeline_exec_thread_pool_thread_num.
+CONF_Int64(pipeline_max_num_drivers_per_exec_thread, "10240");
+CONF_mBool(pipeline_print_profile, "false");
+
+/// For parallel scan on the single tablet.
+// These three configs are used to calculate the minimum number of rows picked up from a segment at one time.
+// It is `splitted_scan_bytes/scan_row_bytes` and restricted in the range [min_splitted_scan_rows, max_splitted_scan_rows].
+CONF_mInt64(tablet_internal_parallel_min_splitted_scan_rows, "16384");
+// Default is 16384*64, where 16384 is the chunk size in pipeline.
+CONF_mInt64(tablet_internal_parallel_max_splitted_scan_rows, "1048576");
+// Default is 512MB.
+CONF_mInt64(tablet_internal_parallel_max_splitted_scan_bytes, "536870912");
+//
+// Only when scan_dop is not less than min_scan_dop, this table can use tablet internal parallel,
+// where scan_dop = estimated_scan_rows / splitted_scan_rows.
+CONF_mInt64(tablet_internal_parallel_min_scan_dop, "4");
+
+// The bitmap serialize version.
+CONF_Int16(bitmap_serialize_version, "1");
+// The max hdfs file handle.
+CONF_mInt32(max_hdfs_file_handle, "1000");
+
+CONF_Int64(max_segment_file_size, "1073741824");
+
+// Rewrite partial semgent or not.
+// if true, partial segment will be rewrite into new segment file first and append other column data
+// if false, the data of other column will be append into partial segment file and rebuild segment footer
+// we may need the both implementations for perf test for now, so use it to decide which implementations to use
+// default: true
+CONF_Bool(rewrite_partial_segment, "true");
+
+// Properties to access object storage
+CONF_String(object_storage_access_key_id, "");
+CONF_String(object_storage_secret_access_key, "");
+CONF_String(object_storage_endpoint, "");
+// Tencent cos needs to add region information
+CONF_String(object_storage_region, "");
+CONF_Int64(object_storage_max_connection, "102400");
+// Acccess object storage using https.
+// this options is applicable only if `object_storage_endpoint` is not specified.
+CONF_Bool(object_storage_endpoint_use_https, "false");
+// https://github.com/aws/aws-sdk-cpp/issues/587
+// https://hadoop.apache.org/docs/current2/hadoop-aws/tools/hadoop-aws/index.html
+CONF_Bool(object_storage_endpoint_path_style_access, "false");
+// Socket connect timeout for object storage.
+// Default is -1, indicate to use the default value in sdk (1000ms)
+// Unless you are very far away from your the data center you are talking to, 1000ms is more than sufficient.
+CONF_Int64(object_storage_connect_timeout_ms, "-1");
+// Request timeout for object storage
+// Default is -1, indicate to use the default value in sdk.
+// For Curl, it's the low speed time, which contains the time in number milliseconds that transfer speed should be
+// below "lowSpeedLimit" for the library to consider it too slow and abort.
+// Note that for Curl this config is converted to seconds by rounding down to the nearest whole second except when the
+// value is greater than 0 and less than 1000.
+// When it's 0, low speed limit check will be disabled.
+CONF_Int64(object_storage_request_timeout_ms, "-1");
+
+// orc reader
+CONF_Bool(enable_orc_late_materialization, "true");
+// orc reader, if RowGroup/Stripe/File size is less than this value, read all data.
+CONF_Int32(orc_file_cache_max_size, "8388608");
+CONF_Int32(orc_natural_read_size, "8388608");
+CONF_mBool(orc_coalesce_read_enable, "true");
+
+// parquet reader
+CONF_mBool(parquet_coalesce_read_enable, "true");
+CONF_Bool(parquet_late_materialization_enable, "true");
+
+CONF_Int32(io_coalesce_read_max_buffer_size, "8388608");
+CONF_Int32(io_coalesce_read_max_distance_size, "1048576");
+CONF_Int32(io_tasks_per_scan_operator, "4");
+CONF_Int32(connector_io_tasks_per_scan_operator, "16");
+CONF_Int32(connector_io_tasks_min_size, "2");
+CONF_Int32(connector_io_tasks_adjust_interval_ms, "50");
+CONF_Int32(connector_io_tasks_adjust_step, "1");
+CONF_Int32(connector_io_tasks_adjust_smooth, "4");
+CONF_Int32(connector_io_tasks_slow_io_latency_ms, "50");
+CONF_mDouble(scan_use_query_mem_ratio, "0.25");
+CONF_Double(connector_scan_use_query_mem_ratio, "0.3");
+
+// Enable output trace logs in aws-sdk-cpp for diagnosis purpose.
+// Once logging is enabled in your application, the SDK will generate log files in your current working directory
+// following the default naming pattern of aws_sdk_<date>.log.
+// The log file generated by the prefix-naming option rolls over once per hour to allow for archiving or deleting log files.
+// https://docs.aws.amazon.com/zh_cn/sdk-for-cpp/v1/developer-guide/logging.html
+CONF_mBool(aws_sdk_logging_trace_enabled, "false");
+CONF_String(aws_sdk_logging_trace_level, "trace");
+
+// default: 16MB
+CONF_mInt64(experimental_s3_max_single_part_size, "16777216");
+// default: 16MB
+CONF_mInt64(experimental_s3_min_upload_part_size, "16777216");
+
+CONF_Int64(max_load_dop, "16");
+
+CONF_Bool(enable_load_colocate_mv, "false");
+
+CONF_Int64(meta_threshold_to_manual_compact, "10737418240"); // 10G
+CONF_Bool(manual_compact_before_data_dir_load, "false");
+
+// size of grf generated by broadcast join below this limit, multiple rf copy will be delivered in passthrough
+// style, otherwise, rf will be relayed by other be.
+CONF_Int64(deliver_broadcast_rf_passthrough_bytes_limit, "131072");
+// in passthrough style, the number of inflight RPCs of parallel deliveries are issued is not exceeds this limit.
+CONF_Int64(deliver_broadcast_rf_passthrough_inflight_num, "10");
+CONF_Int64(send_rpc_runtime_filter_timeout_ms, "1000");
+
+// enable optimized implementation of schema change
+CONF_Bool(enable_schema_change_v2, "true");
+
+CONF_Int32(max_batch_publish_latency_ms, "100");
+
+// Config for opentelemetry tracing.
+CONF_String(jaeger_endpoint, "");
+
+// Config for query debug trace
+CONF_String(query_debug_trace_dir, "${STARROCKS_HOME}/query_debug_trace");
+
+#ifdef USE_STAROS
+CONF_Int32(starlet_port, "9070");
+CONF_Int32(starlet_cache_thread_num, "64");
+// Root dir used for cache if cache enabled.
+CONF_String(starlet_cache_dir, "");
+// Cache backend check interval (in seconds), for async write sync check and ttl clean, e.t.c.
+CONF_Int32(starlet_cache_check_interval, "900");
+// Cache backend cache evictor interval (in seconds)
+CONF_Int32(starlet_cache_evict_interval, "60");
+// Cache will start evict cache files if free space belows this value(percentage)
+CONF_Double(starlet_cache_evict_low_water, "0.1");
+// Cache will stop evict cache files if free space is above this value(percentage)
+CONF_Double(starlet_cache_evict_high_water, "0.2");
+// type:Integer. cache directory allocation policy. (0:default, 1:random, 2:round-robin)
+CONF_Int32(starlet_cache_dir_allocate_policy, "0");
+// Buffer size in starlet fs buffer stream, size <= 0 means not use buffer stream.
+// Only support in S3/HDFS currently.
+CONF_Int32(starlet_fs_stream_buffer_size_bytes, "131072");
 #endif
 
-class Register {
-public:
-    struct Field {
-        const char* type = nullptr;
-        const char* name = nullptr;
-        void* storage = nullptr;
-        const char* defval = nullptr;
-        bool valmutable = false;
-        Field(const char* ftype, const char* fname, void* fstorage, const char* fdefval,
-              bool fvalmutable)
-                : type(ftype),
-                  name(fname),
-                  storage(fstorage),
-                  defval(fdefval),
-                  valmutable(fvalmutable) {}
-    };
+CONF_mInt64(lake_metadata_cache_limit, /*2GB=*/"2147483648");
+CONF_mBool(lake_print_delete_log, "true");
+CONF_mInt64(lake_gc_metadata_max_versions, "10");
+CONF_mInt64(lake_gc_metadata_check_interval, /*30 minutes=*/"1800");
+CONF_mInt64(lake_gc_segment_check_interval, /*60 minutes=*/"3600");
+// This value should be much larger than the maximum timeout of loading/compaction/schema change jobs.
+// The actual effective value is max(lake_gc_segment_expire_seconds, 86400)
+CONF_mInt64(lake_gc_segment_expire_seconds, /*3 days=*/"259200");
+CONF_mBool(lake_compaction_check_txn_log_first, "false");
+CONF_mInt64(experimental_lake_segment_gc_max_retries, "3");
+CONF_mBool(experimental_lake_enable_fast_gc, "true");
+// Used to ensure service availability in extreme situations by sacrificing a certain degree of correctness
+CONF_mBool(experimental_lake_ignore_lost_segment, "false");
+CONF_mBool(lake_enable_aggressive_gc, "false");
+CONF_mBool(lake_aggressive_gc_high_priority, "false");
 
-public:
-    static std::map<std::string, Field>* _s_field_map;
+CONF_mBool(dependency_librdkafka_debug_enable, "false");
 
-public:
-    Register(const char* ftype, const char* fname, void* fstorage, const char* fdefval,
-             bool fvalmutable) {
-        if (_s_field_map == nullptr) {
-            _s_field_map = new std::map<std::string, Field>();
-        }
-        Field field(ftype, fname, fstorage, fdefval, fvalmutable);
-        _s_field_map->insert(std::make_pair(std::string(fname), field));
-    }
-};
+// A comma-separated list of debug contexts to enable.
+// Producer debug context: broker, topic, msg
+// Consumer debug context: consumer, cgrp, topic, fetch
+// Other debug context: generic, metadata, feature, queue, protocol, security, interceptor, plugin
+// admin, eos, mock, assigner, conf
+CONF_String(dependency_librdkafka_debug, "all");
 
-// RegisterConfValidator class is used to store validator function of registered config fields in
-// Register::_s_field_map.
-// If any validator return false when BE bootstart, the bootstart will be terminated.
-// If validator return false when use http API to update some config, the config will not
-// be modified and the API will return failure.
-class RegisterConfValidator {
-public:
-    // Validator for each config name.
-    static std::map<std::string, std::function<bool()>>* _s_field_validator;
+// max loop count when be waiting its fragments finish
+CONF_Int64(loop_count_wait_fragments_finish, "0");
 
-public:
-    RegisterConfValidator(const char* fname, const std::function<bool()>& validator) {
-        if (_s_field_validator == nullptr) {
-            _s_field_validator = new std::map<std::string, std::function<bool()>>();
-        }
-        // register validator to _s_field_validator
-        _s_field_validator->insert(std::make_pair(std::string(fname), validator));
-    }
-};
+// the maximum number of connections in the connection pool for a single jdbc url
+CONF_Int16(jdbc_connection_pool_size, "8");
+// the minimum number of idle connections that connection pool tries to maintain.
+// if the idle connections dip below this value and the total connections in the pool are less than jdbc_connection_pool_size,
+// the connection pool will make a best effort to add additional connections quickly.
+CONF_Int16(jdbc_minimum_idle_connections, "1");
+// the maximum amount of time that a connection is allowed to sit idle in the pool.
+// this setting only applies when jdbc_minimum_idle_connections is less than jdbc_connection_pool_size.
+// The minimum allowed value is 10000(10 seconds).
+CONF_Int32(jdbc_connection_idle_timeout_ms, "600000");
 
-// configuration properties load from config file.
-class Properties {
-public:
-    // load conf from file, if must_exist is true and file does not exist, return false
-    bool load(const char* conf_file, bool must_exist = true);
+// spill dirs
+CONF_String(spill_local_storage_dir, "${STARROCKS_HOME}/spill");
+// when spill occurs, whether enable skip synchronous flush
+CONF_mBool(experimental_spill_skip_sync, "true");
+// spill Initial number of partitions
+CONF_mInt32(spill_init_partition, "16");
+// The maximum size of a single log block container file, this is not a hard limit.
+// If the file size exceeds this limit, a new file will be created to store the block.
+CONF_Int64(spill_max_log_block_container_bytes, "10737418240"); // 10GB
 
-    // Find the config value by key from `file_conf_map`.
-    // If found, set `retval` to the config value,
-    // or set `retval` to `defstr`
-    // if retval is not set(in case defstr is nullptr), set is_retval_set to false
-    template <typename T>
-    bool get_or_default(const char* key, const char* defstr, T& retval, bool* is_retval_set) const;
+// Now, only get_info is processed by _async_thread_pool, and only needs a small number of threads.
+// The default value is set as the THREAD_POOL_SIZE of RoutineLoadTaskScheduler of FE.
+CONF_Int32(internal_service_async_thread_num, "10");
 
-    void set(const std::string& key, const std::string& val);
+CONF_Int32(internal_service_query_rpc_thread_num, "-1");
 
-    void set_force(const std::string& key, const std::string& val);
+/*
+ * When compile with ENABLE_STATUS_FAILED, every use of RETURN_INJECT has probability of 1/cardinality_of_inject
+ * to inject error through return random status(except ok).
+ */
+CONF_Int32(cardinality_of_inject, "10");
 
-    // dump props to conf file
-    Status dump(const std::string& conffile);
+/*
+ * Config range for inject erros,
+ * Specify the source code directory,
+ * Split by "," strictly.
+ */
+CONF_String(directory_of_inject,
+            "/src/exec/pipeline/hashjoin,/src/exec/pipeline/scan,/src/exec/pipeline/aggregate,/src/exec/pipeline/"
+            "crossjoin,/src/exec/pipeline/sort,/src/exec/pipeline/exchange,/src/exec/pipeline/analysis");
 
-private:
-    std::map<std::string, std::string> file_conf_map;
-};
+// Used by to_base64
+CONF_Int64(max_length_for_to_base64, "200000");
+// Used by bitmap functions
+CONF_Int64(max_length_for_bitmap_function, "1000000");
 
-// full configurations.
-extern std::map<std::string, std::string>* full_conf_map;
+CONF_Bool(block_cache_enable, "false");
+CONF_Int64(block_cache_disk_size, "0");
+CONF_String(block_cache_disk_path, "${STARROCKS_HOME}/block_cache/");
+CONF_String(block_cache_meta_path, "${STARROCKS_HOME}/block_cache/");
+CONF_Int64(block_cache_block_size, "262144");   // 256K
+CONF_Int64(block_cache_mem_size, "2147483648"); // 2GB
+CONF_Bool(block_cache_checksum_enable, "false");
+// Maximum number of concurrent inserts we allow globally for block cache.
+// 0 means unlimited.
+CONF_Int64(block_cache_max_concurrent_inserts, "1500000");
+// Total memory limit for in-flight parcels.
+// Once this is reached, requests will be rejected until the parcel memory usage gets under the limit.
+CONF_Int64(block_cache_max_parcel_memory_mb, "256");
+CONF_Bool(block_cache_report_stats, "false");
+// This essentially turns the LRU into a two-segmented LRU. Setting this to 1 means every new insertion
+// will be inserted 1/2 from the end of the LRU, 2 means 1/4 from the end of the LRU, and so on.
+// It is only useful for the cachelib engine currently.
+CONF_Int64(block_cache_lru_insertion_point, "1");
+// cachelib, starcache
+CONF_String(block_cache_engine, "starcache");
 
-extern std::mutex custom_conf_lock;
+CONF_mInt64(l0_l1_merge_ratio, "10");
+CONF_mInt64(l0_max_file_size, "209715200"); // 200MB
+CONF_mInt64(l0_max_mem_usage, "67108864");  // 64MB
+// if l0_mem_size exceeds this value, l0 need snapshot
+CONF_mInt64(l0_snapshot_size, "16777216"); // 16MB
+CONF_mInt64(max_tmp_l1_num, "10");
+CONF_mBool(enable_parallel_get_and_bf, "true");
 
-// Init the config from `conf_file`.
-// If fill_conf_map is true, the updated config will also update the `full_conf_map`.
-// If must_exist is true and `conf_file` does not exist, this function will return false.
-// If set_to_default is true, the config value will be set to default value if not found in `conf_file`.
-bool init(const char* conf_file, bool fill_conf_map = false, bool must_exist = true,
-          bool set_to_default = true);
+// Used by query cache, cache entries are evicted when it exceeds its capacity(500MB in default)
+CONF_Int64(query_cache_capacity, "536870912");
 
-Status set_config(const std::string& field, const std::string& value, bool need_persist = false,
-                  bool force = false);
+// Used to limit buffer size of tablet send channel.
+CONF_mInt64(send_channel_buffer_limit, "67108864");
 
-Status persist_config(const std::string& field, const std::string& value);
+// exception_stack_level controls when to print exception's stack
+// -1, enable print all exceptions' stack
+// 0, disable print exceptions' stack
+// 1, print exceptions' stack whose prefix is in the white list(default)
+// 2, print exceptions' stack whose prefix is not in the black list
+// other value means the default value
+CONF_Int32(exception_stack_level, "1");
+CONF_String(exception_stack_white_list, "std::");
+CONF_String(exception_stack_black_list, "apache::thrift::,ue2::,arangodb::");
 
-std::mutex* get_mutable_string_config_lock();
+// PK table's tabletmeta object size may got very large(lot's of edit versions), so it may not fit into block cache
+// that may impact BE load dir time when restart. here we change num_shard_bits to 0 to disable block cache sharding,
+// so large tabletmeta object can fit in block cache. After we optimize PK table's tabletmeta object size, we can
+// revert this config change.
+CONF_String(rocksdb_cf_options_string, "block_based_table_factory={block_cache={capacity=256M;num_shard_bits=0}}");
 
-std::vector<std::vector<std::string>> get_config_info();
+// limit local exchange buffer's memory size per driver
+CONF_Int64(local_exchange_buffer_mem_limit_per_driver, "134217728"); // 128MB
+CONF_mInt64(wait_apply_time, "6000")                                 // 6s
 
-Status set_fuzzy_config(const std::string& field, const std::string& value);
+        // Max size of a binlog file. The default is 512MB.
+        CONF_Int64(binlog_file_max_size, "536870912");
 
-void set_fuzzy_configs();
+// Max size of a binlog page. The default is 1MB.
+CONF_Int32(binlog_page_max_size, "1048576");
 
-} // namespace config
-} // namespace doris
+CONF_mInt64(txn_info_history_size, "20000");
+CONF_mInt64(file_write_history_size, "10000");
+
+CONF_mInt32(update_cache_evict_internal_sec, "11");
+CONF_mBool(enable_auto_evict_update_cache, "true");
+
+CONF_Bool(enable_preload_column_mode_update_cache, "true");
+
+CONF_mInt64(load_tablet_timeout_seconds, "30");
+
+CONF_mBool(enable_pk_value_column_zonemap, "true");
+
+// Max size of key columns size of primary key table, default value is 128 bytes
+CONF_mInt32(primary_key_limit_size, "128");
+
+CONF_mBool(enable_http_stream_load_limit, "false");
+
+} // namespace starrocks::config

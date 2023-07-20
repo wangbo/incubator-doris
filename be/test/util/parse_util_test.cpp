@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/test/util/parse_util_test.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,23 +34,17 @@
 
 #include "util/parse_util.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include <gtest/gtest.h>
 
 #include <string>
-#include <vector>
 
-#include "gtest/gtest_pred_impl.h"
-#include "util/mem_info.h"
+namespace starrocks {
 
-namespace doris {
+const static int64_t test_memory_limit = 10000;
 
 static void test_parse_mem_spec(const std::string& mem_spec_str, int64_t result) {
-    bool is_percent = true;
-    int64_t bytes =
-            ParseUtil::parse_mem_spec(mem_spec_str, -1, MemInfo::_s_physical_mem, &is_percent);
-    EXPECT_EQ(result, bytes);
-    EXPECT_FALSE(is_percent);
+    int64_t bytes = ParseUtil::parse_mem_spec(mem_spec_str, test_memory_limit);
+    ASSERT_EQ(result, bytes);
 }
 
 TEST(TestParseMemSpec, Normal) {
@@ -54,49 +65,29 @@ TEST(TestParseMemSpec, Normal) {
     test_parse_mem_spec("8t", 8L * 1024 * 1024 * 1024 * 1024L);
     test_parse_mem_spec("128T", 128L * 1024 * 1024 * 1024 * 1024L);
 
-    bool is_percent = false;
-    int64_t bytes = ParseUtil::parse_mem_spec("20%", -1, MemInfo::_s_physical_mem, &is_percent);
-    EXPECT_GT(bytes, 0);
-    EXPECT_TRUE(is_percent);
-
-    MemInfo::_s_physical_mem = 1000;
-    is_percent = true;
-    bytes = ParseUtil::parse_mem_spec("0.1%", -1, MemInfo::_s_physical_mem, &is_percent);
-    EXPECT_EQ(bytes, 1);
-    EXPECT_TRUE(is_percent);
-
-    // test with parent limit
-    is_percent = false;
-    bytes = ParseUtil::parse_mem_spec("1%", 1000, MemInfo::_s_physical_mem, &is_percent);
-    EXPECT_TRUE(is_percent);
-    EXPECT_EQ(10, bytes);
-
-    is_percent = true;
-    bytes = ParseUtil::parse_mem_spec("1001", 1000, MemInfo::_s_physical_mem, &is_percent);
-    EXPECT_FALSE(is_percent);
-    EXPECT_EQ(1001, bytes);
+    int64_t bytes = ParseUtil::parse_mem_spec("20%", test_memory_limit);
+    ASSERT_EQ(bytes, test_memory_limit * 0.2);
 }
 
 TEST(TestParseMemSpec, Bad) {
     std::vector<std::string> bad_values;
-    bad_values.push_back("1gib");
-    bad_values.push_back("1%b");
-    bad_values.push_back("1b%");
-    bad_values.push_back("gb");
-    bad_values.push_back("1GMb");
-    bad_values.push_back("1b1Mb");
-    bad_values.push_back("1kib");
-    bad_values.push_back("1Bb");
-    bad_values.push_back("1%%");
-    bad_values.push_back("1.1");
-    bad_values.push_back("1pb");
-    bad_values.push_back("1eb");
-    bad_values.push_back("%");
+    bad_values.emplace_back("1gib");
+    bad_values.emplace_back("1%b");
+    bad_values.emplace_back("1b%");
+    bad_values.emplace_back("gb");
+    bad_values.emplace_back("1GMb");
+    bad_values.emplace_back("1b1Mb");
+    bad_values.emplace_back("1kib");
+    bad_values.emplace_back("1Bb");
+    bad_values.emplace_back("1%%");
+    bad_values.emplace_back("1.1");
+    bad_values.emplace_back("1pb");
+    bad_values.emplace_back("1eb");
+    bad_values.emplace_back("%");
     for (const auto& value : bad_values) {
-        bool is_percent = false;
-        int64_t bytes = ParseUtil::parse_mem_spec(value, -1, MemInfo::_s_physical_mem, &is_percent);
-        EXPECT_EQ(-1, bytes);
+        int64_t bytes = ParseUtil::parse_mem_spec(value, test_memory_limit);
+        ASSERT_EQ(-1, bytes);
     }
 }
 
-} // namespace doris
+} // namespace starrocks

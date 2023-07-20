@@ -2,12 +2,9 @@
 
 #include "gutil/strings/substitute.h"
 
-#include "common/logging.h"
-#include <stdint.h>
-#include <ostream>
+#include <common/logging.h>
 
-// IWYU pragma: no_include <butil/macros.h>
-#include "gutil/macros.h" // IWYU pragma: keep
+#include "gutil/macros.h"
 #include "gutil/stl_util.h"
 #include "gutil/strings/ascii_ctype.h"
 #include "gutil/strings/escaping.h"
@@ -34,16 +31,14 @@ int SubstitutedSize(StringPiece format, const SubstituteArg* const* args_array) 
     for (int i = 0; i < format.size(); i++) {
         if (format[i] == '$') {
             if (i + 1 >= format.size()) {
-                LOG(DFATAL) << "Invalid strings::Substitute() format string: \"" << CEscape(format)
-                            << "\".";
+                LOG(DFATAL) << "Invalid strings::Substitute() format string: \"" << CEscape(format) << "\".";
                 return 0;
             } else if (ascii_isdigit(format[i + 1])) {
                 int index = format[i + 1] - '0';
                 if (args_array[index]->size() == -1) {
-                    LOG(DFATAL) << "strings::Substitute format string invalid: asked for \"$"
-                                << index << "\", but only " << CountSubstituteArgs(args_array)
-                                << " args were given.  Full format string was: \""
-                                << CEscape(format) << "\".";
+                    LOG(DFATAL) << "strings::Substitute format string invalid: asked for \"$" << index
+                                << "\", but only " << CountSubstituteArgs(args_array)
+                                << " args were given.  Full format string was: \"" << CEscape(format) << "\".";
                     return 0;
                 }
                 size += args_array[index]->size();
@@ -52,8 +47,7 @@ int SubstitutedSize(StringPiece format, const SubstituteArg* const* args_array) 
                 ++size;
                 ++i; // Skip next char.
             } else {
-                LOG(DFATAL) << "Invalid strings::Substitute() format string: \"" << CEscape(format)
-                            << "\".";
+                LOG(DFATAL) << "Invalid strings::Substitute() format string: \"" << CEscape(format) << "\".";
                 return 0;
             }
         } else {
@@ -84,12 +78,10 @@ char* SubstituteToBuffer(StringPiece format, const SubstituteArg* const* args_ar
 
 } // namespace internal
 
-void SubstituteAndAppend(string* output, StringPiece format, const SubstituteArg& arg0,
-                         const SubstituteArg& arg1, const SubstituteArg& arg2,
-                         const SubstituteArg& arg3, const SubstituteArg& arg4,
-                         const SubstituteArg& arg5, const SubstituteArg& arg6,
-                         const SubstituteArg& arg7, const SubstituteArg& arg8,
-                         const SubstituteArg& arg9) {
+void SubstituteAndAppend(string* output, StringPiece format, const SubstituteArg& arg0, const SubstituteArg& arg1,
+                         const SubstituteArg& arg2, const SubstituteArg& arg3, const SubstituteArg& arg4,
+                         const SubstituteArg& arg5, const SubstituteArg& arg6, const SubstituteArg& arg7,
+                         const SubstituteArg& arg8, const SubstituteArg& arg9) {
     const SubstituteArg* const args_array[] = {&arg0, &arg1, &arg2, &arg3, &arg4,  &arg5,
                                                &arg6, &arg7, &arg8, &arg9, nullptr};
 
@@ -113,7 +105,7 @@ SubstituteArg::SubstituteArg(const void* value) {
         size_ = strlen(text_);
     } else {
         char* ptr = scratch_ + sizeof(scratch_);
-        uintptr_t num = reinterpret_cast<uintptr_t>(value);
+        auto num = reinterpret_cast<uintptr_t>(value);
         static const char kHexDigits[] = "0123456789abcdef";
         do {
             *--ptr = kHexDigits[num & 0xf];

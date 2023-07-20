@@ -6,14 +6,9 @@
 
 #include "gutil/strings/strip.h"
 
-// IWYU pragma: no_include <pstl/glue_algorithm_defs.h>
-
-#include <assert.h>
-#include <string.h>
 #include <algorithm>
-#include <iterator>
-#include <mutex>
-
+#include <cassert>
+#include <cstring>
 using std::copy;
 using std::max;
 using std::min;
@@ -21,7 +16,6 @@ using std::reverse;
 using std::sort;
 using std::swap;
 #include <string>
-
 using std::string;
 
 #include "gutil/strings/ascii_ctype.h"

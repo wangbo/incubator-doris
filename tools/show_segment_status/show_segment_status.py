@@ -45,7 +45,7 @@ class Calc:
         self.calc_table_and_be_summary("", "", be_id)
         return
 
-    def calc_table_and_be_summary(self, db_name, table_name, be_id):
+    def calc_table_and_be_summary(self, db_candidates, tbl_candidates, be_id):
         total_rs_count = 0
         beta_rs_count = 0
         total_rs_size = 0
@@ -55,9 +55,9 @@ class Calc:
 
         for tablet in self.fe_meta.get_all_tablets():
             # The db_name from meta contain cluster name, so use 'in' here
-            if len(db_name) != 0 and (not (db_name in tablet['db_name'])):
+            if db_candidates and (not tablet['db_name'] in db_candidates):
                 continue
-            if len(table_name) != 0 and (tablet['tbl_name'] != table_name):
+            if tbl_candidates and (not tablet['tbl_name'] in tbl_candidates):
                 continue;
             if be_id != 0 and tablet['be_id'] != be_id:
                 continue
@@ -75,10 +75,10 @@ class Calc:
                     beta_rs_row_count += tablet_info['num_rows']
 
         content_str = ""
-        if len(db_name) != 0:
-            content_str += ("db=%s " % db_name)
-        if len(table_name) != 0:
-            content_str += ("table=%s " % table_name)
+        if db_candidates:
+            content_str += ("db=%s " % db_candidates)
+        if tbl_candidates:
+            content_str += ("table=%s " % tbl_candidates)
         if be_id != 0:
             content_str += ("be=%s " % be_id)
         print "==========SUMMARY(%s)===========" % (content_str)
@@ -96,20 +96,36 @@ def main():
     user = cf.get('cluster', 'user')
     query_pwd = cf.get('cluster', 'query_pwd')
 
-    db_name = cf.get('cluster', 'db_name')
-    table_name = cf.get('cluster', 'table_name')
+    db_names = cf.get('cluster', 'db_names')
+    table_names = cf.get('cluster', 'table_names')
     be_id = cf.getint('cluster', 'be_id')
+
+    db_candidates = set()
+    if db_names and db_names != '':
+        db_name_list = db_names.split(',')
+        for db_name in db_name_list:
+            db_name = db_name.strip()
+            if db_name != '':
+                db_candidates.add(db_name)
+
+    tbl_candidates = set()
+    if table_names and table_names != '':
+        table_name_list = table_names.split(',')
+        for table_name in table_name_list:
+            table_name = table_name.strip()
+            if table_name != '':
+                tbl_candidates.add(table_name)
 
     print "============= CONF ============="
     print "fe_host =", fe_host
     print "fe_query_port =", query_port
     print "user =", user 
-    print "db_name =", db_name 
-    print "table_name =", table_name 
+    print "db_names =", db_candidates
+    print "table_names =", tbl_candidates
     print "be_id =", be_id 
     print "===================================="
 
-    fe_meta = FeMetaResolver(fe_host, query_port, user, query_pwd)
+    fe_meta = FeMetaResolver(fe_host, query_port, user, query_pwd, db_candidates, tbl_candidates)
     fe_meta.init()
     fe_meta.debug_output()
 
@@ -119,7 +135,7 @@ def main():
 
     calc = Calc(fe_meta, be_resolver)
     calc.calc_cluster_summary()
-    calc.calc_table_summary(db_name, table_name);
+    calc.calc_table_summary(db_candidates, tbl_candidates);
     calc.calc_be_summary(be_id);
 
 if __name__ == '__main__':

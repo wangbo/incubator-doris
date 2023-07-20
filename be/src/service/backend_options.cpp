@@ -18,7 +18,6 @@
 #include "service/backend_options.h"
 
 #include <algorithm>
-#include <ostream>
 
 #include "common/config.h"
 #include "common/logging.h"
@@ -27,25 +26,23 @@
 #include "util/cidr.h"
 #include "util/network_util.h"
 
-namespace doris {
+namespace starrocks {
 
 static const std::string PRIORITY_CIDR_SEPARATOR = ";";
 
 std::string BackendOptions::_s_localhost;
 std::vector<CIDR> BackendOptions::_s_priority_cidrs;
 TBackend BackendOptions::_backend;
-bool BackendOptions::_bind_ipv6 = false;
-const char* _service_bind_address = "0.0.0.0";
 
 bool BackendOptions::init() {
     if (!analyze_priority_cidrs()) {
         return false;
     }
     std::vector<InetAddress> hosts;
-    Status status = get_hosts(&hosts);
+    Status status = get_hosts_v4(&hosts);
 
     if (!status.ok()) {
-        LOG(FATAL) << status;
+        LOG(FATAL) << status.get_error_msg();
         return false;
     }
 
@@ -55,60 +52,45 @@ bool BackendOptions::init() {
     }
 
     std::string loopback;
-    std::vector<InetAddress>::iterator addr_it = hosts.begin();
+    auto addr_it = hosts.begin();
     for (; addr_it != hosts.end(); ++addr_it) {
-        VLOG_CRITICAL << "check ip=" << addr_it->get_host_address();
-        if (!_s_priority_cidrs.empty()) {
-            // Whether to use IPV4 or IPV6, it's configured by CIDR format.
-            // If both IPV4 and IPV6 are configured, the config order decides priority.
-            if (is_in_prior_network(addr_it->get_host_address())) {
-                _s_localhost = addr_it->get_host_address();
-                _bind_ipv6 = addr_it->is_ipv6();
+        if ((*addr_it).is_address_v4()) {
+            VLOG(2) << "check ip=" << addr_it->get_host_address_v4();
+            if ((*addr_it).is_loopback_v4()) {
+                loopback = addr_it->get_host_address_v4();
+            } else if (!_s_priority_cidrs.empty()) {
+                if (is_in_prior_network(addr_it->get_host_address_v4())) {
+                    _s_localhost = addr_it->get_host_address_v4();
+                    break;
+                }
+            } else {
+                _s_localhost = addr_it->get_host_address_v4();
                 break;
             }
-            LOG(INFO) << "skip ip not belonged to priority networks: "
-                      << addr_it->get_host_address();
-        } else if ((*addr_it).is_loopback()) {
-            loopback = addr_it->get_host_address();
-            _bind_ipv6 = addr_it->is_ipv6();
-        } else {
-            _s_localhost = addr_it->get_host_address();
-            _bind_ipv6 = addr_it->is_ipv6();
-            break;
         }
     }
-    if (_bind_ipv6) {
-        _service_bind_address = "[::0]";
-    }
+
     if (_s_localhost.empty()) {
         LOG(INFO) << "fail to find one valid non-loopback address, use loopback address.";
         _s_localhost = loopback;
     }
-    LOG(INFO) << "local host ip=" << _s_localhost;
+    LOG(INFO) << "localhost " << _s_localhost;
     return true;
 }
 
-const std::string& BackendOptions::get_localhost() {
+std::string BackendOptions::get_localhost() {
     return _s_localhost;
 }
 
-TBackend BackendOptions::get_local_backend() {
+TBackend BackendOptions::get_localBackend() {
     _backend.__set_host(_s_localhost);
     _backend.__set_be_port(config::be_port);
-    _backend.__set_http_port(config::webserver_port);
+    _backend.__set_http_port(config::be_http_port);
     return _backend;
 }
 
 void BackendOptions::set_localhost(const std::string& host) {
     _s_localhost = host;
-}
-
-bool BackendOptions::is_bind_ipv6() {
-    return _bind_ipv6;
-}
-
-const char* BackendOptions::get_service_bind_address() {
-    return _service_bind_address;
 }
 
 bool BackendOptions::analyze_priority_cidrs() {
@@ -117,8 +99,7 @@ bool BackendOptions::analyze_priority_cidrs() {
     }
     LOG(INFO) << "priority cidrs in conf: " << config::priority_networks;
 
-    std::vector<std::string> cidr_strs =
-            strings::Split(config::priority_networks, PRIORITY_CIDR_SEPARATOR);
+    std::vector<std::string> cidr_strs = strings::Split(config::priority_networks, PRIORITY_CIDR_SEPARATOR);
 
     for (auto& cidr_str : cidr_strs) {
         CIDR cidr;
@@ -133,13 +114,11 @@ bool BackendOptions::analyze_priority_cidrs() {
 
 bool BackendOptions::is_in_prior_network(const std::string& ip) {
     for (auto& cidr : _s_priority_cidrs) {
-        CIDR _ip;
-        _ip.reset(ip);
-        if (cidr.contains(_ip)) {
+        if (cidr.contains(ip)) {
             return true;
         }
     }
     return false;
 }
 
-} // namespace doris
+} // namespace starrocks

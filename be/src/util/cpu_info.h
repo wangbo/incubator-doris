@@ -14,20 +14,17 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/cpu-info.h
-// and modified by Doris
 
 #pragma once
 
-#include <glog/logging.h>
-#include <stdint.h>
-
+#include <boost/cstdint.hpp>
 #include <memory>
 #include <string>
 #include <vector>
 
-namespace doris {
+#include "common/logging.h"
+
+namespace starrocks {
 
 /// CpuInfo is an interface to query for cpu information at runtime.  The caller can
 /// ask for the sizes of the caches and what hardware features are supported.
@@ -162,8 +159,7 @@ public:
     /// TempDisable's destructor never re-enables features that were not enabled when then
     /// constructor ran.
     struct TempDisable {
-        TempDisable(int64_t feature)
-                : feature_(feature), reenable_(CpuInfo::is_supported(feature)) {
+        TempDisable(int64_t feature) : feature_(feature), reenable_(CpuInfo::is_supported(feature)) {
             CpuInfo::enable_feature(feature_, false);
         }
         ~TempDisable() {
@@ -183,12 +179,14 @@ protected:
     /// Setup fake NUMA info to simulate NUMA for backend tests. Sets up CpuInfo to
     /// simulate 'max_num_numa_nodes' with 'core_to_numa_node' specifying the NUMA node
     /// of each core in [0, GetMaxNumCores()).
-    static void _init_fake_numa_for_test(int max_num_numa_nodes,
-                                         const std::vector<int>& core_to_numa_node);
+    static void _init_fake_numa_for_test(int max_num_numa_nodes, const std::vector<int>& core_to_numa_node);
 
 private:
     /// Initialize NUMA-related state - called from Init();
     static void _init_numa();
+
+    /// Initialize num cores taking cgroup config into consideration
+    static void _init_num_cores_with_cgroup();
 
     /// Initialize 'numa_node_to_cores_' based on 'max_num_numa_nodes_' and
     /// 'core_to_numa_node_'. Called from InitNuma();
@@ -197,8 +195,7 @@ private:
     /// Populates the arguments with information about this machine's caches.
     /// The values returned are not reliable in some environments, e.g. RHEL5 on EC2, so
     /// so we will keep this as a private method.
-    static void _get_cache_info(long cache_sizes[NUM_CACHE_LEVELS],
-                                long cache_line_sizes[NUM_CACHE_LEVELS]);
+    static void _get_cache_info(long cache_sizes[NUM_CACHE_LEVELS], long cache_line_sizes[NUM_CACHE_LEVELS]);
 
     static bool initialized_;
     static int64_t hardware_flags_;
@@ -222,4 +219,4 @@ private:
     /// NUMA node.
     static std::vector<int> numa_node_core_idx_;
 };
-} // namespace doris
+} // namespace starrocks

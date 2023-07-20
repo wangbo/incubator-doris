@@ -17,28 +17,19 @@
 
 #include "util/disk_info.h"
 
-// IWYU pragma: no_include <bthread/errno.h>
-#include <errno.h> // IWYU pragma: keep
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/types.h>
+#include <unistd.h>
 
-#include <algorithm>
-#include <boost/algorithm/string/classification.hpp>
-#include <boost/algorithm/string/detail/classification.hpp>
-#include <boost/algorithm/string/trim.hpp>
+#include <boost/algorithm/string.hpp>
 #include <fstream>
-#include <iterator>
-#include <memory>
-#include <utility>
+#include <iostream>
 
+#include "fs/fs_util.h"
 #include "gutil/strings/split.h"
-#include "io/fs/local_file_system.h"
 
-namespace doris {
+namespace starrocks {
 
 bool DiskInfo::_s_initialized;
 std::vector<DiskInfo::Disk> DiskInfo::_s_disks;
@@ -83,12 +74,12 @@ void DiskInfo::get_device_names() {
         DCHECK(_s_device_id_to_disk_id.find(dev) == _s_device_id_to_disk_id.end());
 
         int disk_id = -1;
-        std::map<std::string, int>::iterator it = _s_disk_name_to_disk_id.find(name);
+        auto it = _s_disk_name_to_disk_id.find(name);
 
         if (it == _s_disk_name_to_disk_id.end()) {
             // First time seeing this disk
             disk_id = _s_disks.size();
-            _s_disks.push_back(Disk(name, disk_id));
+            _s_disks.emplace_back(name, disk_id);
             _s_disk_name_to_disk_id[name] = disk_id;
         } else {
             disk_id = it->second;
@@ -104,22 +95,22 @@ void DiskInfo::get_device_names() {
     if (_s_disks.empty()) {
         // If all else fails, return 1
         LOG(WARNING) << "Could not determine number of disks on this machine.";
-        _s_disks.push_back(Disk("sda", 0));
+        _s_disks.emplace_back("sda", 0);
     }
 
     // Determine if the disk is rotational or not.
-    for (int i = 0; i < _s_disks.size(); ++i) {
+    for (auto& _s_disk : _s_disks) {
         // We can check if it is rotational by reading:
         // /sys/block/<device>/queue/rotational
         // If the file is missing or has unexpected data, default to rotational.
         std::stringstream ss;
-        ss << "/sys/block/" << _s_disks[i].name << "/queue/rotational";
+        ss << "/sys/block/" << _s_disk.name << "/queue/rotational";
         std::ifstream rotational(ss.str().c_str(), std::ios::in);
         if (rotational.good()) {
             std::string line;
             getline(rotational, line);
             if (line == "0") {
-                _s_disks[i].is_rotational = false;
+                _s_disk.is_rotational = false;
             }
         }
         if (rotational.is_open()) {
@@ -136,7 +127,7 @@ void DiskInfo::init() {
 int DiskInfo::disk_id(const char* path) {
     struct stat s;
     stat(path, &s);
-    std::map<dev_t, int>::iterator it = _s_device_id_to_disk_id.find(s.st_dev);
+    auto it = _s_device_id_to_disk_id.find(s.st_dev);
 
     if (it == _s_device_id_to_disk_id.end()) {
         return -1;
@@ -163,16 +154,12 @@ std::string DiskInfo::debug_string() {
     return stream.str();
 }
 
-Status DiskInfo::get_disk_devices(const std::vector<std::string>& paths,
-                                  std::set<std::string>* devices) {
+Status DiskInfo::get_disk_devices(const std::vector<std::string>& paths, std::set<std::string>* devices) {
     std::vector<std::string> real_paths;
     for (auto& path : paths) {
         std::string p;
-        Status st = io::global_local_filesystem()->canonicalize(path, &p);
-        if (!st.ok()) {
-            LOG(WARNING) << "skip disk monitoring of path. " << st;
-            continue;
-        }
+        WARN_IF_ERROR(fs::canonicalize(path, &p),
+                      "canonicalize path " + path + " failed, skip disk monitoring of this path");
         real_paths.emplace_back(std::move(p));
     }
 
@@ -180,14 +167,13 @@ Status DiskInfo::get_disk_devices(const std::vector<std::string>& paths,
     if (fp == nullptr) {
         std::stringstream ss;
         char buf[64];
-        ss << "open /proc/mounts failed, errno:" << errno
-           << ", message:" << strerror_r(errno, buf, 64);
+        ss << "open /proc/mounts failed, errno:" << errno << ", message:" << strerror_r(errno, buf, 64);
         LOG(WARNING) << ss.str();
         return Status::InternalError(ss.str());
     }
 
     Status status;
-    char* line_ptr = 0;
+    char* line_ptr = nullptr;
     size_t line_buf_size = 0;
     for (auto& path : real_paths) {
         size_t max_mount_size = 0;
@@ -215,8 +201,7 @@ Status DiskInfo::get_disk_devices(const std::vector<std::string>& paths,
         if (ferror(fp) != 0) {
             std::stringstream ss;
             char buf[64];
-            ss << "open /proc/mounts failed, errno:" << errno
-               << ", message:" << strerror_r(errno, buf, 64);
+            ss << "open /proc/mounts failed, errno:" << errno << ", message:" << strerror_r(errno, buf, 64);
             LOG(WARNING) << ss.str();
             status = Status::InternalError(ss.str());
             break;
@@ -232,4 +217,4 @@ Status DiskInfo::get_disk_devices(const std::vector<std::string>& paths,
     return status;
 }
 
-} // namespace doris
+} // namespace starrocks

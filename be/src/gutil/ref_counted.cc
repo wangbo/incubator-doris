@@ -1,23 +1,22 @@
 // Copyright (c) 2011 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Use of this source code is governed by a BSD-style license.
+// (https://developers.google.com/open-source/licenses/bsd)
 
 #include "gutil/ref_counted.h"
 
+#include <common/logging.h>
+
 #include "gutil/atomic_refcount.h"
 
-namespace doris {
-
-namespace subtle {
+namespace starrocks::subtle {
 
 RefCountedBase::RefCountedBase()
-        : ref_count_(0)
 #ifndef NDEBUG
-          ,
-          in_dtor_(false)
-#endif
-{
+        : in_dtor_(false) {
 }
+#else
+        = default;
+#endif
 
 RefCountedBase::~RefCountedBase() {
 #ifndef NDEBUG
@@ -55,7 +54,7 @@ bool RefCountedThreadSafeBase::HasOneRef() const {
     return base::RefCountIsOne(&const_cast<RefCountedThreadSafeBase*>(this)->ref_count_);
 }
 
-RefCountedThreadSafeBase::RefCountedThreadSafeBase() : ref_count_(0) {
+RefCountedThreadSafeBase::RefCountedThreadSafeBase() {
 #ifndef NDEBUG
     in_dtor_ = false;
 #endif
@@ -89,6 +88,4 @@ bool RefCountedThreadSafeBase::Release() const {
     return false;
 }
 
-} // namespace subtle
-
-} // namespace doris
+} // namespace starrocks::subtle

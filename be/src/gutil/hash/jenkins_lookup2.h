@@ -159,21 +159,21 @@ static inline uint32 Google1At(const char* ptr) {
 // NOTE:  This code is not normally used or tested.
 
 static inline uint64 Word64At(const char* ptr) {
-    return (static_cast<uint64>(ptr[0]) + (static_cast<uint64>(ptr[1]) << 8) +
-            (static_cast<uint64>(ptr[2]) << 16) + (static_cast<uint64>(ptr[3]) << 24) +
-            (static_cast<uint64>(ptr[4]) << 32) + (static_cast<uint64>(ptr[5]) << 40) +
-            (static_cast<uint64>(ptr[6]) << 48) + (static_cast<uint64>(ptr[7]) << 56));
+    return (static_cast<uint64>(ptr[0]) + (static_cast<uint64>(ptr[1]) << 8) + (static_cast<uint64>(ptr[2]) << 16) +
+            (static_cast<uint64>(ptr[3]) << 24) + (static_cast<uint64>(ptr[4]) << 32) +
+            (static_cast<uint64>(ptr[5]) << 40) + (static_cast<uint64>(ptr[6]) << 48) +
+            (static_cast<uint64>(ptr[7]) << 56));
 }
 
 static inline uint32 Word32At(const char* ptr) {
-    return (static_cast<uint32>(ptr[0]) + (static_cast<uint32>(ptr[1]) << 8) +
-            (static_cast<uint32>(ptr[2]) << 16) + (static_cast<uint32>(ptr[3]) << 24));
+    return (static_cast<uint32>(ptr[0]) + (static_cast<uint32>(ptr[1]) << 8) + (static_cast<uint32>(ptr[2]) << 16) +
+            (static_cast<uint32>(ptr[3]) << 24));
 }
 
 static inline uint32 Google1At(const char* ptr2) {
     const schar* ptr = reinterpret_cast<const schar*>(ptr2);
-    return (static_cast<schar>(ptr[0]) + (static_cast<uint32>(ptr[1]) << 8) +
-            (static_cast<uint32>(ptr[2]) << 16) + (static_cast<uint32>(ptr[3]) << 24));
+    return (static_cast<schar>(ptr[0]) + (static_cast<uint32>(ptr[1]) << 8) + (static_cast<uint32>(ptr[2]) << 16) +
+            (static_cast<uint32>(ptr[3]) << 24));
 }
 
 #endif /* !NEED_ALIGNED_LOADS && IS_LITTLE_ENDIAN */
@@ -181,6 +181,6 @@ static inline uint32 Google1At(const char* ptr2) {
 // Historically, WORD_HASH has always been defined as we always run on
 // machines that don't NEED_ALIGNED_LOADS and which IS_LITTLE_ENDIAN.
 //
-// TODO(user): find occurrences of WORD_HASH and adjust the code to
+// TODO(user): find occurences of WORD_HASH and adjust the code to
 // use more meaningful concepts.
 #define WORD_HASH

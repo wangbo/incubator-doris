@@ -2,10 +2,7 @@
 
 #include "gutil/strings/join.h"
 
-#include "common/logging.h"
-#include <string.h>
-#include <algorithm>
-#include <ostream>
+#include <common/logging.h>
 
 #include "gutil/gscoped_ptr.h"
 #include "gutil/strings/ascii_ctype.h"
@@ -14,7 +11,7 @@
 // ----------------------------------------------------------------------
 // JoinUsing()
 //    This merges a vector of string components with delim inserted
-//    as separators between components.
+//    as separaters between components.
 //    This is essentially the same as JoinUsingToBuffer except
 //    the return result is dynamically allocated using "new char[]".
 //    It is the caller's responsibility to "delete []" the
@@ -35,15 +32,15 @@ char* JoinUsing(const vector<const char*>& components, const char* delim, int* r
 // ----------------------------------------------------------------------
 // JoinUsingToBuffer()
 //    This merges a vector of string components with delim inserted
-//    as separators between components.
+//    as separaters between components.
 //    User supplies the result buffer with specified buffer size.
 //    The result is also returned for convenience.
 //
 //    If result_length_p is not NULL, it will contain the length of the
 //    result string (not including the trailing '\0').
 // ----------------------------------------------------------------------
-char* JoinUsingToBuffer(const vector<const char*>& components, const char* delim,
-                        int result_buffer_size, char* result_buffer, int* result_length_p) {
+char* JoinUsingToBuffer(const vector<const char*>& components, const char* delim, int result_buffer_size,
+                        char* result_buffer, int* result_length_p) {
     CHECK(result_buffer != nullptr);
     const int num_components = components.size();
     const int max_str_len = result_buffer_size - 1;
@@ -78,14 +75,13 @@ char* JoinUsingToBuffer(const vector<const char*>& components, const char* delim
 // ----------------------------------------------------------------------
 // JoinStrings()
 //    This merges a vector of string components with delim inserted
-//    as separators between components.
+//    as separaters between components.
 //    This is essentially the same as JoinUsingToBuffer except
 //    it uses strings instead of char *s.
 //
 // ----------------------------------------------------------------------
 
-void JoinStringsInArray(string const* const* components, int num_components, const char* delim,
-                        string* result) {
+void JoinStringsInArray(string const* const* components, int num_components, const char* delim, string* result) {
     CHECK(result != nullptr);
     result->clear();
     for (int i = 0; i < num_components; i++) {
@@ -96,8 +92,7 @@ void JoinStringsInArray(string const* const* components, int num_components, con
     }
 }
 
-void JoinStringsInArray(string const* components, int num_components, const char* delim,
-                        string* result) {
+void JoinStringsInArray(string const* components, int num_components, const char* delim, string* result) {
     JoinStringsIterator(components, components + num_components, delim, result);
 }
 
@@ -113,15 +108,12 @@ void JoinStringsInArray(string const* components, int num_components, const char
 
 void JoinMapKeysAndValues(const map<string, string>& components, const StringPiece& intra_delim,
                           const StringPiece& inter_delim, string* result) {
-    JoinKeysAndValuesIterator(components.begin(), components.end(), intra_delim, inter_delim,
-                              result);
+    JoinKeysAndValuesIterator(components.begin(), components.end(), intra_delim, inter_delim, result);
 }
 
-void JoinVectorKeysAndValues(const vector<pair<string, string>>& components,
-                             const StringPiece& intra_delim, const StringPiece& inter_delim,
-                             string* result) {
-    JoinKeysAndValuesIterator(components.begin(), components.end(), intra_delim, inter_delim,
-                              result);
+void JoinVectorKeysAndValues(const vector<pair<string, string> >& components, const StringPiece& intra_delim,
+                             const StringPiece& inter_delim, string* result) {
+    JoinKeysAndValuesIterator(components.begin(), components.end(), intra_delim, inter_delim, result);
 }
 
 // ----------------------------------------------------------------------
@@ -137,7 +129,7 @@ void JoinVectorKeysAndValues(const vector<pair<string, string>>& components,
 //    gratuitous spacing and quoting. 'output' must point to an empty string.
 //
 //    Example:
-//     [Google], [x], [Buchheit, Paul], [string with " quote in it], [ space ]
+//     [Google], [x], [Buchheit, Paul], [string with " quoite in it], [ space ]
 //     --->  [Google,x,"Buchheit, Paul","string with "" quote in it"," space "]
 // ----------------------------------------------------------------------
 void JoinCSVLineWithDelimiter(const vector<string>& cols, char delimiter, string* output) {
@@ -163,14 +155,13 @@ void JoinCSVLineWithDelimiter(const vector<string>& cols, char delimiter, string
             // Leave space at beginning and end for bracketing double-quotes.
             int escaped_size = strings::EscapeStrForCSV(col.c_str(), buf.get() + 1, size - 2);
             CHECK_GE(escaped_size, 0) << "Buffer somehow wasn't large enough.";
-            CHECK_GE(size, escaped_size + 3)
-                    << "Buffer should have one space at the beginning for a "
-                    << "double-quote, one at the end for a double-quote, and "
-                    << "one at the end for a closing '\0'";
+            CHECK_GE(size, escaped_size + 3) << "Buffer should have one space at the beginning for a "
+                                             << "double-quote, one at the end for a double-quote, and "
+                                             << "one at the end for a closing '\0'";
             *buf.get() = '"';
             *((buf.get() + 1) + escaped_size) = '"';
             *((buf.get() + 1) + escaped_size + 1) = '\0';
-            quoted_cols.push_back(string(buf.get(), buf.get() + escaped_size + 2));
+            quoted_cols.emplace_back(buf.get(), buf.get() + escaped_size + 2);
         } else {
             quoted_cols.push_back(col);
         }

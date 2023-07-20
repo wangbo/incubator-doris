@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/http/utils.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -18,28 +35,19 @@
 #include "http/utils.h"
 
 #include <fcntl.h>
-#include <stdint.h>
 #include <sys/stat.h>
-#include <unistd.h>
-
-#include <memory>
-#include <ostream>
-#include <vector>
 
 #include "common/logging.h"
 #include "common/status.h"
 #include "common/utils.h"
+#include "fs/fs.h"
 #include "http/http_channel.h"
 #include "http/http_headers.h"
-#include "http/http_method.h"
 #include "http/http_request.h"
-#include "http/http_status.h"
-#include "io/fs/file_system.h"
-#include "io/fs/local_file_system.h"
 #include "util/path_util.h"
 #include "util/url_coding.h"
 
-namespace doris {
+namespace starrocks {
 
 std::string encode_basic_auth(const std::string& user, const std::string& passwd) {
     std::string auth = user + ":" + passwd;
@@ -71,21 +79,16 @@ bool parse_basic_auth(const HttpRequest& req, std::string* user, std::string* pa
 }
 
 bool parse_basic_auth(const HttpRequest& req, AuthInfo* auth) {
-    auto& token = req.header("token");
-    if (token.empty()) {
-        std::string full_user;
-        if (!parse_basic_auth(req, &full_user, &auth->passwd)) {
-            return false;
-        }
-        auto pos = full_user.find('@');
-        if (pos != std::string::npos) {
-            auth->user.assign(full_user.data(), pos);
-            auth->cluster.assign(full_user.data() + pos + 1);
-        } else {
-            auth->user = full_user;
-        }
+    std::string full_user;
+    if (!parse_basic_auth(req, &full_user, &auth->passwd)) {
+        return false;
+    }
+    auto pos = full_user.find('@');
+    if (pos != std::string::npos) {
+        auth->user.assign(full_user.data(), pos);
+        auth->cluster.assign(full_user.data() + pos + 1);
     } else {
-        auth->token = token;
+        auth->user = full_user;
     }
 
     // set user ip
@@ -101,7 +104,6 @@ bool parse_basic_auth(const HttpRequest& req, AuthInfo* auth) {
 // Do a simple decision, only deal a few type
 std::string get_content_type(const std::string& file_name) {
     std::string file_ext = path_util::file_extension(file_name);
-    VLOG_TRACE << "file_name: " << file_name << "; file extension: [" << file_ext << "]";
     if (file_ext == std::string(".html") || file_ext == std::string(".htm")) {
         return std::string("text/html; charset=utf-8");
     } else if (file_ext == std::string(".js")) {
@@ -165,23 +167,44 @@ void do_file_response(const std::string& file_path, HttpRequest* req) {
 }
 
 void do_dir_response(const std::string& dir_path, HttpRequest* req) {
-    bool exists = true;
-    std::vector<io::FileInfo> files;
-    Status st = io::global_local_filesystem()->list(dir_path, true, &files, &exists);
-    if (!st.ok()) {
-        LOG(WARNING) << "Failed to scan dir. " << st;
+    std::vector<std::string> files;
+    Status status = FileSystem::Default()->get_children(dir_path, &files);
+    if (!status.ok()) {
+        LOG(WARNING) << "Failed to scan dir. dir=" << dir_path;
         HttpChannel::send_error(req, HttpStatus::INTERNAL_SERVER_ERROR);
     }
 
-    const std::string FILE_DELIMITER_IN_DIR_RESPONSE = "\n";
+    const std::string FILE_DELIMETER_IN_DIR_RESPONSE = "\n";
+    const std::string FILE_NAME_SIZE_DELIMETER = "|";
+
+    // Get 'type' parameter
+    const std::string& type = req->param("type");
 
     std::stringstream result;
-    for (auto& file : files) {
-        result << file.file_name << FILE_DELIMITER_IN_DIR_RESPONSE;
+    for (const std::string& file_name : files) {
+        std::string file_path = dir_path + "/" + file_name;
+
+        if (type == "V2") {
+            int64_t file_size = -1;
+            auto st = FileSystem::Default()->get_file_size(file_path);
+            if (st.ok()) {
+                file_size = st.value();
+            } else {
+                LOG(WARNING) << "Failed to get file size. file=" << file_name;
+                HttpChannel::send_error(req, HttpStatus::INTERNAL_SERVER_ERROR);
+                return;
+            }
+            result << file_name << FILE_NAME_SIZE_DELIMETER << file_size << FILE_DELIMETER_IN_DIR_RESPONSE;
+        } else if (type.empty()) {
+            result << file_name << FILE_DELIMETER_IN_DIR_RESPONSE;
+        } else {
+            LOG(WARNING) << "unknown type \"" + type + "\".";
+            HttpChannel::send_error(req, HttpStatus::INTERNAL_SERVER_ERROR);
+            return;
+        }
     }
 
-    std::string result_str = result.str();
-    HttpChannel::send_reply(req, result_str);
+    HttpChannel::send_reply(req, result.str());
 }
 
-} // namespace doris
+} // namespace starrocks

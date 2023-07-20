@@ -17,7 +17,7 @@
 
 #include "geo/geo_common.h"
 
-namespace doris {
+namespace starrocks {
 
 std::string to_string(GeoParseStatus status) {
     switch (status) {
@@ -51,4 +51,4 @@ std::ostream& operator<<(std::ostream& os, GeoParseStatus status) {
     return os;
 }
 
-} // namespace doris
+} // namespace starrocks

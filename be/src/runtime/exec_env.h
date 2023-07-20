@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/runtime/exec_env.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,59 +34,73 @@
 
 #pragma once
 
-#include <stddef.h>
-
-#include <algorithm>
-#include <map>
+#include <atomic>
 #include <memory>
-#include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "common/status.h"
-#include "olap/options.h"
+#include "exec/query_cache/cache_manager.h"
+#include "exec/workgroup/work_group_fwd.h"
+#include "storage/options.h"
 #include "util/threadpool.h"
+// NOTE: Be careful about adding includes here. This file is included by many files.
+// Unnecssary includes will cause compilatio very slow.
+// So please consider use forward declaraion as much as possible.
 
-namespace doris {
-namespace vectorized {
-class VDataStreamMgr;
-class ScannerScheduler;
-} // namespace vectorized
-namespace pipeline {
-class TaskScheduler;
-}
-namespace taskgroup {
-class TaskGroupManager;
-}
+namespace starrocks {
+class AgentServer;
 class BfdParser;
 class BrokerMgr;
-template <class T>
-class BrpcClientCache;
+class BrpcStubCache;
+class DataStreamMgr;
+class DiskIoMgr;
+class EvHttpServer;
 class ExternalScanContextMgr;
 class FragmentMgr;
-class ResultCache;
 class LoadPathMgr;
-class NewLoadStreamMgr;
-class MemTrackerLimiter;
+class LoadStreamMgr;
+class StreamContextMgr;
+class TransactionMgr;
 class MemTracker;
+class MetricRegistry;
 class StorageEngine;
+class ThreadPool;
+class PriorityThreadPool;
 class ResultBufferMgr;
 class ResultQueueMgr;
-class TMasterInfo;
 class LoadChannelMgr;
+class WebPageHandler;
 class StreamLoadExecutor;
 class RoutineLoadTaskExecutor;
 class SmallFileMgr;
-class BlockSpillManager;
+class PluginMgr;
+class RuntimeFilterWorker;
+class RuntimeFilterCache;
+class ProfileReportWorker;
+class QuerySpillManager;
+struct RfTracePoint;
+
 class BackendServiceClient;
-class TPaloBrokerServiceClient;
-class PBackendService_Stub;
-class PFunctionService_Stub;
+class FrontendServiceClient;
+class TFileBrokerServiceClient;
 template <class T>
 class ClientCache;
 class HeartbeatFlags;
-class FrontendServiceClient;
-class FileMetaCache;
+
+namespace pipeline {
+class DriverExecutor;
+class QueryContextManager;
+class DriverLimiter;
+} // namespace pipeline
+
+namespace lake {
+class LocationProvider;
+class TabletManager;
+class UpdateManager;
+} // namespace lake
+namespace spill {
+class DirManager;
+}
 
 // Execution environment for queries/plan fragments.
 // Contains all required global structures, and handles to
@@ -79,9 +110,10 @@ class ExecEnv {
 public:
     // Initial exec environment. must call this to init all
     static Status init(ExecEnv* env, const std::vector<StorePath>& store_paths);
+    static bool is_init();
     static void destroy(ExecEnv* exec_env);
 
-    /// Returns the first created exec env instance. In a normal doris, this is
+    /// Returns the first created exec env instance. In a normal starrocks, this is
     /// the only instance. In test setups with multiple ExecEnv's per process,
     /// we return the most recently created instance.
     static ExecEnv* GetInstance() {
@@ -90,177 +122,243 @@ public:
     }
 
     // only used for test
-    ExecEnv();
+    ExecEnv() = default;
 
     // Empty destructor because the compiler-generated one requires full
     // declarations for classes in scoped_ptrs.
-    ~ExecEnv();
+    ~ExecEnv() = default;
 
-    bool initialized() const { return _is_init; }
-    const std::string& token() const;
+    std::string token() const;
     ExternalScanContextMgr* external_scan_context_mgr() { return _external_scan_context_mgr; }
-    doris::vectorized::VDataStreamMgr* vstream_mgr() { return _vstream_mgr; }
+    MetricRegistry* metrics() const { return _metrics; }
+    DataStreamMgr* stream_mgr() { return _stream_mgr; }
     ResultBufferMgr* result_mgr() { return _result_mgr; }
     ResultQueueMgr* result_queue_mgr() { return _result_queue_mgr; }
     ClientCache<BackendServiceClient>* client_cache() { return _backend_client_cache; }
     ClientCache<FrontendServiceClient>* frontend_client_cache() { return _frontend_client_cache; }
-    ClientCache<TPaloBrokerServiceClient>* broker_client_cache() { return _broker_client_cache; }
+    ClientCache<TFileBrokerServiceClient>* broker_client_cache() { return _broker_client_cache; }
 
-    pipeline::TaskScheduler* pipeline_task_scheduler() { return _pipeline_task_scheduler; }
-    pipeline::TaskScheduler* pipeline_task_group_scheduler() {
-        return _pipeline_task_group_scheduler;
-    }
-    taskgroup::TaskGroupManager* task_group_manager() { return _task_group_manager; }
+    static int64_t calc_max_query_memory(int64_t process_mem_limit, int64_t percent);
 
     // using template to simplify client cache management
     template <typename T>
-    inline ClientCache<T>* get_client_cache() {
+    ClientCache<T>* get_client_cache() {
         return nullptr;
     }
 
-    void init_mem_tracker();
-    std::shared_ptr<MemTrackerLimiter> orphan_mem_tracker() { return _orphan_mem_tracker; }
-    MemTrackerLimiter* orphan_mem_tracker_raw() { return _orphan_mem_tracker_raw; }
-    MemTrackerLimiter* experimental_mem_tracker() { return _experimental_mem_tracker.get(); }
-    MemTracker* page_no_cache_mem_tracker() { return _page_no_cache_mem_tracker.get(); }
-    MemTracker* brpc_iobuf_block_memory_tracker() { return _brpc_iobuf_block_memory_tracker.get(); }
+    MemTracker* process_mem_tracker() { return _process_mem_tracker.get(); }
+    MemTracker* query_pool_mem_tracker() { return _query_pool_mem_tracker.get(); }
+    MemTracker* load_mem_tracker() { return _load_mem_tracker.get(); }
+    MemTracker* metadata_mem_tracker() { return _metadata_mem_tracker.get(); }
+    MemTracker* tablet_metadata_mem_tracker() { return _tablet_metadata_mem_tracker.get(); }
+    MemTracker* rowset_metadata_mem_tracker() { return _rowset_metadata_mem_tracker.get(); }
+    MemTracker* segment_metadata_mem_tracker() { return _segment_metadata_mem_tracker.get(); }
+    MemTracker* column_metadata_mem_tracker() { return _column_metadata_mem_tracker.get(); }
+    MemTracker* tablet_schema_mem_tracker() { return _tablet_schema_mem_tracker.get(); }
+    MemTracker* column_zonemap_index_mem_tracker() { return _column_zonemap_index_mem_tracker.get(); }
+    MemTracker* ordinal_index_mem_tracker() { return _ordinal_index_mem_tracker.get(); }
+    MemTracker* bitmap_index_mem_tracker() { return _bitmap_index_mem_tracker.get(); }
+    MemTracker* bloom_filter_index_mem_tracker() { return _bloom_filter_index_mem_tracker.get(); }
+    MemTracker* segment_zonemap_mem_tracker() { return _segment_zonemap_mem_tracker.get(); }
+    MemTracker* short_key_index_mem_tracker() { return _short_key_index_mem_tracker.get(); }
+    MemTracker* compaction_mem_tracker() { return _compaction_mem_tracker.get(); }
+    MemTracker* schema_change_mem_tracker() { return _schema_change_mem_tracker.get(); }
+    MemTracker* column_pool_mem_tracker() { return _column_pool_mem_tracker.get(); }
+    MemTracker* page_cache_mem_tracker() { return _page_cache_mem_tracker.get(); }
+    MemTracker* update_mem_tracker() { return _update_mem_tracker.get(); }
+    MemTracker* chunk_allocator_mem_tracker() { return _chunk_allocator_mem_tracker.get(); }
+    MemTracker* clone_mem_tracker() { return _clone_mem_tracker.get(); }
+    MemTracker* consistency_mem_tracker() { return _consistency_mem_tracker.get(); }
+    std::vector<std::shared_ptr<MemTracker>>& mem_trackers() { return _mem_trackers; }
 
-    ThreadPool* send_batch_thread_pool() { return _send_batch_thread_pool.get(); }
-    ThreadPool* download_cache_thread_pool() { return _download_cache_thread_pool.get(); }
-    ThreadPool* buffered_reader_prefetch_thread_pool() {
-        return _buffered_reader_prefetch_thread_pool.get();
+    PriorityThreadPool* thread_pool() { return _thread_pool; }
+    workgroup::ScanExecutor* scan_executor_without_workgroup() { return _scan_executor_without_workgroup; }
+    workgroup::ScanExecutor* scan_executor_with_workgroup() { return _scan_executor_with_workgroup; }
+    workgroup::ScanExecutor* connector_scan_executor_without_workgroup() {
+        return _connector_scan_executor_without_workgroup;
     }
-    ThreadPool* send_report_thread_pool() { return _send_report_thread_pool.get(); }
-    ThreadPool* join_node_thread_pool() { return _join_node_thread_pool.get(); }
+    workgroup::ScanExecutor* connector_scan_executor_with_workgroup() {
+        return _connector_scan_executor_with_workgroup;
+    }
 
-    void set_serial_download_cache_thread_token() {
-        _serial_download_cache_thread_token =
-                download_cache_thread_pool()->new_token(ThreadPool::ExecutionMode::SERIAL, 1);
-    }
-    ThreadPoolToken* get_serial_download_cache_thread_token() {
-        return _serial_download_cache_thread_token.get();
-    }
-    void init_download_cache_buf();
-    void init_download_cache_required_components();
-    Status init_pipeline_task_scheduler();
-    char* get_download_cache_buf(ThreadPoolToken* token) {
-        if (_download_cache_buf_map.find(token) == _download_cache_buf_map.end()) {
-            return nullptr;
-        }
-        return _download_cache_buf_map[token].get();
-    }
+    PriorityThreadPool* udf_call_pool() { return _udf_call_pool; }
+    PriorityThreadPool* pipeline_prepare_pool() { return _pipeline_prepare_pool; }
+    PriorityThreadPool* pipeline_sink_io_pool() { return _pipeline_sink_io_pool; }
+    PriorityThreadPool* query_rpc_pool() { return _query_rpc_pool; }
     FragmentMgr* fragment_mgr() { return _fragment_mgr; }
-    ResultCache* result_cache() { return _result_cache; }
-    TMasterInfo* master_info() { return _master_info; }
+    starrocks::pipeline::DriverExecutor* driver_executor() { return _driver_executor; }
+    starrocks::pipeline::DriverExecutor* wg_driver_executor() { return _wg_driver_executor; }
     LoadPathMgr* load_path_mgr() { return _load_path_mgr; }
     BfdParser* bfd_parser() const { return _bfd_parser; }
     BrokerMgr* broker_mgr() const { return _broker_mgr; }
-    BrpcClientCache<PBackendService_Stub>* brpc_internal_client_cache() const {
-        return _internal_client_cache;
-    }
-    BrpcClientCache<PFunctionService_Stub>* brpc_function_client_cache() const {
-        return _function_client_cache;
-    }
+    BrpcStubCache* brpc_stub_cache() const { return _brpc_stub_cache; }
     LoadChannelMgr* load_channel_mgr() { return _load_channel_mgr; }
-    std::shared_ptr<NewLoadStreamMgr> new_load_stream_mgr() { return _new_load_stream_mgr; }
+    LoadStreamMgr* load_stream_mgr() { return _load_stream_mgr; }
     SmallFileMgr* small_file_mgr() { return _small_file_mgr; }
-    BlockSpillManager* block_spill_mgr() { return _block_spill_mgr; }
+    StreamContextMgr* stream_context_mgr() { return _stream_context_mgr; }
+    TransactionMgr* transaction_mgr() { return _transaction_mgr; }
 
     const std::vector<StorePath>& store_paths() const { return _store_paths; }
-    size_t store_path_to_index(const std::string& path) { return _store_path_map[path]; }
-    StorageEngine* storage_engine() { return _storage_engine; }
-    void set_storage_engine(StorageEngine* storage_engine) { _storage_engine = storage_engine; }
+    void set_store_paths(const std::vector<StorePath>& paths) { _store_paths = paths; }
 
-    std::shared_ptr<StreamLoadExecutor> stream_load_executor() { return _stream_load_executor; }
+    StreamLoadExecutor* stream_load_executor() { return _stream_load_executor; }
     RoutineLoadTaskExecutor* routine_load_task_executor() { return _routine_load_task_executor; }
     HeartbeatFlags* heartbeat_flags() { return _heartbeat_flags; }
-    doris::vectorized::ScannerScheduler* scanner_scheduler() { return _scanner_scheduler; }
-    FileMetaCache* file_meta_cache() { return _file_meta_cache; }
 
-    // only for unit test
-    void set_master_info(TMasterInfo* master_info) { this->_master_info = master_info; }
-    void set_new_load_stream_mgr(std::shared_ptr<NewLoadStreamMgr> new_load_stream_mgr) {
-        this->_new_load_stream_mgr = new_load_stream_mgr;
-    }
-    void set_stream_load_executor(std::shared_ptr<StreamLoadExecutor> stream_load_executor) {
-        this->_stream_load_executor = stream_load_executor;
-    }
+    ThreadPool* automatic_partition_pool() { return _automatic_partition_pool.get(); }
+
+    RuntimeFilterWorker* runtime_filter_worker() { return _runtime_filter_worker; }
+    Status init_mem_tracker();
+
+    RuntimeFilterCache* runtime_filter_cache() { return _runtime_filter_cache; }
+
+    ProfileReportWorker* profile_report_worker() { return _profile_report_worker; }
+
+    void add_rf_event(const RfTracePoint& pt);
+
+    pipeline::QueryContextManager* query_context_mgr() { return _query_context_mgr; }
+
+    pipeline::DriverLimiter* driver_limiter() { return _driver_limiter; }
+
+    int64_t max_executor_threads() const { return _max_executor_threads; }
+
+    int32_t calc_pipeline_dop(int32_t pipeline_dop) const;
+
+    lake::TabletManager* lake_tablet_manager() const { return _lake_tablet_manager; }
+
+    lake::LocationProvider* lake_location_provider() const { return _lake_location_provider; }
+
+    lake::UpdateManager* lake_update_manager() const { return _lake_update_manager; }
+
+    AgentServer* agent_server() const { return _agent_server; }
+
+    int64_t get_storage_page_cache_size();
+    int64_t check_storage_page_cache_size(int64_t storage_cache_limit);
+
+    query_cache::CacheManagerRawPtr cache_mgr() const { return _cache_mgr; }
+
+    spill::DirManager* spill_dir_mgr() const { return _spill_dir_mgr.get(); }
 
 private:
     Status _init(const std::vector<StorePath>& store_paths);
     void _destroy();
+    void _reset_tracker();
+    template <class... Args>
+    std::shared_ptr<MemTracker> regist_tracker(Args&&... args);
 
-    Status _init_mem_env();
+    Status _init_storage_page_cache();
 
-    void _register_metrics();
-    void _deregister_metrics();
-
-    bool _is_init;
+private:
+    static bool _is_init;
     std::vector<StorePath> _store_paths;
-    // path => store index
-    std::map<std::string, size_t> _store_path_map;
     // Leave protected so that subclasses can override
     ExternalScanContextMgr* _external_scan_context_mgr = nullptr;
-    doris::vectorized::VDataStreamMgr* _vstream_mgr = nullptr;
+    MetricRegistry* _metrics = nullptr;
+    DataStreamMgr* _stream_mgr = nullptr;
     ResultBufferMgr* _result_mgr = nullptr;
     ResultQueueMgr* _result_queue_mgr = nullptr;
     ClientCache<BackendServiceClient>* _backend_client_cache = nullptr;
     ClientCache<FrontendServiceClient>* _frontend_client_cache = nullptr;
-    ClientCache<TPaloBrokerServiceClient>* _broker_client_cache = nullptr;
+    ClientCache<TFileBrokerServiceClient>* _broker_client_cache = nullptr;
+    // root process memory tracker
+    std::shared_ptr<MemTracker> _process_mem_tracker;
 
-    // The default tracker consumed by mem hook. If the thread does not attach other trackers,
-    // by default all consumption will be passed to the process tracker through the orphan tracker.
-    // In real time, `consumption of all limiter trackers` + `orphan tracker consumption` = `process tracker consumption`.
-    // Ideally, all threads are expected to attach to the specified tracker, so that "all memory has its own ownership",
-    // and the consumption of the orphan mem tracker is close to 0, but greater than 0.
-    std::shared_ptr<MemTrackerLimiter> _orphan_mem_tracker;
-    MemTrackerLimiter* _orphan_mem_tracker_raw;
-    std::shared_ptr<MemTrackerLimiter> _experimental_mem_tracker;
-    // page size not in cache, data page/index page/etc.
-    std::shared_ptr<MemTracker> _page_no_cache_mem_tracker;
-    std::shared_ptr<MemTracker> _brpc_iobuf_block_memory_tracker;
+    // Limit the memory used by the query. At present, it can use 90% of the be memory limit
+    std::shared_ptr<MemTracker> _query_pool_mem_tracker;
 
-    std::unique_ptr<ThreadPool> _send_batch_thread_pool;
+    // Limit the memory used by load
+    std::shared_ptr<MemTracker> _load_mem_tracker;
 
-    // Threadpool used to download cache from remote storage
-    std::unique_ptr<ThreadPool> _download_cache_thread_pool;
-    // Threadpool used to prefetch remote file for buffered reader
-    std::unique_ptr<ThreadPool> _buffered_reader_prefetch_thread_pool;
-    // A token used to submit download cache task serially
-    std::unique_ptr<ThreadPoolToken> _serial_download_cache_thread_token;
-    // Pool used by fragment manager to send profile or status to FE coordinator
-    std::unique_ptr<ThreadPool> _send_report_thread_pool;
-    // Pool used by join node to build hash table
-    std::unique_ptr<ThreadPool> _join_node_thread_pool;
-    // ThreadPoolToken -> buffer
-    std::unordered_map<ThreadPoolToken*, std::unique_ptr<char[]>> _download_cache_buf_map;
+    // metadata l0
+    std::shared_ptr<MemTracker> _metadata_mem_tracker;
+
+    // metadata l1
+    std::shared_ptr<MemTracker> _tablet_metadata_mem_tracker;
+    std::shared_ptr<MemTracker> _rowset_metadata_mem_tracker;
+    std::shared_ptr<MemTracker> _segment_metadata_mem_tracker;
+    std::shared_ptr<MemTracker> _column_metadata_mem_tracker;
+
+    // metadata l2
+    std::shared_ptr<MemTracker> _tablet_schema_mem_tracker;
+    std::shared_ptr<MemTracker> _segment_zonemap_mem_tracker;
+    std::shared_ptr<MemTracker> _short_key_index_mem_tracker;
+    std::shared_ptr<MemTracker> _column_zonemap_index_mem_tracker;
+    std::shared_ptr<MemTracker> _ordinal_index_mem_tracker;
+    std::shared_ptr<MemTracker> _bitmap_index_mem_tracker;
+    std::shared_ptr<MemTracker> _bloom_filter_index_mem_tracker;
+
+    // The memory used for compaction
+    std::shared_ptr<MemTracker> _compaction_mem_tracker;
+
+    // The memory used for schema change
+    std::shared_ptr<MemTracker> _schema_change_mem_tracker;
+
+    // The memory used for column pool
+    std::shared_ptr<MemTracker> _column_pool_mem_tracker;
+
+    // The memory used for page cache
+    std::shared_ptr<MemTracker> _page_cache_mem_tracker;
+
+    // The memory tracker for update manager
+    std::shared_ptr<MemTracker> _update_mem_tracker;
+
+    std::shared_ptr<MemTracker> _chunk_allocator_mem_tracker;
+
+    std::shared_ptr<MemTracker> _clone_mem_tracker;
+
+    std::shared_ptr<MemTracker> _consistency_mem_tracker;
+
+    std::vector<std::shared_ptr<MemTracker>> _mem_trackers;
+
+    PriorityThreadPool* _thread_pool = nullptr;
+
+    workgroup::ScanExecutor* _scan_executor_without_workgroup = nullptr;
+    workgroup::ScanExecutor* _scan_executor_with_workgroup = nullptr;
+    workgroup::ScanExecutor* _connector_scan_executor_without_workgroup = nullptr;
+    workgroup::ScanExecutor* _connector_scan_executor_with_workgroup = nullptr;
+
+    PriorityThreadPool* _udf_call_pool = nullptr;
+    PriorityThreadPool* _pipeline_prepare_pool = nullptr;
+    PriorityThreadPool* _pipeline_sink_io_pool = nullptr;
+    PriorityThreadPool* _query_rpc_pool = nullptr;
     FragmentMgr* _fragment_mgr = nullptr;
-    pipeline::TaskScheduler* _pipeline_task_scheduler = nullptr;
-    pipeline::TaskScheduler* _pipeline_task_group_scheduler = nullptr;
-    taskgroup::TaskGroupManager* _task_group_manager = nullptr;
+    pipeline::QueryContextManager* _query_context_mgr = nullptr;
+    pipeline::DriverExecutor* _driver_executor = nullptr;
+    pipeline::DriverExecutor* _wg_driver_executor = nullptr;
+    pipeline::DriverLimiter* _driver_limiter = nullptr;
+    int64_t _max_executor_threads = 0; // Max thread number of executor
 
-    ResultCache* _result_cache = nullptr;
-    TMasterInfo* _master_info = nullptr;
     LoadPathMgr* _load_path_mgr = nullptr;
 
     BfdParser* _bfd_parser = nullptr;
     BrokerMgr* _broker_mgr = nullptr;
     LoadChannelMgr* _load_channel_mgr = nullptr;
-    std::shared_ptr<NewLoadStreamMgr> _new_load_stream_mgr;
-    BrpcClientCache<PBackendService_Stub>* _internal_client_cache = nullptr;
-    BrpcClientCache<PFunctionService_Stub>* _function_client_cache = nullptr;
+    LoadStreamMgr* _load_stream_mgr = nullptr;
+    BrpcStubCache* _brpc_stub_cache = nullptr;
+    StreamContextMgr* _stream_context_mgr = nullptr;
+    TransactionMgr* _transaction_mgr = nullptr;
 
-    StorageEngine* _storage_engine = nullptr;
+    [[maybe_unused]] StorageEngine* _storage_engine = nullptr;
 
-    std::shared_ptr<StreamLoadExecutor> _stream_load_executor;
+    StreamLoadExecutor* _stream_load_executor = nullptr;
     RoutineLoadTaskExecutor* _routine_load_task_executor = nullptr;
     SmallFileMgr* _small_file_mgr = nullptr;
     HeartbeatFlags* _heartbeat_flags = nullptr;
-    doris::vectorized::ScannerScheduler* _scanner_scheduler = nullptr;
 
-    BlockSpillManager* _block_spill_mgr = nullptr;
-    // To save meta info of external file, such as parquet footer.
-    FileMetaCache* _file_meta_cache = nullptr;
+    std::unique_ptr<ThreadPool> _automatic_partition_pool;
+
+    RuntimeFilterWorker* _runtime_filter_worker = nullptr;
+    RuntimeFilterCache* _runtime_filter_cache = nullptr;
+
+    ProfileReportWorker* _profile_report_worker = nullptr;
+
+    lake::TabletManager* _lake_tablet_manager = nullptr;
+    lake::LocationProvider* _lake_location_provider = nullptr;
+    lake::UpdateManager* _lake_update_manager = nullptr;
+
+    AgentServer* _agent_server = nullptr;
+    query_cache::CacheManagerRawPtr _cache_mgr;
+    std::shared_ptr<spill::DirManager> _spill_dir_mgr;
 };
 
 template <>
@@ -272,9 +370,8 @@ inline ClientCache<FrontendServiceClient>* ExecEnv::get_client_cache<FrontendSer
     return _frontend_client_cache;
 }
 template <>
-inline ClientCache<TPaloBrokerServiceClient>*
-ExecEnv::get_client_cache<TPaloBrokerServiceClient>() {
+inline ClientCache<TFileBrokerServiceClient>* ExecEnv::get_client_cache<TFileBrokerServiceClient>() {
     return _broker_client_cache;
 }
 
-} // namespace doris
+} // namespace starrocks

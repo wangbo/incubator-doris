@@ -22,23 +22,23 @@
 #include "geo/wkt_parse_type.h"
 #include "geo/geo_types.h"
 
-struct WktParseContext;
+class WktParseContext;
 void wkt_error(WktParseContext* ctx, const char* msg) {
 }
-/* forward declare this class for wkt_parse declaration in yacc.y.cpp */
+/* forword declare this class for wkt_parse declaration in yacc.y.cpp */
 %}
 
 %union {
     double double_value;
-    doris::GeoCoordinate coordinate_value;
-    doris::GeoCoordinateList* coordinate_list_value;
-    doris::GeoCoordinateListList* coordinate_list_list_value;
-    doris::GeoShape* shape_value;
+    starrocks::GeoCoordinate coordinate_value;
+    starrocks::GeoCoordinateList* coordinate_list_value;
+    starrocks::GeoCoordinateListList* coordinate_list_list_value;
+    starrocks::GeoShape* shape_value;
 }
 
 %code {
 /* we need yyscan_t in WktParseContext, so we include lex.h here,
- * and we should include this header after union define, because it
+ * and we shoud include this header after union define, because it
  * need YYSTYPE
  */
 #include "geo/wkt_lex.l.h"
@@ -92,9 +92,9 @@ shape:
 point:
      KW_POINT '(' coordinate ')'
      {
-        std::unique_ptr<doris::GeoPoint> point = doris::GeoPoint::create_unique();
+        std::unique_ptr<starrocks::GeoPoint> point(new starrocks::GeoPoint());
         ctx->parse_status = point->from_coord($3);
-        if (ctx->parse_status != doris::GEO_PARSE_OK) {
+        if (ctx->parse_status != starrocks::GEO_PARSE_OK) {
             YYABORT;
         }
         $$ = point.release();
@@ -105,10 +105,10 @@ linestring:
     KW_LINESTRING '(' coordinate_list ')'
     {
         // to avoid memory leak
-        std::unique_ptr<doris::GeoCoordinateList> list($3);
-        std::unique_ptr<doris::GeoLine> line = doris::GeoLine::create_unique();
+        std::unique_ptr<starrocks::GeoCoordinateList> list($3);
+        std::unique_ptr<starrocks::GeoLine> line(new starrocks::GeoLine());
         ctx->parse_status = line->from_coords(*$3);
-        if (ctx->parse_status != doris::GEO_PARSE_OK) {
+        if (ctx->parse_status != starrocks::GEO_PARSE_OK) {
             YYABORT;
         }
         $$ = line.release();
@@ -119,10 +119,10 @@ polygon:
     KW_POLYGON '(' coordinate_list_list ')'
     {
         // to avoid memory leak
-        std::unique_ptr<doris::GeoCoordinateListList> list($3);
-        std::unique_ptr<doris::GeoPolygon> polygon = doris::GeoPolygon::create_unique();
+        std::unique_ptr<starrocks::GeoCoordinateListList> list($3);
+        std::unique_ptr<starrocks::GeoPolygon> polygon(new starrocks::GeoPolygon());
         ctx->parse_status = polygon->from_coords(*$3);
-        if (ctx->parse_status != doris::GEO_PARSE_OK) {
+        if (ctx->parse_status != starrocks::GEO_PARSE_OK) {
             YYABORT;
         }
         $$ = polygon.release();
@@ -137,7 +137,7 @@ coordinate_list_list:
     }
     | '(' coordinate_list ')'
     {
-        $$ = new doris::GeoCoordinateListList();
+        $$ = new starrocks::GeoCoordinateListList();
         $$->add($2);
     }
     ;
@@ -150,7 +150,7 @@ coordinate_list:
     }
     | coordinate
     {
-        $$ = new doris::GeoCoordinateList();
+        $$ = new starrocks::GeoCoordinateList();
         $$->add($1);
     }
     ;

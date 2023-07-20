@@ -14,22 +14,13 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/sse-util.hpp
-// and modified by Doris
 
 #pragma once
 
-#if defined(__aarch64__)
-#include <sse2neon.h> // IWYU pragma: export
-#elif defined(__x86_64__)
-#include <emmintrin.h> // IWYU pragma: export
-#include <immintrin.h> // IWYU pragma: export
-#include <mm_malloc.h> // IWYU pragma: export
-#include <smmintrin.h> // IWYU pragma: export
-#endif
+#include <nmmintrin.h>
+#include <smmintrin.h>
 
-namespace doris {
+namespace starrocks {
 
 // This class contains constants useful for text processing with SSE4.2
 // intrinsics.
@@ -63,4 +54,4 @@ static const int SSE_BITMASK[CHARS_PER_128_BIT_REGISTER] = {
 };
 
 } // namespace sse_util
-} // namespace doris
+} // namespace starrocks

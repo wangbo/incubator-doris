@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/runtime/small_file_mgr.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,46 +34,33 @@
 
 #include "runtime/small_file_mgr.h"
 
-// IWYU pragma: no_include <bthread/errno.h>
-#include <errno.h> // IWYU pragma: keep
-#include <gen_cpp/HeartbeatService_types.h>
-#include <gen_cpp/Types_types.h>
-#include <glog/logging.h>
-#include <stdint.h>
-#include <stdio.h>
-
-#include <cstring>
-#include <memory>
+#include <boost/algorithm/string/predicate.hpp> // boost::algorithm::starts_with
+#include <cstdint>
+#include <cstdio>
 #include <sstream>
 #include <utility>
-#include <vector>
 
+#include "agent/master_info.h"
 #include "common/status.h"
+#include "fs/fs.h"
+#include "fs/fs_util.h"
 #include "gutil/strings/split.h"
+#include "gutil/strings/substitute.h"
 #include "http/http_client.h"
-#include "io/fs/file_system.h"
-#include "io/fs/local_file_system.h"
 #include "runtime/exec_env.h"
-#include "util/doris_metrics.h"
 #include "util/md5.h"
-#include "util/metrics.h"
-#include "util/string_util.h"
+#include "util/starrocks_metrics.h"
 
-namespace doris {
+namespace starrocks {
 
-DEFINE_GAUGE_METRIC_PROTOTYPE_2ARG(small_file_cache_count, MetricUnit::NOUNIT);
-
-SmallFileMgr::SmallFileMgr(ExecEnv* env, const std::string& local_path)
-        : _exec_env(env), _local_path(local_path) {
-    REGISTER_HOOK_METRIC(small_file_cache_count, [this]() {
-        // std::lock_guard<std::mutex> l(_lock);
+SmallFileMgr::SmallFileMgr(ExecEnv* env, std::string local_path) : _exec_env(env), _local_path(std::move(local_path)) {
+    REGISTER_GAUGE_STARROCKS_METRIC(small_file_cache_count, [this]() {
+        std::lock_guard<std::mutex> l(_lock);
         return _file_cache.size();
     });
 }
 
-SmallFileMgr::~SmallFileMgr() {
-    DEREGISTER_HOOK_METRIC(small_file_cache_count);
-}
+SmallFileMgr::~SmallFileMgr() = default;
 
 Status SmallFileMgr::init() {
     RETURN_IF_ERROR(_load_local_files());
@@ -64,20 +68,20 @@ Status SmallFileMgr::init() {
 }
 
 Status SmallFileMgr::_load_local_files() {
-    RETURN_IF_ERROR(io::global_local_filesystem()->create_directory(_local_path));
+    RETURN_IF_ERROR(fs::create_directories(_local_path));
 
-    auto scan_cb = [this](const io::FileInfo& file) {
-        if (!file.is_file) {
+    auto scan_cb = [this](std::string_view file) {
+        if (file == "." || file == "..") {
             return true;
         }
-        auto st = _load_single_file(_local_path, file.file_name);
+        auto st = _load_single_file(_local_path, std::string(file));
         if (!st.ok()) {
-            LOG(WARNING) << "load small file failed: " << st;
+            LOG(WARNING) << "load small file failed: " << st.get_error_msg();
         }
         return true;
     };
 
-    RETURN_IF_ERROR(io::global_local_filesystem()->iterate_directory(_local_path, scan_cb));
+    RETURN_IF_ERROR(FileSystem::Default()->iterate_dir(_local_path, scan_cb));
     return Status::OK();
 }
 
@@ -86,19 +90,18 @@ Status SmallFileMgr::_load_single_file(const std::string& path, const std::strin
     // file_id.md5
     std::vector<std::string> parts = strings::Split(file_name, ".");
     if (parts.size() != 2) {
-        return Status::InternalError("Not a valid file name: {}", file_name);
+        return Status::InternalError(strings::Substitute("Not a valid file name: $0", file_name));
     }
     int64_t file_id = std::stol(parts[0]);
     std::string md5 = parts[1];
 
     if (_file_cache.find(file_id) != _file_cache.end()) {
-        return Status::InternalError("File with same id is already been loaded: {}", file_id);
+        return Status::InternalError(strings::Substitute("File with same id is already been loaded: $0", file_id));
     }
 
-    std::string file_md5;
-    RETURN_IF_ERROR(io::global_local_filesystem()->md5sum(path + "/" + file_name, &file_md5));
+    ASSIGN_OR_RETURN(auto file_md5, fs::md5sum(path + "/" + file_name));
     if (file_md5 != md5) {
-        return Status::InternalError("Invalid md5 of file: {}", file_name);
+        return Status::InternalError(strings::Substitute("Invalid md5 of file: $0", file_name));
     }
 
     CacheEntry entry;
@@ -120,8 +123,9 @@ Status SmallFileMgr::get_file(int64_t file_id, const std::string& md5, std::stri
         if (!st.ok()) {
             // check file failed, we should remove this cache and download it from FE again
             if (remove(entry.path.c_str()) != 0) {
-                return Status::InternalError("failed to remove file: {}, err: {}", file_id,
-                                             std::strerror(errno));
+                std::stringstream ss;
+                ss << "failed to remove file: " << file_id << ", err: " << std::strerror(errno);
+                return Status::InternalError(ss.str());
             }
             _file_cache.erase(it);
         } else {
@@ -138,19 +142,16 @@ Status SmallFileMgr::get_file(int64_t file_id, const std::string& md5, std::stri
 }
 
 Status SmallFileMgr::_check_file(const CacheEntry& entry, const std::string& md5) {
-    bool exists;
-    RETURN_IF_ERROR(io::global_local_filesystem()->exists(entry.path, &exists));
-    if (!exists) {
-        return Status::InternalError("file not exist: {}", entry.path);
+    if (!fs::path_exist(entry.path)) {
+        return Status::InternalError("file not exist");
     }
-    if (!iequal(md5, entry.md5)) {
-        return Status::InternalError("invalid MD5 of file: {}", entry.path);
+    if (!boost::iequals(md5, entry.md5)) {
+        return Status::InternalError("invalid MD5");
     }
     return Status::OK();
 }
 
-Status SmallFileMgr::_download_file(int64_t file_id, const std::string& md5,
-                                    std::string* file_path) {
+Status SmallFileMgr::_download_file(int64_t file_id, const std::string& md5, std::string* file_path) {
     std::stringstream ss;
     ss << _local_path << "/" << file_id << ".tmp";
     std::string tmp_file = ss.str();
@@ -169,10 +170,9 @@ Status SmallFileMgr::_download_file(int64_t file_id, const std::string& md5,
     HttpClient client;
 
     std::stringstream url_ss;
-    TMasterInfo* master_info = _exec_env->master_info();
-    url_ss << master_info->network_address.hostname << ":" << master_info->http_port
-           << "/api/get_small_file?"
-           << "file_id=" << file_id << "&token=" << master_info->token;
+    TMasterInfo master_info = get_master_info();
+    url_ss << master_info.network_address.hostname << ":" << master_info.http_port << "/api/get_small_file?"
+           << "file_id=" << file_id << "&token=" << master_info.token;
 
     std::string url = url_ss.str();
 
@@ -185,8 +185,7 @@ Status SmallFileMgr::_download_file(int64_t file_id, const std::string& md5,
         digest.update(data, length);
         auto res = fwrite(data, length, 1, fp.get());
         if (res != 1) {
-            LOG(WARNING) << "fail to write data to file, file=" << tmp_file
-                         << ", error=" << ferror(fp.get());
+            LOG(WARNING) << "fail to write data to file, file=" << tmp_file << ", error=" << ferror(fp.get());
             status = Status::InternalError("fail to write data when download");
             return false;
         }
@@ -196,9 +195,9 @@ Status SmallFileMgr::_download_file(int64_t file_id, const std::string& md5,
     RETURN_IF_ERROR(status);
     digest.digest();
 
-    if (!iequal(digest.hex(), md5)) {
-        LOG(WARNING) << "file's checksum is not equal, download: " << digest.hex()
-                     << ", expected: " << md5 << ", file: " << file_id;
+    if (!boost::iequals(digest.hex(), md5)) {
+        LOG(WARNING) << "file's checksum is not equal, download: " << digest.hex() << ", expected: " << md5
+                     << ", file: " << file_id;
         return Status::InternalError("download with invalid md5");
     }
 
@@ -213,8 +212,8 @@ Status SmallFileMgr::_download_file(int64_t file_id, const std::string& md5,
     auto ret = rename(tmp_file.c_str(), real_file_path.c_str());
     if (ret != 0) {
         char buf[64];
-        LOG(WARNING) << "fail to rename file from=" << tmp_file << ", to=" << real_file_path
-                     << ", errno=" << errno << ", errmsg=" << strerror_r(errno, buf, 64);
+        LOG(WARNING) << "fail to rename file from=" << tmp_file << ", to=" << real_file_path << ", errno=" << errno
+                     << ", errmsg=" << strerror_r(errno, buf, 64);
         remove(tmp_file.c_str());
         remove(real_file_path.c_str());
         return Status::InternalError("fail to rename file");
@@ -232,4 +231,4 @@ Status SmallFileMgr::_download_file(int64_t file_id, const std::string& md5,
     return Status::OK();
 }
 
-} // end namespace doris
+} // end namespace starrocks

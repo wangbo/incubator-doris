@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/test/util/tdigest_test.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,16 +34,13 @@
 
 #include "util/tdigest.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include <gtest/gtest.h>
 
-#include <memory>
 #include <random>
 
-#include "gtest/gtest_pred_impl.h"
-#include "testutil/test_util.h"
+#include "common/logging.h"
 
-namespace doris {
+namespace starrocks {
 
 class TDigestTest : public ::testing::Test {
 protected:
@@ -36,22 +50,26 @@ protected:
         // You can do set-up work for each test here.
     }
 
-    virtual ~TDigestTest() {
+    ~TDigestTest() override {
         // You can do clean-up work that doesn't throw exceptions here.
     }
 
     // If the constructor and destructor are not enough for setting up
     // and cleaning up each test, you can define the following methods:
 
-    virtual void SetUp() {
+    void SetUp() override {
         // Code here will be called immediately after the constructor (right
         // before each test).
     }
 
-    virtual void TearDown() {
+    void TearDown() override {
         // Code here will be called immediately after each test (right
         // before the destructor).
     }
+
+    static void SetUpTestCase() {}
+
+    // Objects declared here can be used by all tests in the test case for Foo.
 };
 
 static double quantile(const double q, const std::vector<double>& values) {
@@ -69,8 +87,7 @@ static double quantile(const double q, const std::vector<double>& values) {
         } else {
             index -= 0.5;
             const int intIndex = static_cast<int>(index);
-            q1 = values[intIndex + 1] * (index - intIndex) +
-                 values[intIndex] * (intIndex + 1 - index);
+            q1 = values[intIndex + 1] * (index - intIndex) + values[intIndex] * (intIndex + 1 - index);
         }
     }
     return q1;
@@ -80,7 +97,7 @@ TEST_F(TDigestTest, CrashAfterMerge) {
     TDigest digest(1000);
     std::uniform_real_distribution<> reals(0.0, 1.0);
     std::random_device gen;
-    for (int i = 0; i < LOOP_LESS_OR_MORE(100, 100000); i++) {
+    for (int i = 0; i < 100000; i++) {
         digest.add(reals(gen));
     }
     digest.compress();
@@ -132,7 +149,7 @@ TEST_F(TDigestTest, FewValues) {
 
     EXPECT_EQ(digest.processed().size(), values.size());
 
-    std::vector<double> testValues {0.0, 1.0e-10, qvalue(gen), 0.5, 1.0 - 1e-10, 1.0};
+    std::vector<double> testValues{0.0, 1.0e-10, qvalue(gen), 0.5, 1.0 - 1e-10, 1.0};
     for (auto q : testValues) {
         double q1 = quantile(q, values);
         auto q2 = digest.quantile(q);
@@ -160,9 +177,9 @@ TEST_F(TDigestTest, MoreThan2BValues) {
     }
     EXPECT_EQ(static_cast<long>(1000 + float(10L * (1 << 28))), digest.totalWeight());
     EXPECT_GT(digest.totalWeight(), std::numeric_limits<int32_t>::max());
-    std::vector<double> quantiles {0, 0.1, 0.5, 0.9, 1, reals(gen)};
+    std::vector<double> quantiles{0, 0.1, 0.5, 0.9, 1, reals(gen)};
     std::sort(quantiles.begin(), quantiles.end());
-    auto prev = std::numeric_limits<double>::min();
+    auto prev = std::numeric_limits<double>::lowest();
     for (double q : quantiles) {
         const double v = digest.quantile(q);
         EXPECT_GE(v, prev) << "q = " << q;
@@ -174,7 +191,7 @@ TEST_F(TDigestTest, MergeTest) {
     TDigest digest1(1000);
     TDigest digest2(1000);
 
-    digest2.add(std::vector<const TDigest*> {&digest1});
+    digest2.add(std::vector<const TDigest*>{&digest1});
 }
 
 TEST_F(TDigestTest, TestSorted) {
@@ -209,8 +226,8 @@ TEST_F(TDigestTest, ExtremeQuantiles) {
     // [ ?, 10, ?, 20, ?, ?, 50, ?, ? ]
     // and we expect it to compute approximate missing values:
     // [ 5, 10, 15, 20, 30, 40, 50, 60, 70]
-    std::vector<double> values {5.0, 10.0, 15.0, 20.0, 30.0, 35.0, 40.0, 45.0, 50.0};
-    std::vector<double> quantiles {1.5 / 9.0, 3.5 / 9.0, 6.5 / 9.0};
+    std::vector<double> values{5.0, 10.0, 15.0, 20.0, 30.0, 35.0, 40.0, 45.0, 50.0};
+    std::vector<double> quantiles{1.5 / 9.0, 3.5 / 9.0, 6.5 / 9.0};
     for (auto q : quantiles) {
         EXPECT_NEAR(quantile(q, values), digest.quantile(q), 0.01) << "q = " << q;
     }
@@ -220,13 +237,13 @@ TEST_F(TDigestTest, Montonicity) {
     TDigest digest(1000);
     std::uniform_real_distribution<> reals(0.0, 1.0);
     std::random_device gen;
-    for (int i = 0; i < LOOP_LESS_OR_MORE(10, 100000); i++) {
+    for (int i = 0; i < 100000; i++) {
         digest.add(reals(gen));
     }
 
     double lastQuantile = -1;
     double lastX = -1;
-    for (double z = 0; z <= 1; z += LOOP_LESS_OR_MORE(0.1, 1e-5)) {
+    for (double z = 0; z <= 1; z += 1e-5) {
         double x = digest.quantile(z);
         EXPECT_GE(x, lastX);
         lastX = x;
@@ -237,4 +254,4 @@ TEST_F(TDigestTest, Montonicity) {
     }
 }
 
-} // namespace doris
+} // namespace starrocks

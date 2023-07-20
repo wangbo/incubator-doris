@@ -17,23 +17,18 @@
 
 #include "geo/wkt_parse.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
-#include <string.h>
-
-#include <ostream>
-#include <string>
+#include <gtest/gtest.h>
 
 #include "common/logging.h"
 #include "geo/geo_types.h"
-#include "gtest/gtest_pred_impl.h"
+#include "geo/wkt_parse_ctx.h"
 
-namespace doris {
+namespace starrocks {
 
 class WktParseTest : public testing::Test {
 public:
-    WktParseTest() {}
-    virtual ~WktParseTest() {}
+    WktParseTest() = default;
+    ~WktParseTest() override = default;
 };
 
 TEST_F(WktParseTest, normal) {
@@ -41,8 +36,8 @@ TEST_F(WktParseTest, normal) {
 
     GeoShape* shape = nullptr;
     auto status = WktParse::parse_wkt(wkt, strlen(wkt), &shape);
-    EXPECT_EQ(GEO_PARSE_OK, status);
-    EXPECT_NE(nullptr, shape);
+    ASSERT_EQ(GEO_PARSE_OK, status);
+    ASSERT_NE(nullptr, shape);
     LOG(INFO) << "parse result: " << shape->to_string();
     delete shape;
 }
@@ -52,8 +47,8 @@ TEST_F(WktParseTest, invalid_wkt) {
 
     GeoShape* shape = nullptr;
     auto status = WktParse::parse_wkt(wkt, strlen(wkt), &shape);
-    EXPECT_NE(GEO_PARSE_OK, status);
-    EXPECT_EQ(nullptr, shape);
+    ASSERT_NE(GEO_PARSE_OK, status);
+    ASSERT_EQ(nullptr, shape);
 }
 
-} // namespace doris
+} // namespace starrocks

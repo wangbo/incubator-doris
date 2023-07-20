@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/slice.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,20 +34,19 @@
 
 #pragma once
 
-#include <assert.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
-
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <map>
 #include <string>
-#include <utility>
+#include <string_view>
 #include <vector>
 
-#include "vec/common/allocator.h"
+#include "util/memcmp.h"
 
-namespace doris {
+namespace starrocks {
 
 class faststring;
 
@@ -45,14 +61,19 @@ class faststring;
 /// external synchronization, but if any of the threads may call a
 /// non-const method, all threads accessing the same Slice must use
 /// external synchronization.
-struct Slice {
+class Slice {
 public:
     char* data;
-    size_t size;
+    size_t size{0};
+
+    static void init();
+    static const Slice& max_value();
+    static const Slice& min_value();
+
     // Intentionally copyable
 
     /// Create an empty slice.
-    Slice() : data(const_cast<char*>("")), size(0) {}
+    Slice() : data(const_cast<char*>("")) {}
 
     /// Create a slice that refers to a @c char byte array.
     Slice(const char* d, size_t n) : data(const_cast<char*>(d)), size(n) {}
@@ -63,8 +84,7 @@ public:
     //   The input array.
     // @param [in] n
     //   Number of bytes in the array.
-    Slice(const uint8_t* s, size_t n)
-            : data(const_cast<char*>(reinterpret_cast<const char*>(s))), size(n) {}
+    Slice(const uint8_t* s, size_t n) : data(const_cast<char*>(reinterpret_cast<const char*>(s))), size(n) {}
 
     /// Create a slice that refers to the contents of the given string.
     Slice(const std::string& s)
@@ -79,6 +99,8 @@ public:
             : // NOLINT(runtime/explicit)
               data(const_cast<char*>(s)),
               size(strlen(s)) {}
+
+    operator std::string_view() const { return {data, size}; }
 
     /// @return A pointer to the beginning of the referenced data.
     const char* get_data() const { return data; }
@@ -119,6 +141,20 @@ public:
         size -= n;
     }
 
+    /// Drop the last "n" bytes from this slice.
+    ///
+    /// @pre n <= size
+    ///
+    /// @note Only the base and bounds of the slice are changed;
+    ///   the data is not modified.
+    ///
+    /// @param [in] n
+    ///   Number of bytes that should be dropped from the tail.
+    void remove_suffix(size_t n) {
+        assert(n <= size);
+        size -= n;
+    }
+
     /// Truncate the slice to the given number of bytes.
     ///
     /// @pre n <= size
@@ -140,12 +176,10 @@ public:
     int compare(const Slice& b) const;
 
     /// Check whether the slice starts with the given prefix.
-    bool starts_with(const Slice& x) const {
-        return ((size >= x.size) && (mem_equal(data, x.data, x.size)));
-    }
+    bool starts_with(const Slice& x) const { return ((size >= x.size) && (memequal(data, x.size, x.data, x.size))); }
 
     bool ends_with(const Slice& x) const {
-        return ((size >= x.size) && mem_equal(data + (size - x.size), x.data, x.size));
+        return ((size >= x.size) && memequal(data + (size - x.size), x.size, x.data, x.size));
     }
 
     /// @brief Comparator struct, useful for ordered collections (like STL maps).
@@ -177,10 +211,6 @@ public:
 
     friend std::ostream& operator<<(std::ostream& os, const Slice& slice);
 
-    static bool mem_equal(const void* a, const void* b, size_t n) { return memcmp(a, b, n) == 0; }
-
-    static int mem_compare(const void* a, const void* b, size_t n) { return memcmp(a, b, n); }
-
     static size_t compute_total_size(const std::vector<Slice>& slices) {
         size_t total_size = 0;
         for (auto& slice : slices) {
@@ -205,7 +235,7 @@ inline std::ostream& operator<<(std::ostream& os, const Slice& slice) {
 
 /// Check whether two slices are identical.
 inline bool operator==(const Slice& x, const Slice& y) {
-    return ((x.size == y.size) && (Slice::mem_equal(x.data, y.data, x.size)));
+    return memequal(x.data, x.size, y.data, y.size);
 }
 
 /// Check whether two slices are not identical.
@@ -214,15 +244,23 @@ inline bool operator!=(const Slice& x, const Slice& y) {
 }
 
 inline int Slice::compare(const Slice& b) const {
-    const int min_len = (size < b.size) ? size : b.size;
-    int r = mem_compare(data, b.data, min_len);
-    if (r == 0) {
-        if (size < b.size)
-            r = -1;
-        else if (size > b.size)
-            r = +1;
-    }
-    return r;
+    return memcompare(data, size, b.data, b.size);
+}
+
+inline bool operator<(const Slice& lhs, const Slice& rhs) {
+    return lhs.compare(rhs) < 0;
+}
+
+inline bool operator<=(const Slice& lhs, const Slice& rhs) {
+    return lhs.compare(rhs) <= 0;
+}
+
+inline bool operator>(const Slice& lhs, const Slice& rhs) {
+    return lhs.compare(rhs) > 0;
+}
+
+inline bool operator>=(const Slice& lhs, const Slice& rhs) {
+    return lhs.compare(rhs) >= 0;
 }
 
 /// @brief STL map whose keys are Slices.
@@ -261,40 +299,46 @@ struct SliceMap {
 //     return page_data; // transfer ownership of buffer into the caller
 //   }
 //
-// only receive the memory allocated by Allocator and disables mmap,
-// otherwise the memory may not be freed correctly, currently only be constructed by faststring.
-class OwnedSlice : private Allocator<false, false, false> {
+class OwnedSlice {
 public:
     OwnedSlice() : _slice((uint8_t*)nullptr, 0) {}
 
-    OwnedSlice(OwnedSlice&& src) : _slice(src._slice) {
-        src._slice.data = nullptr;
-        src._slice.size = 0;
-    }
-
-    OwnedSlice& operator=(OwnedSlice&& src) {
-        if (this != &src) {
-            std::swap(_slice, src._slice);
-        }
-        return *this;
-    }
-
-    ~OwnedSlice() { Allocator::free(_slice.data); }
-
-    const Slice& slice() const { return _slice; }
-
-private:
-    // faststring also inherits Allocator and disables mmap.
-    friend class faststring;
-
     OwnedSlice(uint8_t* _data, size_t size) : _slice(_data, size) {}
 
-private:
     // disable copy constructor and copy assignment
     OwnedSlice(const OwnedSlice&) = delete;
     void operator=(const OwnedSlice&) = delete;
 
+    OwnedSlice(OwnedSlice&& src) noexcept : _slice(src._slice) {
+        src._slice.data = nullptr;
+        src._slice.size = 0;
+    }
+
+    OwnedSlice& operator=(OwnedSlice&& src) noexcept {
+        OwnedSlice tmp(std::move(src));
+        this->swap(tmp);
+        return *this;
+    }
+
+    ~OwnedSlice() { delete[] _slice.data; }
+
+    const Slice& slice() const { return _slice; }
+
+    void swap(OwnedSlice& rhs) {
+        using std::swap;
+        swap(_slice, rhs._slice);
+    }
+
+    bool is_loaded() { return _slice.get_data() && (_slice.get_size() > 0); }
+
+private:
+    friend void swap(OwnedSlice& s1, OwnedSlice& s2);
+
     Slice _slice;
 };
 
-} // namespace doris
+inline void swap(OwnedSlice& s1, OwnedSlice& s2) {
+    s1.swap(s2);
+}
+
+} // namespace starrocks

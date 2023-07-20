@@ -7,18 +7,12 @@
 
 #include "gutil/strings/util.h"
 
-// IWYU pragma: no_include <pstl/glue_algorithm_defs.h>
-
-#include <assert.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-#include <time.h> // for FastTimeToBuffer()
 #include <algorithm>
-#include <iterator>
-#include <mutex>
-#include <ostream>
-
+#include <cassert>
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+#include <ctime> // for FastTimeToBuffer()
 using std::copy;
 using std::max;
 using std::min;
@@ -26,20 +20,17 @@ using std::reverse;
 using std::sort;
 using std::swap;
 #include <string>
-
 using std::string;
 #include <vector>
-
 using std::vector;
 
+#include "common/compiler_util.h"
 #include "common/logging.h"
-
 #include "gutil/stl_util.h" // for string_as_array, STLAppendToString
 #include "gutil/strings/ascii_ctype.h"
 #include "gutil/strings/numbers.h"
 #include "gutil/strings/stringpiece.h"
 #include "gutil/utf/utf.h"
-#include "gutil/stringprintf.h"
 
 #ifdef OS_WINDOWS
 #ifdef min // windows.h defines this to something silly
@@ -77,8 +68,7 @@ char* strnstr(const char* haystack, const char* needle, size_t haystack_len) {
     return nullptr;
 }
 
-const char* strnprefix(const char* haystack, int haystack_size, const char* needle,
-                       int needle_size) {
+const char* strnprefix(const char* haystack, int haystack_size, const char* needle, int needle_size) {
     if (needle_size > haystack_size) {
         return nullptr;
     } else {
@@ -90,8 +80,7 @@ const char* strnprefix(const char* haystack, int haystack_size, const char* need
     }
 }
 
-const char* strncaseprefix(const char* haystack, int haystack_size, const char* needle,
-                           int needle_size) {
+const char* strncaseprefix(const char* haystack, int haystack_size, const char* needle, int needle_size) {
     if (needle_size > haystack_size) {
         return nullptr;
     } else {
@@ -115,8 +104,7 @@ char* strcasesuffix(char* str, const char* suffix) {
     }
 }
 
-const char* strnsuffix(const char* haystack, int haystack_size, const char* needle,
-                       int needle_size) {
+const char* strnsuffix(const char* haystack, int haystack_size, const char* needle, int needle_size) {
     if (needle_size > haystack_size) {
         return nullptr;
     } else {
@@ -129,8 +117,7 @@ const char* strnsuffix(const char* haystack, int haystack_size, const char* need
     }
 }
 
-const char* strncasesuffix(const char* haystack, int haystack_size, const char* needle,
-                           int needle_size) {
+const char* strncasesuffix(const char* haystack, int haystack_size, const char* needle, int needle_size) {
     if (needle_size > haystack_size) {
         return nullptr;
     } else {
@@ -190,8 +177,7 @@ bool IsAscii(const char* str, int len) {
 //    happened or not.
 // ----------------------------------------------------------------------
 
-string StringReplace(const StringPiece& s, const StringPiece& oldsub, const StringPiece& newsub,
-                     bool replace_all) {
+string StringReplace(const StringPiece& s, const StringPiece& oldsub, const StringPiece& newsub, bool replace_all) {
     string ret;
     StringReplace(s, oldsub, newsub, replace_all, &ret);
     return ret;
@@ -204,8 +190,8 @@ string StringReplace(const StringPiece& s, const StringPiece& oldsub, const Stri
 //    it only replaces the first instance of "old."
 // ----------------------------------------------------------------------
 
-void StringReplace(const StringPiece& s, const StringPiece& oldsub, const StringPiece& newsub,
-                   bool replace_all, string* res) {
+void StringReplace(const StringPiece& s, const StringPiece& oldsub, const StringPiece& newsub, bool replace_all,
+                   string* res) {
     if (oldsub.empty()) {
         res->append(s.data(), s.length()); // If empty, append the given string.
         return;
@@ -234,16 +220,14 @@ void StringReplace(const StringPiece& s, const StringPiece& oldsub, const String
 //    NOTE: The string pieces must not overlap s.
 // ----------------------------------------------------------------------
 
-int GlobalReplaceSubstring(const StringPiece& substring, const StringPiece& replacement,
-                           string* s) {
+int GlobalReplaceSubstring(const StringPiece& substring, const StringPiece& replacement, string* s) {
     CHECK(s != nullptr);
     if (s->empty() || substring.empty()) return 0;
     string tmp;
     int num_replacements = 0;
     size_t pos = 0;
-    for (size_t match_pos = s->find(substring.data(), pos, substring.length());
-         match_pos != string::npos; pos = match_pos + substring.length(),
-                match_pos = s->find(substring.data(), pos, substring.length())) {
+    for (size_t match_pos = s->find(substring.data(), pos, substring.length()); match_pos != string::npos;
+         pos = match_pos + substring.length(), match_pos = s->find(substring.data(), pos, substring.length())) {
         ++num_replacements;
         // Append the original content before the match.
         tmp.append(*s, pos, match_pos - pos);
@@ -349,8 +333,7 @@ char* gstrncasestr(char* haystack, const char* needle, size_t len) {
 // gstrncasestr_split performs a case insensitive search
 // on (prefix, non_alpha, suffix).
 // ----------------------------------------------------------------------
-char* gstrncasestr_split(const char* str, const char* prefix, char non_alpha, const char* suffix,
-                         size_t n) {
+char* gstrncasestr_split(const char* str, const char* prefix, char non_alpha, const char* suffix, size_t n) {
     int prelen = prefix == nullptr ? 0 : strlen(prefix);
     int suflen = suffix == nullptr ? 0 : strlen(suffix);
 
@@ -536,21 +519,18 @@ void FastStringAppend(string* s, const char* data, int len) {
 extern const char two_ASCII_digits[100][2];
 
 const char two_ASCII_digits[100][2] = {
-        {'0', '0'}, {'0', '1'}, {'0', '2'}, {'0', '3'}, {'0', '4'}, {'0', '5'}, {'0', '6'},
-        {'0', '7'}, {'0', '8'}, {'0', '9'}, {'1', '0'}, {'1', '1'}, {'1', '2'}, {'1', '3'},
-        {'1', '4'}, {'1', '5'}, {'1', '6'}, {'1', '7'}, {'1', '8'}, {'1', '9'}, {'2', '0'},
-        {'2', '1'}, {'2', '2'}, {'2', '3'}, {'2', '4'}, {'2', '5'}, {'2', '6'}, {'2', '7'},
-        {'2', '8'}, {'2', '9'}, {'3', '0'}, {'3', '1'}, {'3', '2'}, {'3', '3'}, {'3', '4'},
-        {'3', '5'}, {'3', '6'}, {'3', '7'}, {'3', '8'}, {'3', '9'}, {'4', '0'}, {'4', '1'},
-        {'4', '2'}, {'4', '3'}, {'4', '4'}, {'4', '5'}, {'4', '6'}, {'4', '7'}, {'4', '8'},
-        {'4', '9'}, {'5', '0'}, {'5', '1'}, {'5', '2'}, {'5', '3'}, {'5', '4'}, {'5', '5'},
-        {'5', '6'}, {'5', '7'}, {'5', '8'}, {'5', '9'}, {'6', '0'}, {'6', '1'}, {'6', '2'},
-        {'6', '3'}, {'6', '4'}, {'6', '5'}, {'6', '6'}, {'6', '7'}, {'6', '8'}, {'6', '9'},
-        {'7', '0'}, {'7', '1'}, {'7', '2'}, {'7', '3'}, {'7', '4'}, {'7', '5'}, {'7', '6'},
-        {'7', '7'}, {'7', '8'}, {'7', '9'}, {'8', '0'}, {'8', '1'}, {'8', '2'}, {'8', '3'},
-        {'8', '4'}, {'8', '5'}, {'8', '6'}, {'8', '7'}, {'8', '8'}, {'8', '9'}, {'9', '0'},
-        {'9', '1'}, {'9', '2'}, {'9', '3'}, {'9', '4'}, {'9', '5'}, {'9', '6'}, {'9', '7'},
-        {'9', '8'}, {'9', '9'}};
+        {'0', '0'}, {'0', '1'}, {'0', '2'}, {'0', '3'}, {'0', '4'}, {'0', '5'}, {'0', '6'}, {'0', '7'}, {'0', '8'},
+        {'0', '9'}, {'1', '0'}, {'1', '1'}, {'1', '2'}, {'1', '3'}, {'1', '4'}, {'1', '5'}, {'1', '6'}, {'1', '7'},
+        {'1', '8'}, {'1', '9'}, {'2', '0'}, {'2', '1'}, {'2', '2'}, {'2', '3'}, {'2', '4'}, {'2', '5'}, {'2', '6'},
+        {'2', '7'}, {'2', '8'}, {'2', '9'}, {'3', '0'}, {'3', '1'}, {'3', '2'}, {'3', '3'}, {'3', '4'}, {'3', '5'},
+        {'3', '6'}, {'3', '7'}, {'3', '8'}, {'3', '9'}, {'4', '0'}, {'4', '1'}, {'4', '2'}, {'4', '3'}, {'4', '4'},
+        {'4', '5'}, {'4', '6'}, {'4', '7'}, {'4', '8'}, {'4', '9'}, {'5', '0'}, {'5', '1'}, {'5', '2'}, {'5', '3'},
+        {'5', '4'}, {'5', '5'}, {'5', '6'}, {'5', '7'}, {'5', '8'}, {'5', '9'}, {'6', '0'}, {'6', '1'}, {'6', '2'},
+        {'6', '3'}, {'6', '4'}, {'6', '5'}, {'6', '6'}, {'6', '7'}, {'6', '8'}, {'6', '9'}, {'7', '0'}, {'7', '1'},
+        {'7', '2'}, {'7', '3'}, {'7', '4'}, {'7', '5'}, {'7', '6'}, {'7', '7'}, {'7', '8'}, {'7', '9'}, {'8', '0'},
+        {'8', '1'}, {'8', '2'}, {'8', '3'}, {'8', '4'}, {'8', '5'}, {'8', '6'}, {'8', '7'}, {'8', '8'}, {'8', '9'},
+        {'9', '0'}, {'9', '1'}, {'9', '2'}, {'9', '3'}, {'9', '4'}, {'9', '5'}, {'9', '6'}, {'9', '7'}, {'9', '8'},
+        {'9', '9'}};
 
 static inline void PutTwoDigits(int i, char* p) {
     DCHECK_GE(i, 0);
@@ -700,14 +680,15 @@ char* strdup_with_new(const char* the_string) {
 
 char* strndup_with_new(const char* the_string, int max_length) {
     if (the_string == nullptr) return nullptr;
-    size_t str_len = strlen(the_string);
-    if (str_len > max_length) {
-        str_len = max_length;
-    }
-    auto result = new char[str_len + 1];
-    result[max_length] = '\0'; // truncated string might not have \0 at end
-    memcpy(result, the_string, str_len);
-    return result;
+
+    auto result = new char[max_length + 1];
+    result[max_length] = '\0'; // terminate the string because strncpy might not
+    DIAGNOSTIC_PUSH
+#if defined(__GNUC__) && !defined(__clang__)
+    DIAGNOSTIC_IGNORE("-Wstringop-truncation")
+#endif
+    return strncpy(result, the_string, max_length);
+    DIAGNOSTIC_POP
 }
 
 // ----------------------------------------------------------------------
@@ -760,8 +741,7 @@ const char* AdvanceIdentifier(const char* str) {
     if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_')) return nullptr;
     while (true) {
         ch = *str;
-        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
-              ch == '_'))
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'))
             return str;
         str++;
     }
@@ -784,8 +764,8 @@ static bool IsWildcard(Rune character) {
 
 // Move the strings pointers to the point where they start to differ.
 template <typename CHAR, typename NEXT>
-void EatSameChars(const CHAR** pattern, const CHAR* pattern_end, const CHAR** string,
-                  const CHAR* string_end, NEXT next) {
+static void EatSameChars(const CHAR** pattern, const CHAR* pattern_end, const CHAR** string, const CHAR* string_end,
+                         NEXT next) {
     const CHAR* escape = nullptr;
     while (*pattern != pattern_end && *string != string_end) {
         if (!escape && IsWildcard(**pattern)) {
@@ -805,8 +785,7 @@ void EatSameChars(const CHAR** pattern, const CHAR* pattern_end, const CHAR** st
         const CHAR* pattern_next = *pattern;
         const CHAR* string_next = *string;
         Rune pattern_char = next(&pattern_next, pattern_end);
-        if (pattern_char == next(&string_next, string_end) && pattern_char != Runeerror &&
-            pattern_char <= Runemax) {
+        if (pattern_char == next(&string_next, string_end) && pattern_char != Runeerror && pattern_char <= Runemax) {
             *pattern = pattern_next;
             *string = string_next;
         } else {
@@ -826,7 +805,7 @@ void EatSameChars(const CHAR** pattern, const CHAR* pattern_end, const CHAR** st
 }
 
 template <typename CHAR, typename NEXT>
-void EatWildcard(const CHAR** pattern, const CHAR* end, NEXT next) {
+static void EatWildcard(const CHAR** pattern, const CHAR* end, NEXT next) {
     while (*pattern != end) {
         if (!IsWildcard(**pattern)) return;
         next(pattern, end);
@@ -834,8 +813,8 @@ void EatWildcard(const CHAR** pattern, const CHAR* end, NEXT next) {
 }
 
 template <typename CHAR, typename NEXT>
-bool MatchPatternT(const CHAR* eval, const CHAR* eval_end, const CHAR* pattern,
-                   const CHAR* pattern_end, int depth, NEXT next) {
+static bool MatchPatternT(const CHAR* eval, const CHAR* eval_end, const CHAR* pattern, const CHAR* pattern_end,
+                          int depth, NEXT next) {
     const int kMaxDepth = 16;
     if (depth > kMaxDepth) return false;
 
@@ -860,8 +839,7 @@ bool MatchPatternT(const CHAR* eval, const CHAR* eval_end, const CHAR* pattern,
         if (MatchPatternT(eval, eval_end, next_pattern, pattern_end, depth + 1, next)) return true;
         const CHAR* next_eval = eval;
         next(&next_eval, eval_end);
-        if (MatchPatternT(next_eval, eval_end, next_pattern, pattern_end, depth + 1, next))
-            return true;
+        if (MatchPatternT(next_eval, eval_end, next_pattern, pattern_end, depth + 1, next)) return true;
     }
 
     // This is a *, try to match all the possible substrings with the remainder
@@ -872,8 +850,7 @@ bool MatchPatternT(const CHAR* eval, const CHAR* eval_end, const CHAR* pattern,
         EatWildcard(&next_pattern, pattern_end, next);
 
         while (eval != eval_end) {
-            if (MatchPatternT(eval, eval_end, next_pattern, pattern_end, depth + 1, next))
-                return true;
+            if (MatchPatternT(eval, eval_end, next_pattern, pattern_end, depth + 1, next)) return true;
             eval++;
         }
 
@@ -899,8 +876,8 @@ struct NextCharUTF8 {
 };
 
 bool MatchPattern(const StringPiece& eval, const StringPiece& pattern) {
-    return MatchPatternT(eval.data(), eval.data() + eval.size(), pattern.data(),
-                         pattern.data() + pattern.size(), 0, NextCharUTF8());
+    return MatchPatternT(eval.data(), eval.data() + eval.size(), pattern.data(), pattern.data() + pattern.size(), 0,
+                         NextCharUTF8());
 }
 
 // ----------------------------------------------------------------------
@@ -914,9 +891,8 @@ bool MatchPattern(const StringPiece& eval, const StringPiece& pattern) {
 //    and "tag_len" and "value_len" are set to the respective lengths.
 // ----------------------------------------------------------------------
 
-bool FindTagValuePair(const char* arg_str, char tag_value_separator, char attribute_separator,
-                      char string_terminal, char** tag, int* tag_len, char** value,
-                      int* value_len) {
+bool FindTagValuePair(const char* arg_str, char tag_value_separator, char attribute_separator, char string_terminal,
+                      char** tag, int* tag_len, char** value, int* value_len) {
     char* in_str = const_cast<char*>(arg_str); // For msvc8.
     if (in_str == nullptr) return false;
     char tv_sep_or_term[3] = {tag_value_separator, string_terminal, '\0'};
@@ -988,7 +964,7 @@ void InsertString(string* const s, const vector<uint32>& indices, char const* co
     const unsigned s_len(s->size());
     tmp.reserve(s_len + separator_len * num_indices);
 
-    vector<uint32>::const_iterator const ind_end(indices.end());
+    auto const ind_end(indices.end());
     auto ind_pos(indices.begin());
 
     uint32 last_pos(0);
@@ -1062,17 +1038,17 @@ namespace strings {
 StringPiece FindEol(StringPiece s) {
     for (size_t i = 0; i < s.length(); ++i) {
         if (s[i] == '\n') {
-            return StringPiece(s.data() + i, 1);
+            return {s.data() + i, 1};
         }
         if (s[i] == '\r') {
             if (i + 1 < s.length() && s[i + 1] == '\n') {
-                return StringPiece(s.data() + i, 2);
+                return {s.data() + i, 2};
             } else {
-                return StringPiece(s.data() + i, 1);
+                return {s.data() + i, 1};
             }
         }
     }
-    return StringPiece(s.data() + s.length(), 0);
+    return {s.data() + s.length(), 0};
 }
 
 } // namespace strings

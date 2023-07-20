@@ -17,11 +17,7 @@
 
 #pragma once
 
-#include <sys/types.h>
 #include <util/spinlock.h>
-
-#include <memory>
-#include <mutex>
 
 #include "common/status.h"
 #include "util/blocking_queue.hpp"
@@ -31,7 +27,7 @@ namespace arrow {
 class RecordBatch;
 }
 
-namespace doris {
+namespace starrocks {
 
 // The RecordBatchQueue is created and managed by the ResultQueueMgr to
 // cache external query results, as well as query status. Where both
@@ -48,13 +44,11 @@ public:
 
     void update_status(const Status& status);
 
-    bool blocking_get(std::shared_ptr<arrow::RecordBatch>* result) {
-        return _queue.blocking_get(result);
-    }
+    bool blocking_get(std::shared_ptr<arrow::RecordBatch>* result) { return _queue.blocking_get(result); }
 
-    bool blocking_put(const std::shared_ptr<arrow::RecordBatch>& val) {
-        return _queue.blocking_put(val);
-    }
+    bool blocking_put(const std::shared_ptr<arrow::RecordBatch>& val) { return _queue.blocking_put(val); }
+
+    bool try_put(const std::shared_ptr<arrow::RecordBatch>& val) { return _queue.try_put(val); }
 
     // Shut down the queue. Wakes up all threads waiting on blocking_get or blocking_put.
     void shutdown();
@@ -65,4 +59,4 @@ private:
     Status _status;
 };
 
-} // namespace doris
+} // namespace starrocks

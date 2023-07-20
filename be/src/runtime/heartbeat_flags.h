@@ -17,11 +17,11 @@
 
 #pragma once
 
-#include <gen_cpp/HeartbeatService_constants.h>
-
 #include <atomic>
 
-namespace doris {
+#include "gen_cpp/HeartbeatService_constants.h"
+
+namespace starrocks {
 
 // This class is for parse control flags from heartbeat message
 // between FE and BE.
@@ -33,12 +33,8 @@ public:
 
     void update(uint64_t flags) { _flags = flags; }
 
-    bool is_set_default_rowset_type_to_beta() {
-        return _flags & g_HeartbeatService_constants.IS_SET_DEFAULT_ROWSET_TO_BETA_BIT;
-    }
-
 private:
     std::atomic<uint64_t> _flags;
 };
 
-} // namespace doris
+} // namespace starrocks

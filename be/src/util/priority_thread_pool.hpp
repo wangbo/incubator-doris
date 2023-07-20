@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/priority_thread_pool.hpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,15 +34,16 @@
 
 #pragma once
 
-#include <mutex>
-#include <thread>
+#include <algorithm>
+#include <atomic>
+#include <boost/thread.hpp>
+#include <functional>
 
+#include "common/logging.h"
 #include "util/blocking_priority_queue.hpp"
-#include "util/lock.h"
 #include "util/thread.h"
-#include "util/thread_group.h"
 
-namespace doris {
+namespace starrocks {
 
 // Simple threadpool which processes items (of type T) in parallel which were placed on a
 // blocking queue by Offer(). Each item is processed by a single user-supplied method.
@@ -34,13 +52,12 @@ public:
     // Signature of a work-processing function. Takes the integer id of the thread which is
     // calling it (ids run from 0 to num_threads - 1) and a reference to the item to
     // process.
-    using WorkFunction = std::function<void()>;
+    typedef std::function<void()> WorkFunction;
 
     struct Task {
     public:
-        int priority;
+        int priority = 0;
         WorkFunction work_function;
-        int queue_id;
         bool operator<(const Task& o) const { return priority < o.priority; }
 
         Task& operator++() {
@@ -54,17 +71,17 @@ public:
     //  -- queue_size: the maximum size of the queue on which work items are offered. If the
     //     queue exceeds this size, subsequent calls to Offer will block until there is
     //     capacity available.
-    PriorityThreadPool(uint32_t num_threads, uint32_t queue_size, const std::string& name)
-            : _work_queue(queue_size), _shutdown(false), _name(name), _active_threads(0) {
+    //  -- work_function: the function to run every time an item is consumed from the queue
+    PriorityThreadPool(std::string name, uint32_t num_threads, uint32_t queue_size)
+            : _name(std::move(name)), _work_queue(queue_size), _shutdown(false) {
         for (int i = 0; i < num_threads; ++i) {
-            _threads.create_thread(
-                    std::bind<void>(std::mem_fn(&PriorityThreadPool::work_thread), this, i));
+            new_thread(++_current_thread_id);
         }
     }
 
     // Destructor ensures that all threads are terminated before this object is freed
     // (otherwise they may continue to run and reference member variables)
-    virtual ~PriorityThreadPool() {
+    ~PriorityThreadPool() noexcept {
         shutdown();
         join();
     }
@@ -80,40 +97,46 @@ public:
     //
     // Returns true if the work item was successfully added to the queue, false otherwise
     // (which typically means that the thread pool has already been shut down).
-    virtual bool offer(Task task) { return _work_queue.blocking_put(task); }
+    bool offer(const Task& task) { return _work_queue.blocking_put(task); }
 
-    virtual bool offer(WorkFunction func) {
-        PriorityThreadPool::Task task = {0, func, 0};
-        return _work_queue.blocking_put(task);
+    bool try_offer(const Task& task) { return _work_queue.try_put(task); }
+
+    bool offer(WorkFunction func) {
+        PriorityThreadPool::Task task = {0, std::move(func)};
+        return _work_queue.blocking_put(std::move(task));
     }
 
-    virtual bool try_offer(WorkFunction func) {
-        PriorityThreadPool::Task task = {0, func, 0};
-        return _work_queue.try_put(task);
+    bool try_offer(WorkFunction func) {
+        PriorityThreadPool::Task task = {0, std::move(func)};
+        return _work_queue.try_put(std::move(task));
     }
 
     // Shuts the thread pool down, causing the work queue to cease accepting offered work
     // and the worker threads to terminate once they have processed their current work item.
     // Returns once the shutdown flag has been set, does not wait for the threads to
     // terminate.
-    virtual void shutdown() {
-        _shutdown = true;
+    void shutdown() {
+        {
+            std::lock_guard<std::mutex> l(_lock);
+            _shutdown = true;
+        }
         _work_queue.shutdown();
     }
 
     // Blocks until all threads are finished. shutdown does not need to have been called,
     // since it may be called on a separate thread.
-    virtual void join() { _threads.join_all(); }
+    void join() { _threads.join_all(); }
 
-    virtual uint32_t get_queue_size() const { return _work_queue.get_size(); }
-    virtual uint32_t get_active_threads() const { return _active_threads; }
+    size_t get_queue_capacity() const { return _work_queue.get_capacity(); }
+
+    uint32_t get_queue_size() const { return _work_queue.get_size(); }
 
     // Blocks until the work queue is empty, and then calls shutdown to stop the worker
     // threads and Join to wait until they are finished.
     // Any work Offer()'ed during DrainAndshutdown may or may not be processed.
-    virtual void drain_and_shutdown() {
+    void drain_and_shutdown() {
         {
-            std::unique_lock l(_lock);
+            std::unique_lock<std::mutex> l(_lock);
             while (_work_queue.get_size() != 0) {
                 _empty_cv.wait(l);
             }
@@ -122,44 +145,112 @@ public:
         join();
     }
 
-protected:
-    virtual bool is_shutdown() { return _shutdown; }
-
-    // Collection of worker threads that process work from the queue.
-    ThreadGroup _threads;
-
-    // Guards _empty_cv
-    doris::Mutex _lock;
-
-    // Signalled when the queue becomes empty
-    doris::ConditionVariable _empty_cv;
+    void set_num_thread(int num_thread) {
+        size_t num_thread_in_pool = _threads.size();
+        if (num_thread > num_thread_in_pool) {
+            increase_thr(num_thread - num_thread_in_pool);
+        } else if (num_thread < num_thread_in_pool) {
+            decrease_thr(num_thread_in_pool - num_thread);
+        }
+    }
 
 private:
+    void increase_thr(int num_thread) {
+        std::lock_guard<std::mutex> l(_lock);
+        for (int i = 0; i < num_thread; ++i) {
+            new_thread(++_current_thread_id);
+        }
+    }
+
+    void decrease_thr(int num_thread) {
+        _should_decrease += num_thread;
+
+        for (int i = 0; i < num_thread; ++i) {
+            PriorityThreadPool::Task empty_task = {0, []() {}};
+            _work_queue.try_put(empty_task);
+        }
+    }
+
+    // not thread safe
+    // we need acquire _lock before call this function
+    void new_thread(int tid) {
+        auto* thr = _threads.create_thread(std::bind<void>(std::mem_fn(&PriorityThreadPool::work_thread), this, tid));
+        Thread::set_thread_name(thr->native_handle(), _name);
+        _threads_holder.emplace_back(thr, tid);
+    }
+
+    void remove_thread(int tid) {
+        std::lock_guard<std::mutex> l(_lock);
+        auto res = std::find_if(_threads_holder.begin(), _threads_holder.end(),
+                                [=](const auto& val) { return tid == val.second; });
+        if (res != _threads_holder.end()) {
+            _threads.remove_thread(res->first);
+            _threads_holder.erase(res);
+        }
+    }
+
     // Driver method for each thread in the pool. Continues to read work from the queue
     // until the pool is shutdown.
     void work_thread(int thread_id) {
-        Thread::set_self_name(_name);
         while (!is_shutdown()) {
             Task task;
             if (_work_queue.blocking_get(&task)) {
-                _active_threads++;
                 task.work_function();
-                _active_threads--;
             }
             if (_work_queue.get_size() == 0) {
                 _empty_cv.notify_all();
             }
+            if (_should_decrease) {
+                bool need_destroy = true;
+                int32_t expect;
+                int32_t target;
+                do {
+                    expect = _should_decrease;
+                    target = expect - 1;
+                    if (expect == 0) {
+                        need_destroy = false;
+                        break;
+                    }
+                } while (!_should_decrease.compare_exchange_weak(expect, target));
+                if (need_destroy) {
+                    remove_thread(thread_id);
+                    break;
+                }
+            }
         }
     }
+
+    // Returns value of _shutdown under a lock, forcing visibility to threads in the pool.
+    bool is_shutdown() {
+        std::lock_guard<std::mutex> l(_lock);
+        return _shutdown;
+    }
+
+    const std::string _name;
+
+    // thread pointer
+    // tid
+    std::vector<std::pair<boost::thread*, int>> _threads_holder;
 
     // Queue on which work items are held until a thread is available to process them in
     // FIFO order.
     BlockingPriorityQueue<Task> _work_queue;
 
+    // Collection of worker threads that process work from the queue.
+    boost::thread_group _threads;
+
+    // Guards _shutdown and _empty_cv
+    std::mutex _lock;
+
     // Set to true when threads should stop doing work and terminate.
-    std::atomic<bool> _shutdown;
-    std::string _name;
-    std::atomic<int> _active_threads;
+    bool _shutdown;
+
+    // Signalled when the queue becomes empty
+    std::condition_variable _empty_cv;
+
+    std::atomic<int32_t> _should_decrease = 0;
+
+    std::atomic<int32_t> _current_thread_id = 0;
 };
 
-} // namespace doris
+} // namespace starrocks

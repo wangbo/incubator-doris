@@ -14,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-
 #pragma once
 
 // Ignore a single leaked object, given its pointer.
@@ -69,8 +68,7 @@ void __lsan_do_leak_check();
 int __lsan_do_recoverable_leak_check();
 } // extern "C"
 
-namespace doris {
-namespace debug {
+namespace starrocks::debug {
 
 class ScopedLSANDisabler {
 public:
@@ -78,5 +76,4 @@ public:
     ~ScopedLSANDisabler() { __lsan_enable(); }
 };
 
-} // namespace debug
-} // namespace doris
+} // namespace starrocks::debug

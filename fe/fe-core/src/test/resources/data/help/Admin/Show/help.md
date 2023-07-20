@@ -1,6 +1,5 @@
-##SHOW TABLES
-### description
-### keywords
+#SHOW TABLES
+## keyword
 SHOW, TABLE
 
 

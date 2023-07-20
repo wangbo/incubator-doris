@@ -1,15 +1,14 @@
 // Copyright 2008 Google Inc.  All rights reserved.
 
-#pragma once
-
-#include <string.h>
+#include <cstring>
 #include <string>
-
 using std::string;
 
+#include "gutil/basictypes.h"
 #include "gutil/strings/numbers.h"
 #include "gutil/strings/stringpiece.h"
-#include "gutil/stringprintf.h"
+
+#pragma once
 
 namespace strings {
 
@@ -73,7 +72,7 @@ public:
     // overload const string& as well, since this allows us to avoid a temporary
     // object.
     inline SubstituteArg(const char* value) // NOLINT(runtime/explicit)
-            : text_(value), size_(value == NULL ? 0 : strlen(text_)) {}
+            : text_(value), size_(value == nullptr ? 0 : strlen(text_)) {}
     inline SubstituteArg(const string& value) // NOLINT(runtime/explicit)
             : text_(value.data()), size_(value.size()) {}
     inline SubstituteArg(const StringPiece& value) // NOLINT(runtime/explicit)
@@ -111,6 +110,10 @@ public:
             : text_(scratch_), size_(FastInt64ToBufferLeft(value, scratch_) - scratch_) {}
     inline SubstituteArg(unsigned long long value) // NOLINT(runtime/explicit)
             : text_(scratch_), size_(FastUInt64ToBufferLeft(value, scratch_) - scratch_) {}
+    inline SubstituteArg(__int128 value) // NOLINT(runtime/explicit)
+            : text_(scratch_), size_(FastInt64ToBufferLeft(value, scratch_) - scratch_) {}
+    inline SubstituteArg(unsigned __int128 value) // NOLINT(runtime/explicit)
+            : text_(scratch_), size_(FastUInt64ToBufferLeft(value, scratch_) - scratch_) {}
     inline SubstituteArg(float value) // NOLINT(runtime/explicit)
             : text_(FloatToBuffer(value, scratch_)), size_(strlen(text_)) {}
     inline SubstituteArg(double value) // NOLINT(runtime/explicit)
@@ -129,10 +132,10 @@ public:
     static const SubstituteArg NoArg;
 
 private:
-    inline SubstituteArg() : text_(NULL), size_(-1) {}
+    inline SubstituteArg() {}
 
-    const char* text_;
-    int size_;
+    const char* text_{nullptr};
+    int size_{-1};
     char scratch_[kFastToBufferSize];
 };
 
@@ -160,8 +163,7 @@ void SubstituteAndAppend(string* output, StringPiece format,
                          const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
                          const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg);
 
-inline string Substitute(StringPiece format,
-                         const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
+inline string Substitute(StringPiece format, const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
                          const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
                          const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
                          const internal::SubstituteArg& arg3 = internal::SubstituteArg::NoArg,
@@ -172,8 +174,7 @@ inline string Substitute(StringPiece format,
                          const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
                          const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg) {
     string result;
-    SubstituteAndAppend(&result, format, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8,
-                        arg9);
+    SubstituteAndAppend(&result, format, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
     return result;
 }
 

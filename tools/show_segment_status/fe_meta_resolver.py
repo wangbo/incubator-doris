@@ -23,11 +23,13 @@ import MySQLdb
 # NOTE: The default organization of meta info is cascading, we flatten its structure
 # NOTE: We get schema-hash from proc '/dbs/db_id/tbl_id/'index_schema'
 class FeMetaResolver:
-    def __init__(self, fe_host, query_port, user, query_pwd):
+    def __init__(self, fe_host, query_port, user, query_pwd, db_candidates, tbl_candidates):
         self.fe_host = fe_host
         self.query_port = query_port
         self.user = user
         self.query_pwd = query_pwd
+        self.db_candidates = db_candidates
+        self.tbl_candidates = tbl_candidates
 
         self.db = None
         self.cur = None
@@ -97,6 +99,11 @@ class FeMetaResolver:
             db = {}
             if long(db_tuple[0]) <= 0:
                 continue
+
+            db_name = db_tuple[1].split(':')[1].strip()
+            if self.db_candidates and (not db_name in self.db_candidates):
+                continue
+
             db['db_id'] = long(db_tuple[0])
             db['db_name'] = db_tuple[1]
             self.db_list.append(db)
@@ -110,6 +117,8 @@ class FeMetaResolver:
         self.exec_sql(sql);
         table_list = self.cur.fetchall()
         for table_tuple in table_list :
+            if self.tbl_candidates and (not table_tuple[1] in self.tbl_candidates):
+                continue
             if table_tuple[6] == "OLAP":
                 table = {}
                 table['db_id'] = db['db_id'] 

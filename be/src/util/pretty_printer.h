@@ -14,26 +14,22 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/pretty-printer.h
-// and modified by Doris
 
 #pragma once
-
-#include <gen_cpp/RuntimeProfile_types.h>
 
 #include <boost/algorithm/string.hpp>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
 
-#include "util/binary_cast.hpp"
+#include "gen_cpp/RuntimeProfile_types.h"
 #include "util/cpu_info.h"
+#include "util/template_util.h"
 
 /// Truncate a double to offset decimal places.
 #define DOUBLE_TRUNCATE(val, offset) floor(val* pow(10, offset)) / pow(10, offset)
 
-namespace doris {
+namespace starrocks {
 
 /// Methods for printing numeric values with optional units, or other types with an
 /// applicable operator<<.
@@ -50,17 +46,12 @@ public:
     /// If verbose is true, this also prints the raw value (before unit conversion) for
     /// types where this is applicable.
     template <typename T>
-    static typename std::enable_if<std::is_arithmetic<T>::value, std::string>::type print(
-            T value, TUnit::type unit, bool verbose = false) {
+    static ENABLE_IF_ARITHMETIC(T, std::string) print(T value, TUnit::type unit, bool verbose = false) {
         std::stringstream ss;
         ss.flags(std::ios::fixed);
         switch (unit) {
         case TUnit::NONE: {
-            // TUnit::NONE is used as a special counter, it is just a label
-            //         - PeakMemoryUsage:
-            //              - BuildKeyArena: 0
-            //              - ProbeKeyArena: 0
-            // So do not need output its value
+            ss << value;
             return ss.str();
         }
 
@@ -105,8 +96,7 @@ public:
                 print_timems(value, &ss);
             } else if (value >= MILLION) {
                 /// if the time is over a ms, print it up to microsecond in the unit of ms.
-                ss << DOUBLE_TRUNCATE(static_cast<double>(value) / MILLION, TIME_NS_PRECISION)
-                   << "ms";
+                ss << DOUBLE_TRUNCATE(static_cast<double>(value) / MILLION, TIME_NS_PRECISION) << "ms";
             } else if (value > 1000) {
                 /// if the time is over a microsecond, print it using unit microsecond
                 ss << DOUBLE_TRUNCATE(static_cast<double>(value) / 1000, TIME_NS_PRECISION) << "us";
@@ -147,7 +137,14 @@ public:
 
         /// TODO: Remove DOUBLE_VALUE. IMPALA-1649
         case TUnit::DOUBLE_VALUE: {
-            double output = binary_cast<T, double>(value);
+            constexpr bool use_static_cast =
+                    std::is_integral_v<T> || std::is_floating_point_v<T> || std::is_same_v<T, bool>;
+            double output;
+            if constexpr (use_static_cast) {
+                output = static_cast<double>(value);
+            } else {
+                output = *reinterpret_cast<double*>(&value);
+            }
             ss << std::setprecision(PRECISION) << output << " ";
             break;
         }
@@ -164,8 +161,7 @@ public:
     /// TODO: There's no good is_string equivalent, so there's a needless copy for strings
     /// here.
     template <typename T>
-    static typename std::enable_if<!std::is_arithmetic<T>::value, std::string>::type print(
-            const T& value, TUnit::type unit) {
+    static ENABLE_IF_NOT_ARITHMETIC(T, std::string) print(const T& value, TUnit::type unit) {
         std::stringstream ss;
         ss << std::boolalpha << value;
         return ss.str();
@@ -185,9 +181,7 @@ public:
     }
 
     /// Convenience method
-    static std::string print_bytes(int64_t value) {
-        return PrettyPrinter::print(value, TUnit::BYTES);
-    }
+    static std::string print_bytes(int64_t value) { return PrettyPrinter::print(value, TUnit::BYTES); }
 
 private:
     static const int PRECISION = 2;
@@ -243,14 +237,12 @@ private:
 
     /// Utility to perform integer modulo if T is integral, otherwise to use fmod().
     template <typename T>
-    static typename boost::enable_if_c<boost::is_integral<T>::value, int64_t>::type mod(
-            const T& value, const int modulus) {
+    static ENABLE_IF_INTEGRAL(T, int64_t) mod(const T& value, const int modulus) {
         return value % modulus;
     }
 
     template <typename T>
-    static typename boost::enable_if_c<!boost::is_integral<T>::value, double>::type mod(
-            const T& value, int modulus) {
+    static ENABLE_IF_FLOAT(T, double) mod(const T& value, int modulus) {
         return fmod(value, 1. * modulus);
     }
 
@@ -287,4 +279,4 @@ private:
     }
 };
 
-} // namespace doris
+} // namespace starrocks

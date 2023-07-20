@@ -19,7 +19,7 @@
 
 #include <string>
 
-namespace doris {
+namespace starrocks {
 
 enum HttpStatus {
     CONTINUE = 100,
@@ -66,6 +66,6 @@ enum HttpStatus {
 
 std::string to_code(const HttpStatus& status);
 
-std::string default_reason(const HttpStatus& status);
+std::string defalut_reason(const HttpStatus& status);
 
-} // namespace doris
+} // namespace starrocks

@@ -17,7 +17,7 @@
 
 #include "http/http_headers.h"
 
-namespace doris {
+namespace starrocks {
 
 const char* HttpHeaders::ACCEPT = "Accept";
 const char* HttpHeaders::ACCEPT_CHARSET = "Accept-Charset";
@@ -95,4 +95,4 @@ const char* HttpHeaders::WWW_AUTHENTICATE = "WWW-Authenticate";
 
 const std::string HttpHeaders::JsonType = "application/json";
 
-} // namespace doris
+} // namespace starrocks

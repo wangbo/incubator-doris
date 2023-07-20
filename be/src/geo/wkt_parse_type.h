@@ -20,7 +20,7 @@
 #include <vector>
 
 // This file include
-namespace doris {
+namespace starrocks {
 
 struct GeoCoordinate {
     double x;
@@ -42,4 +42,4 @@ struct GeoCoordinateListList {
     std::vector<GeoCoordinateList*> list;
 };
 
-} // namespace doris
+} // namespace starrocks

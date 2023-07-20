@@ -18,11 +18,12 @@
 #include "util/arrow/utils.h"
 
 #include <arrow/pretty_print.h>
-#include <arrow/status.h>
+#include <arrow/record_batch.h>
+#include <arrow/type.h>
 
 #include "gutil/strings/substitute.h"
 
-namespace doris {
+namespace starrocks {
 
 using strings::Substitute;
 
@@ -30,7 +31,7 @@ Status to_status(const arrow::Status& status) {
     if (status.ok()) {
         return Status::OK();
     } else {
-        // TODO(zc): convert arrow status to doris status
+        // TODO(zc): convert arrow status to starrocks status
         return Status::InvalidArgument(status.ToString());
     }
 }
@@ -44,4 +45,4 @@ Status arrow_pretty_print(const arrow::Array& arr, std::ostream* os) {
     return to_status(arrow::PrettyPrint(arr, opts, os));
 }
 
-} // namespace doris
+} // namespace starrocks

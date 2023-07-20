@@ -14,22 +14,23 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/dynamic-util.cc
-// and modified by Doris
 
 #include "util/dynamic_util.h"
 
 #include <dlfcn.h>
 
-namespace doris {
+#include <sstream>
+
+namespace starrocks {
 
 Status dynamic_lookup(void* handle, const char* symbol, void** fn_ptr) {
     *(void**)(fn_ptr) = dlsym(handle, symbol);
     char* error = dlerror();
 
     if (error != nullptr) {
-        return Status::InternalError("Unable to find {}\ndlerror: {}", symbol, error);
+        std::stringstream ss;
+        ss << "Unable to find " << symbol << "\ndlerror: " << error;
+        return Status::InternalError(ss.str());
     }
 
     return Status::OK();
@@ -41,7 +42,9 @@ Status dynamic_open(const char* library, void** handle) {
     *handle = dlopen(library, flags);
 
     if (*handle == nullptr) {
-        return Status::InternalError("Unable to load {}\ndlerror: {}", library, dlerror());
+        std::stringstream ss;
+        ss << "Unable to load " << library << "\ndlerror: " << dlerror();
+        return Status::InternalError(ss.str());
     }
 
     return Status::OK();
@@ -55,4 +58,4 @@ void dynamic_close(void* handle) {
 #endif
 }
 
-} // namespace doris
+} // namespace starrocks

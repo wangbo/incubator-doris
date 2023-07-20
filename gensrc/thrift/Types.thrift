@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/gensrc/thrift/Types.thrift
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,8 +32,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-namespace cpp doris
-namespace java org.apache.doris.thrift
+namespace cpp starrocks
+namespace java com.starrocks.thrift
 
 
 typedef i64 TTimestamp
@@ -25,7 +42,6 @@ typedef i32 TTupleId
 typedef i32 TSlotId
 typedef i64 TTableId
 typedef i64 TTabletId
-typedef i64 TReplicaId
 typedef i64 TVersion
 typedef i64 TVersionHash
 typedef i32 TSchemaHash
@@ -46,14 +62,13 @@ enum TStorageType {
 
 enum TStorageMedium {
     HDD,
-    SSD,
-    S3,
-    REMOTE_CACHE,
+    SSD
 }
 
 enum TVarType {
     SESSION,
-    GLOBAL
+    GLOBAL,
+    VERBOSE
 }
 
 enum TPrimitiveType {
@@ -69,7 +84,7 @@ enum TPrimitiveType {
   DATE,
   DATETIME,
   BINARY,
-  DECIMAL_DEPRACTED, // not used now, only for place holder
+  DECIMAL,
   // CHAR(n). Currently only supported in UDAs
   CHAR,
   LARGEINT,
@@ -78,40 +93,20 @@ enum TPrimitiveType {
   DECIMALV2,
   TIME,
   OBJECT,
-  ARRAY,
-  MAP,
-  STRUCT,
-  STRING,
-  ALL,
-  QUANTILE_STATE,
-  DATEV2,
-  DATETIMEV2,
-  TIMEV2,
+  PERCENTILE,
   DECIMAL32,
   DECIMAL64,
-  DECIMAL128I,
-  JSONB,
-  UNSUPPORTED,
-  VARIANT,
-  LAMBDA_FUNCTION,
-  AGG_STATE
+  DECIMAL128,
+  JSON,
+  FUNCTION,
+  VARBINARY
 }
 
 enum TTypeNodeType {
     SCALAR,
     ARRAY,
     MAP,
-    STRUCT,
-    VARIANT,
-}
-
-enum TStorageBackendType {
-    BROKER,
-    S3,
-    HDFS,
-    JFS,
-    LOCAL,
-    OFS
+    STRUCT
 }
 
 struct TScalarType {
@@ -128,9 +123,8 @@ struct TScalarType {
 // Represents a field in a STRUCT type.
 // TODO: Model column stats for struct fields.
 struct TStructField {
-    1: required string name
+    1: optional string name
     2: optional string comment
-    3: optional bool contains_null
 }
 
 struct TTypeNode {
@@ -141,12 +135,6 @@ struct TTypeNode {
 
     // only used for structs; has struct_fields.size() corresponding child types
     3: optional list<TStructField> struct_fields
-
-    // old version used for array
-    4: optional bool contains_null
-
-    // update for map/struct type
-    5: optional list<bool> contains_nulls
 }
 
 // A flattened representation of a tree of column types obtained by depth-first
@@ -159,11 +147,6 @@ struct TTypeNode {
 // to TTypeDesc. In future, we merge these two to one
 struct TTypeDesc {
     1: list<TTypeNode> types
-    2: optional bool is_nullable
-    3: optional i64  byte_size
-    4: optional list<TTypeDesc> sub_types
-    5: optional bool result_is_nullable
-    6: optional string function_name
 }
 
 enum TAggregationType {
@@ -175,21 +158,22 @@ enum TAggregationType {
     NONE,
     BITMAP_UNION,
     REPLACE_IF_NOT_NULL,
-    QUANTILE_UNION
+    PERCENTILE_UNION
 }
 
 enum TPushType {
-    LOAD, // deprecated, it is used for old hadoop dpp load
+    LOAD,
     DELETE,
     LOAD_DELETE,
     // for spark load push request
-    LOAD_V2
+    LOAD_V2,
+    CANCEL_DELETE
 }
 
 enum TTaskType {
     CREATE,
     DROP,
-    PUSH,
+    PUSH, // Deprecated
     CLONE,
     STORAGE_MEDIUM_MIGRATE,
     ROLLUP, // Deprecated
@@ -213,13 +197,9 @@ enum TTaskType {
     ALTER,
     INSTALL_PLUGIN,
     UNINSTALL_PLUGIN,
-    COMPACTION,
-    STORAGE_MEDIUM_MIGRATE_V2,
-    NOTIFY_UPDATE_STORAGE_POLICY, // deprecated
-    PUSH_COOLDOWN_CONF,
-    PUSH_STORAGE_POLICY,
-    ALTER_INVERTED_INDEX,
-    GC_BINLOG
+    // this use for calculate enum count
+    DROP_AUTO_INCREMENT_MAP,
+    NUM_TASK_TYPE
 }
 
 enum TStmtType {
@@ -232,24 +212,9 @@ enum TStmtType {
 // level of verboseness for "explain" output
 // TODO: should this go somewhere else?
 enum TExplainLevel {
-  BRIEF,
   NORMAL,
-  VERBOSE
-}
-
-enum TRuntimeFilterMode {
-  // No filters are computed in the FE or the BE.
-  OFF = 0
-
-  // Only broadcast filters are computed in the BE, and are only published to the local
-  // fragment.
-  LOCAL = 1
-
-  // Only shuffle filters are computed in the BE, and are only published globally.
-  REMOTE = 2
-
-  // All fiters are computed in the BE, and are published globally.
-  GLOBAL = 3
+  VERBOSE,
+  COSTS
 }
 
 struct TColumnType {
@@ -290,7 +255,7 @@ enum TFunctionType {
 }
 
 enum TFunctionBinaryType {
-  // Doris builtin. We can either run this interpreted or via codegen
+  // StarRocks builtin. We can either run this interpreted or via codegen
   // depending on the query option.
   BUILTIN,
 
@@ -303,12 +268,8 @@ enum TFunctionBinaryType {
   // Native-interface, precompiled to IR; loaded from *.ll
   IR,
 
-  // call udfs by rpc service
-  RPC,
-
-  JAVA_UDF,
-
-  AGG_STATE
+  // StarRocks customized UDF in jar.
+  SRJAR
 }
 
 // Represents a fully qualified function name.
@@ -338,8 +299,17 @@ struct TAggregateFunction {
   8: optional string get_value_fn_symbol
   9: optional string remove_fn_symbol
   10: optional bool is_analytic_only_fn = false
-  // used for java-udaf to point user defined class
   11: optional string symbol
+  // used for agg_func(a order by b, c) like array_agg, group_concat
+  12: optional list<bool> is_asc_order
+  // Indicates, for each expr, if nulls should be listed first or last. This is
+  // independent of is_asc_order.
+  13: optional list<bool> nulls_first
+}
+
+struct TTableFunction {
+  1: required list<TTypeDesc> ret_types
+  2: optional string symbol
 }
 
 // Represents a function in the Catalog.
@@ -374,201 +344,16 @@ struct TFunction {
 
   11: optional i64 id
   12: optional string checksum
-  13: optional bool vectorized = false
-}
 
-enum TJdbcOperation {
-    READ,
-    WRITE
-}
+  // Builtin Function id, used to mark the function in the vectorization engine,
+  // and it's different with `id` because `id` is use for serialized and cache
+  // UDF function.
+  30: optional i64 fid
+  31: optional TTableFunction table_fn
+  32: optional bool could_apply_dict_optimize
 
-enum TOdbcTableType {
-    MYSQL,
-    ORACLE,
-    POSTGRESQL,
-    SQLSERVER,
-    REDIS,
-    MONGODB,
-    CLICKHOUSE,
-    SAP_HANA,
-    TRINO,
-    PRESTO,
-    OCEANBASE,
-    OCEANBASE_ORACLE,
-    NEBULA
-}
-
-struct TJdbcExecutorCtorParams {
-  1: optional string statement
-
-  // "jdbc:mysql://127.0.0.1:3307/test";
-  2: optional string jdbc_url
-
-  // root
-  3: optional string jdbc_user
-
-  // password
-  4: optional string jdbc_password
-
-  // "com.mysql.jdbc.Driver"
-  5: optional string jdbc_driver_class
-
-  6: optional i32 batch_size
-
-  7: optional TJdbcOperation op
-
-  // "/home/user/mysql-connector-java-5.1.47.jar"
-  8: optional string driver_path
-
-  9: optional TOdbcTableType table_type
-}
-
-struct TJavaUdfExecutorCtorParams {
-  1: optional TFunction fn
-
-  // Local path to the UDF's jar file
-  2: optional string location
-
-  // The byte offset for each argument in the input buffer. The BE will
-  // call the Java executor with a buffer for all the inputs.
-  // input_byte_offsets[0] is the byte offset in the buffer for the first
-  // argument; input_byte_offsets[1] is the second, etc.
-  3: optional i64 input_offsets_ptrs
-
-  // Native input buffer ptr (cast as i64) for the inputs. The input arguments
-  // are written to this buffer directly and read from java with no copies
-  // input_null_ptr[i] is true if the i-th input is null.
-  // input_buffer_ptr[input_byte_offsets[i]] is the value of the i-th input.
-  4: optional i64 input_nulls_ptrs
-  5: optional i64 input_buffer_ptrs
-
-  // Native output buffer ptr. For non-variable length types, the output is
-  // written here and read from the native side with no copies.
-  // The UDF should set *output_null_ptr to true, if the result of the UDF is
-  // NULL.
-  6: optional i64 output_null_ptr
-  7: optional i64 output_buffer_ptr
-  8: optional i64 output_offsets_ptr
-  9: optional i64 output_intermediate_state_ptr
-
-  10: optional i64 batch_size_ptr
-
-  // this is used to pass place or places to FE, which could help us call jni
-  // only once and can process a batch size data in JAVA-Udaf
-  11: optional i64 input_places_ptr
-
-  // for array type about nested column null map
-  12: optional i64 input_array_nulls_buffer_ptr
-
-  // used for array type of nested string column offset
-  13: optional i64 input_array_string_offsets_ptrs
-
-  // for array type about nested column null map when output
-  14: optional i64 output_array_null_ptr
-
-  // used for array type of nested string column offset when output
-  15: optional i64 output_array_string_offsets_ptr
-}
-
-// Contains all interesting statistics from a single 'memory pool' in the JVM.
-// All numeric values are measured in bytes.
-struct TJvmMemoryPool {
-  // Memory committed by the operating system to this pool (i.e. not just virtual address
-  // space)
-  1: required i64 committed
-
-  // The initial amount of memory committed to this pool
-  2: required i64 init
-
-  // The maximum amount of memory this pool will use.
-  3: required i64 max
-
-  // The amount of memory currently in use by this pool (will be <= committed).
-  4: required i64 used
-
-  // Maximum committed memory over time
-  5: required i64 peak_committed
-
-  // Should be always == init
-  6: required i64 peak_init
-
-  // Peak maximum memory over time (usually will not change)
-  7: required i64 peak_max
-
-  // Peak consumed memory over time
-  8: required i64 peak_used
-
-  // Name of this pool, defined by the JVM
-  9: required string name
-}
-
-// Response from JniUtil::GetJvmMemoryMetrics()
-struct TGetJvmMemoryMetricsResponse {
-  // One entry for every pool tracked by the Jvm, plus a synthetic aggregate pool called
-  // 'total'
-  1: required list<TJvmMemoryPool> memory_pools
-
-  // Metrics from JvmPauseMonitor, measuring how much time is spend
-  // pausing, presumably because of Garbage Collection. These
-  // names are consistent with Hadoop's metric names.
-  2: required i64 gc_num_warn_threshold_exceeded
-  3: required i64 gc_num_info_threshold_exceeded
-  4: required i64 gc_total_extra_sleep_time_millis
-
-  // Metrics for JVM Garbage Collection, from the management beans;
-  // these are cumulative across all types of GCs.
-  5: required i64 gc_count
-  6: required i64 gc_time_millis
-}
-
-// Contains information about a JVM thread
-struct TJvmThreadInfo {
-  // Summary of a JVM thread. Includes stacktraces, locked monitors
-  // and synchronizers.
-  1: required string summary
-
-  // The total CPU time for this thread in nanoseconds
-  2: required i64 cpu_time_in_ns
-
-  // The CPU time that this thread has executed in user mode in nanoseconds
-  3: required i64 user_time_in_ns
-
-  // The number of times this thread blocked to enter or reenter a monitor
-  4: required i64 blocked_count
-
-  // Approximate accumulated elapsed time (in milliseconds) that this thread has blocked
-  // to enter or reenter a monitor
-  5: required i64 blocked_time_in_ms
-
-  // True if this thread is executing native code via the Java Native Interface (JNI)
-  6: required bool is_in_native
-}
-
-// Request to get information about JVM threads
-struct TGetJvmThreadsInfoRequest {
-  // If set, return complete info about JVM threads. Otherwise, return only
-  // the total number of live JVM threads.
-  1: required bool get_complete_info
-}
-
-struct TGetJvmThreadsInfoResponse {
-  // The current number of live threads including both daemon and non-daemon threads
-  1: required i32 total_thread_count
-
-  // The current number of live daemon threads
-  2: required i32 daemon_thread_count
-
-  // The peak live thread count since the Java virtual machine started
-  3: required i32 peak_thread_count
-
-  // Information about JVM threads. It is not included when
-  // TGetJvmThreadsInfoRequest.get_complete_info is false.
-  4: optional list<TJvmThreadInfo> threads
-}
-
-struct TGetJMXJsonResponse {
-  // JMX of the JVM serialized to a json string.
-  1: required string jmx_json
+  // Ignore nulls
+  33: optional bool ignore_nulls
 }
 
 enum TLoadJobState {
@@ -580,26 +365,27 @@ enum TLoadJobState {
 }
 
 enum TEtlState {
-	RUNNING,
-	FINISHED,
-	CANCELLED,
+    RUNNING,
+    FINISHED,
+    CANCELLED,
     UNKNOWN
 }
 
 enum TTableType {
-    MYSQL_TABLE, // Deprecated
+    MYSQL_TABLE,
     OLAP_TABLE,
     SCHEMA_TABLE,
     KUDU_TABLE, // Deprecated
     BROKER_TABLE,
     ES_TABLE,
-    ODBC_TABLE,
-    HIVE_TABLE,
+    HDFS_TABLE,
     ICEBERG_TABLE,
     HUDI_TABLE,
     JDBC_TABLE,
-    TEST_EXTERNAL_TABLE,
-    MAX_COMPUTE_TABLE,
+    VIEW = 20,
+    MATERIALIZED_VIEW,
+    FILE_TABLE,
+    DELTALAKE_TABLE
 }
 
 enum TKeysType {
@@ -620,14 +406,6 @@ struct TBackend {
     3: required TPort http_port
 }
 
-struct TReplicaInfo {
-    1: required string host
-    2: required TPort  be_port
-    3: required TPort  http_port
-    4: required TPort  brpc_port
-    5: required TReplicaId replica_id
-}
-
 struct TResourceInfo {
     1: required string user
     2: required string group
@@ -644,26 +422,23 @@ enum TFileType {
     FILE_LOCAL,
     FILE_BROKER,
     FILE_STREAM,    // file content is streaming in the buffer
-    FILE_S3,
-    FILE_HDFS,
-    FILE_NET,       // read file by network, such as http
 }
 
 struct TTabletCommitInfo {
     1: required i64 tabletId
     2: required i64 backendId
-    // Every load job should check if the global dict is valid, if the global dict
-    // is invalid then should sent the invalid column names to FE
-    3: optional list<string> invalid_dict_cols
+    3: optional list<string> invalid_dict_cache_columns
+    4: optional list<string> valid_dict_cache_columns
+    5: optional list<i64> valid_dict_collected_versions
 }
 
-struct TErrorTabletInfo {
+struct TTabletFailInfo {
     1: optional i64 tabletId
-    2: optional string msg
+    2: optional i64 backendId
 }
 
 enum TLoadType {
-    MANUL_LOAD,
+    MANUAL_LOAD,
     ROUTINE_LOAD,
     MINI_LOAD
 }
@@ -671,30 +446,12 @@ enum TLoadType {
 enum TLoadSourceType {
     RAW,
     KAFKA,
-    MULTI_TABLE,
+    PULSAR
 }
 
-enum TMergeType {
-  APPEND,
-  MERGE,
-  DELETE
-}
-
-enum TSortType {
-    LEXICAL,
-    ZORDER,
-}
-
-enum TMetadataType {
-  ICEBERG,
-  BACKENDS,
-  WORKLOAD_GROUPS,
-  FRONTENDS,
-  CATALOGS
-}
-
-enum TIcebergQueryType {
-  SNAPSHOTS
+enum TOpType {
+    UPSERT,
+    DELETE,
 }
 
 // represent a user identity
@@ -704,8 +461,44 @@ struct TUserIdentity {
     3: optional bool is_domain
 }
 
+struct TUserRoles {
+    1: optional list<i64> role_id_list
+}
+
 const i32 TSNAPSHOT_REQ_VERSION1 = 3; // corresponding to alpha rowset
 const i32 TSNAPSHOT_REQ_VERSION2 = 4; // corresponding to beta rowset
 // the snapshot request should always set prefer snapshot version to TPREFER_SNAPSHOT_REQ_VERSION
 const i32 TPREFER_SNAPSHOT_REQ_VERSION = TSNAPSHOT_REQ_VERSION2;
 
+enum TCompressionType {
+    UNKNOWN_COMPRESSION = 0,
+    DEFAULT_COMPRESSION = 1,
+    NO_COMPRESSION = 2,
+    SNAPPY = 3,
+    LZ4 = 4,
+    LZ4_FRAME = 5;
+    ZLIB = 6;
+    ZSTD = 7;
+    GZIP = 8;
+    DEFLATE = 9;
+    BZIP2 = 10;
+    LZO = 11; // Deprecated
+    BROTLI = 12;
+}
+
+enum TWriteQuorumType {
+    ONE = 0;
+    MAJORITY = 1;
+    ALL = 2;
+}
+
+enum StreamSourceType {
+    BINLOG,
+    KAFKA, // NOT IMPLEMENTED
+}
+
+struct TBinlogOffset {
+    1: optional TTabletId tablet_id
+    2: optional TVersion version
+    3: optional i64 lsn
+}

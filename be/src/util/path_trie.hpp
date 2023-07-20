@@ -20,15 +20,16 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
-namespace doris {
+namespace starrocks {
 
 // This tree is usd for manage restful api path.
 template <class T>
 class PathTrie {
 public:
-    PathTrie() : _root("/", "*"), _root_value(nullptr), _separator('/') {}
+    PathTrie() : _root("/", "*"), _root_value(nullptr){};
 
     ~PathTrie() {
         if (_root_value != nullptr) {
@@ -37,33 +38,16 @@ public:
         }
     }
 
-    class Allocator {
-    public:
-        using value_type = T;
-
-        T* allocate(size_t n) { return static_cast<T*>(::operator new(sizeof(T) * n)); }
-
-        template <typename... Args>
-        void construct(T* p, Args&&... args) {
-            new (p) T(std::forward<Args>(args)...);
-        }
-
-        void destroy(T* p) { p->~T(); }
-
-        void deallocate(T* p, size_t n) { ::operator delete(p); }
-    };
-
     class TrieNode {
     public:
-        TrieNode(const std::string& key, const std::string& wildcard)
-                : _value(nullptr), _wildcard(wildcard) {
+        TrieNode(const std::string& key, std::string wildcard) : _value(nullptr), _wildcard(std::move(wildcard)) {
             if (is_named_wildcard(key)) {
                 _named_wildcard = extract_template(key);
             }
         }
 
-        TrieNode(const std::string& key, const T& value, const std::string& wildcard)
-                : _value(nullptr), _wildcard(wildcard) {
+        TrieNode(const std::string& key, const T& value, std::string wildcard)
+                : _value(nullptr), _wildcard(std::move(wildcard)) {
             _value = _allocator.allocate(1);
             _allocator.construct(_value, value);
             if (is_named_wildcard(key)) {
@@ -82,7 +66,7 @@ public:
             }
         }
 
-        // Return true if insert success.
+        // Return true if insert sucess.
         bool insert(const std::vector<std::string> path, int index, const T& value) {
             if (index >= path.size()) {
                 return false;
@@ -147,8 +131,7 @@ public:
                 use_wildcard = true;
             } else {
                 // If we the last one, but we have no value, check wildcard
-                if (index == path.size() - 1 && node->_value == nullptr &&
-                    get_child(_wildcard) != nullptr) {
+                if (index == path.size() - 1 && node->_value == nullptr && get_child(_wildcard) != nullptr) {
                     node = get_child(_wildcard);
                     use_wildcard = true;
                 } else {
@@ -204,8 +187,7 @@ public:
             return pair->second;
         }
 
-        void put(std::map<std::string, std::string>* params, TrieNode* node,
-                 const std::string& token) {
+        void put(std::map<std::string, std::string>* params, TrieNode* node, const std::string& token) {
             if (params != nullptr && !node->_named_wildcard.empty()) {
                 params->insert(std::make_pair(node->_named_wildcard, token));
             }
@@ -215,7 +197,7 @@ public:
         std::string _wildcard;
         std::string _named_wildcard;
         std::map<std::string, TrieNode*> _children;
-        Allocator _allocator;
+        std::allocator<T> _allocator;
     };
 
     bool insert(const std::string& path, const T& value) {
@@ -285,8 +267,8 @@ private:
 
     TrieNode _root;
     T* _root_value;
-    char _separator;
-    Allocator _allocator;
+    char _separator{'/'};
+    std::allocator<T> _allocator;
 };
 
-} // namespace doris
+} // namespace starrocks

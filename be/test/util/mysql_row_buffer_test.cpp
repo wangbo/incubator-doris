@@ -1,121 +1,414 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
 //
-//   http://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "util/mysql_row_buffer.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
-#include <string.h>
+#include <optional>
 
-#include <string>
+#include "gtest/gtest.h"
+#include "gutil/port.h"
+#include "runtime/large_int_value.h"
+#include "types/constexpr.h"
 
-#include "gtest/gtest_pred_impl.h"
-#include "gutil/strings/fastmem.h"
+namespace starrocks {
 
-namespace doris {
+class MysqlRowBufferTest : public ::testing::Test {
+public:
+    void SetUp() override {}
+    void TearDown() override {}
+};
 
-using namespace strings;
-
-TEST(MysqlRowBufferTest, basic) {
-    MysqlRowBuffer mrb;
-
-    std::string s("test");
-    mrb.push_tinyint(5);
-    mrb.push_smallint(120);
-    mrb.push_int(-30000);
-    mrb.push_bigint(900000);
-    mrb.push_unsigned_bigint(90000000);
-    mrb.push_float(56.45);
-    mrb.push_double(10.12);
-    mrb.push_string(s.c_str(), 4);
-    mrb.push_null();
-
-    const char* buf = mrb.buf();
-
-    // mem: size-data-size-data
-    // 1-'5'-3-'120'-6-'-30000'-6-'900000'-8-'90000000'-5-'56.45'-5-'10.12'-4-'test'-251
-    // 1b-1b-1b-3b--1b-----6b--1b----6b---1b-----8b----1b---5b---1b---5b---1b---4b---1b
-    // 0  1  2  3   6      7   13    14   20     21    29   30   35   36   41   42   46
-    EXPECT_EQ(47, mrb.length());
-
-    EXPECT_EQ(1, *((int8_t*)(buf)));
-    EXPECT_EQ(0, strncmp(buf + 1, "5", 1));
-
-    EXPECT_EQ(3, *((int8_t*)(buf + 2)));
-    EXPECT_EQ(0, strncmp(buf + 3, "120", 3));
-
-    EXPECT_EQ(6, *((int8_t*)(buf + 6)));
-    EXPECT_EQ(0, strncmp(buf + 7, "-30000", 6));
-
-    EXPECT_EQ(6, *((int8_t*)(buf + 13)));
-    EXPECT_EQ(0, strncmp(buf + 14, "900000", 6));
-
-    EXPECT_EQ(8, *((int8_t*)(buf + 20)));
-    EXPECT_EQ(0, strncmp(buf + 21, "90000000", 8));
-
-    EXPECT_EQ(5, *((int8_t*)(buf + 29)));
-    EXPECT_EQ(0, strncmp(buf + 30, "56.45", 5));
-
-    EXPECT_EQ(5, *((int8_t*)(buf + 35)));
-    EXPECT_EQ(0, strncmp(buf + 36, "10.12", 5));
-
-    EXPECT_EQ(4, *((int8_t*)(buf + 41)));
-    EXPECT_EQ(0, strncmp(buf + 42, "test", 4));
-
-    EXPECT_EQ(251, *((uint8_t*)(buf + 46)));
+// the first byte:
+// <= 250: length
+// = 251: NULL
+// = 252: the next two byte is length
+// = 253: the next three byte is length
+// = 254: the next eighth byte is length
+std::optional<Slice> decode_mysql_row(Slice* s) {
+    assert(s->size > 0);
+    uint8_t x = (*s)[0];
+    s->remove_prefix(1);
+    if (x < 251) {
+        assert(s->size >= x);
+        Slice ret(s->data, x);
+        s->remove_prefix(x);
+        return ret;
+    }
+    if (x == 251) {
+        return {};
+    }
+    if (x == 252) {
+        uint16_t l = UNALIGNED_LOAD16(s->data);
+        s->remove_prefix(2);
+        assert(s->size >= l);
+        Slice ret(s->data, l);
+        s->remove_prefix(l);
+        return ret;
+    }
+    if (x == 253) {
+        uint32_t l = *reinterpret_cast<const uint24_t*>(s->data);
+        s->remove_prefix(3);
+        assert(s->size >= l);
+        Slice ret(s->data, l);
+        s->remove_prefix(l);
+        return ret;
+    }
+    if (x == 254) {
+        uint64_t l = UNALIGNED_LOAD64(s->data);
+        s->remove_prefix(8);
+        assert(s->size >= l);
+        Slice ret(s->data, l);
+        s->remove_prefix(l);
+        return ret;
+    }
+    assert(false);
+    return {};
 }
 
-TEST(MysqlRowBufferTest, dynamic_mode) {
-    MysqlRowBuffer mrb;
+// NOLINTNEXTLINE
+TEST_F(MysqlRowBufferTest, test_basic) {
+    MysqlRowBuffer row_buffer;
 
-    mrb.open_dynamic_mode();
+    row_buffer.push_null();
+    row_buffer.push_tinyint(-128);
+    row_buffer.push_tinyint(+127);
+    row_buffer.push_smallint(-32768);
+    row_buffer.push_smallint(+32767);
+    row_buffer.push_int(-2147483648);
+    row_buffer.push_int(+2147483647);
+    row_buffer.push_bigint(-9223372036854775808ULL);
+    row_buffer.push_bigint(+9223372036854775807ULL);
+    row_buffer.push_string("string value");
+    row_buffer.push_number((uint8_t)255);
+    row_buffer.push_number((uint16_t)65535);
+    row_buffer.push_number((uint32_t)4294967295ULL);
+    row_buffer.push_number((uint64_t)18446744073709551615ULL);
+    row_buffer.push_number(MIN_INT128);
+    row_buffer.push_number(MAX_INT128);
 
-    std::string s("test");
-    mrb.push_tinyint(5);
-    mrb.push_smallint(120);
-    mrb.push_int(-30000);
-    mrb.push_bigint(900000);
-    mrb.push_unsigned_bigint(90000000);
-    mrb.push_float(56.45);
-    mrb.push_double(10.12);
-    mrb.push_string(s.c_str(), 4);
-    mrb.push_null();
+    Slice s(row_buffer.data());
 
-    mrb.close_dynamic_mode();
+    auto data = decode_mysql_row(&s);
+    ASSERT_FALSE(data.has_value());
 
-    const char* buf = mrb.buf();
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("-128", data.value());
 
-    // mem: size-data-data
-    // 254-48-'5'-'120'-'-30000'-'900000'-'90000000'-'56.45'-'10.12'-'test'-''
-    // 1b--8b-1b----3b-----6b-------6b--------8b-------5b------5b------4b---0b
-    // 0   1  9     10     13       19        25       33      38      43   47
-    EXPECT_EQ(47, mrb.length());
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("127", data.value());
 
-    EXPECT_EQ(254, *((uint8_t*)(buf)));
-    EXPECT_EQ(38, *((int64_t*)(buf + 1)));
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("-32768", data.value());
 
-    EXPECT_EQ(0, strncmp(buf + 9, "5", 1));
-    EXPECT_EQ(0, strncmp(buf + 10, "120", 3));
-    EXPECT_EQ(0, strncmp(buf + 13, "-30000", 6));
-    EXPECT_EQ(0, strncmp(buf + 19, "900000", 6));
-    EXPECT_EQ(0, strncmp(buf + 25, "90000000", 8));
-    EXPECT_EQ(0, strncmp(buf + 33, "56.45", 5));
-    EXPECT_EQ(0, strncmp(buf + 38, "10.12", 5));
-    EXPECT_EQ(0, strncmp(buf + 43, "test", 4));
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("32767", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("-2147483648", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("2147483647", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("-9223372036854775808", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("9223372036854775807", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("string value", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("255", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("65535", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("4294967295", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ("18446744073709551615", data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ(LargeIntValue::to_string(starrocks::MIN_INT128), data.value());
+
+    data = decode_mysql_row(&s);
+    ASSERT_EQ(LargeIntValue::to_string(starrocks::MAX_INT128), data.value());
+
+    ASSERT_EQ("", s);
 }
 
-} // namespace doris
+// NOLINTNEXTLINE
+TEST_F(MysqlRowBufferTest, test_push_string) {
+    // strlen < 251
+    {
+        std::string s(250, 'x');
+        MysqlRowBuffer row_buffer;
+        row_buffer.push_string(s);
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+        ASSERT_EQ(s, data.value());
+        ASSERT_EQ("", slice);
+    }
+    // strlen < 65536
+    {
+        std::string s(65535, 'x');
+        MysqlRowBuffer row_buffer;
+        row_buffer.push_string(s);
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+        ASSERT_EQ(s, data.value());
+        ASSERT_EQ("", slice);
+    }
+    // strlen < 16777216
+    {
+        std::string s(16777215, 'x');
+        MysqlRowBuffer row_buffer;
+        row_buffer.push_string(s);
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+        ASSERT_EQ(s, data.value());
+        ASSERT_EQ("", slice);
+    }
+    // strlen >= 16777216
+    {
+        std::string s(16777217, 'x');
+        MysqlRowBuffer row_buffer;
+        row_buffer.push_string(s);
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+        ASSERT_EQ(s, data.value());
+    }
+}
+
+// NOLINTNEXTLINE
+TEST_F(MysqlRowBufferTest, test_array) {
+    // empty array
+    {
+        MysqlRowBuffer row_buffer;
+        row_buffer.begin_push_array();
+        row_buffer.finish_push_array();
+        ASSERT_EQ(2, row_buffer.data()[0]);
+        ASSERT_EQ("[]", Slice(row_buffer.data().data() + 1, 2));
+    }
+    // 10 elements
+    {
+        MysqlRowBuffer row_buffer;
+        row_buffer.begin_push_array();
+        row_buffer.push_int(0);
+        for (int i = 1; i < 10; i++) {
+            row_buffer.separator(',');
+            row_buffer.push_int(i);
+        }
+        row_buffer.finish_push_array();
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+        ASSERT_EQ("[0,1,2,3,4,5,6,7,8,9]", data.value());
+        ASSERT_EQ("", slice);
+    }
+    // 200 elements
+    {
+        MysqlRowBuffer row_buffer;
+
+        row_buffer.begin_push_array();
+        row_buffer.push_int(1);
+        for (int i = 1; i < 200; i++) {
+            row_buffer.separator(',');
+            row_buffer.push_int(1);
+        }
+        row_buffer.finish_push_array();
+
+        std::string expect;
+        expect.reserve(500);
+        expect.push_back('[');
+        expect.push_back('1');
+        for (int i = 1; i < 200; i++) {
+            expect.push_back(',');
+            expect.push_back('1');
+        }
+        expect.push_back(']');
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+
+        ASSERT_EQ(expect, data.value());
+        ASSERT_EQ("", slice);
+    }
+    // 60000 elements
+    {
+        MysqlRowBuffer row_buffer;
+
+        row_buffer.begin_push_array();
+        row_buffer.push_int(1);
+        for (int i = 1; i < 60000; i++) {
+            row_buffer.separator(',');
+            row_buffer.push_int(1);
+        }
+        row_buffer.finish_push_array();
+
+        std::string expect;
+        expect.reserve(60000 * 2 + 3);
+        expect.push_back('[');
+        expect.push_back('1');
+        for (int i = 1; i < 60000; i++) {
+            expect.push_back(',');
+            expect.push_back('1');
+        }
+        expect.push_back(']');
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+        ASSERT_EQ(expect, data.value());
+        ASSERT_EQ("", slice);
+    }
+    {
+        MysqlRowBuffer row_buffer;
+
+        row_buffer.begin_push_array();
+        row_buffer.push_string("abc");
+        row_buffer.separator(',');
+        row_buffer.push_string("def");
+        row_buffer.finish_push_array();
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+
+        // ["abc","def"]
+        ASSERT_EQ("[\"abc\",\"def\"]", data.value());
+        ASSERT_EQ("", slice);
+    }
+    {
+        MysqlRowBuffer row_buffer;
+
+        row_buffer.begin_push_array();
+        row_buffer.push_string("I\"m a");
+        row_buffer.separator(',');
+        row_buffer.push_string("programmer");
+        row_buffer.finish_push_array();
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+
+        // ["I\"m a","programmer"]
+        ASSERT_EQ("[\"I\\\"m a\",\"programmer\"]", data.value());
+        ASSERT_EQ("", slice);
+    }
+    {
+        MysqlRowBuffer row_buffer;
+
+        row_buffer.begin_push_array();
+        row_buffer.push_string("I\\\"m a"); // I\"m a
+        row_buffer.separator(',');
+        row_buffer.push_string("programmer");
+        row_buffer.finish_push_array();
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+
+        // ["I\\\"m a","programmer"]
+        ASSERT_EQ("[\"I\\\\\\\"m a\",\"programmer\"]", data.value());
+        ASSERT_EQ("", slice);
+    }
+    // original string length is 250, but escaped string length is 252 (>251).
+    {
+        MysqlRowBuffer row_buffer;
+
+        std::string s(248, 'x');
+
+        row_buffer.begin_push_array();
+        row_buffer.push_string(s);
+        row_buffer.finish_push_array();
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+
+        s.insert(0, "[\"");
+        s.append("\"]");
+
+        ASSERT_EQ(s, data.value());
+        ASSERT_EQ("", slice);
+    }
+    // original string length is 250, but escaped string length is 253 (>251).
+    {
+        MysqlRowBuffer row_buffer;
+
+        std::string s(248, 'x');
+        s[10] = '"';
+
+        row_buffer.begin_push_array(); // '['
+        row_buffer.push_string(s);
+        row_buffer.finish_push_array(); // ']'
+
+        s.insert(s.begin() + 10, '\\');
+        s.insert(0, "[\"");
+        s.append("\"]");
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+
+        ASSERT_EQ(s, data.value());
+        ASSERT_EQ("", slice);
+    }
+    // nested array
+    {
+        MysqlRowBuffer row_buffer;
+        row_buffer.begin_push_array();
+
+        row_buffer.begin_push_array();
+        row_buffer.push_int(1);
+        row_buffer.separator(',');
+        row_buffer.push_int(2);
+
+        row_buffer.finish_push_array();
+        row_buffer.separator(',');
+
+        row_buffer.begin_push_array();
+        row_buffer.finish_push_array();
+        row_buffer.separator(',');
+
+        row_buffer.push_null();
+
+        row_buffer.finish_push_array();
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+
+        ASSERT_EQ("[[1,2],[],null]", data.value());
+        ASSERT_EQ("", slice);
+    }
+    // json array
+    {
+        MysqlRowBuffer row_buffer;
+        row_buffer.begin_push_array();
+
+        Slice json = R"({"k1": "v1"})";
+        row_buffer.push_string(json.data, json.size, '\'');
+
+        row_buffer.finish_push_array();
+
+        Slice slice(row_buffer.data());
+        auto data = decode_mysql_row(&slice);
+
+        ASSERT_EQ(R"(['{"k1": "v1"}'])", data.value());
+        ASSERT_EQ("", slice);
+    }
+}
+
+} // namespace starrocks

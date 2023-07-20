@@ -18,107 +18,116 @@
 
 set -eo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ROOT=`dirname "$0"`
+ROOT=`cd "$ROOT"; pwd`
 
-export DORIS_HOME="${ROOT}"
+export STARROCKS_HOME=${ROOT}
 
-. "${DORIS_HOME}/env.sh"
+. ${STARROCKS_HOME}/env.sh
 
 # Check args
 usage() {
-    echo "
+  echo "
 Usage: $0 <options>
   Optional options:
-     --coverage           build and run coverage statistic
-     --run                build and run ut
+     --test [TEST_NAME]         run specific test
+     --dry-run                  dry-run unit tests
+     --coverage                 run coverage statistic tasks
+     --dumpcase [PATH]          run dump case and save to path
 
   Eg.
-    $0                                                                      build and run ut
-    $0 --coverage                                                           build and run coverage statistic
-    $0 --run org.apache.doris.utframe.Demo                                  build and run the test named Demo
-    $0 --run org.apache.doris.utframe.Demo#testCreateDbAndTable+test2       build and run testCreateDbAndTable in Demo test
-    $0 --run org.apache.doris.Demo,org.apache.doris.Demo2                   build and run Demo and Demo2 test
+    $0                                          run all unit tests
+    $0 --test com.starrocks.utframe.Demo        run demo test
+    $0 --dry-run                                dry-run unit tests
+    $0 --coverage                               run coverage statistic tasks
+    $0 --dumpcase /home/disk1/                  run dump case and save to path
   "
-    exit 1
+  exit 1
 }
 
-if ! OPTS="$(getopt \
-    -n "$0" \
-    -o '' \
-    -l 'coverage' \
-    -l 'run' \
-    -- "$@")"; then
+# -l run only used for compatibility
+OPTS=$(getopt \
+  -n $0 \
+  -o '' \
+  -l 'test:' \
+  -l 'dry-run' \
+  -l 'coverage' \
+  -l 'dumpcase' \
+  -l 'help' \
+  -l 'run' \
+  -- "$@")
+
+if [ $? != 0 ] ; then
     usage
 fi
 
-eval set -- "${OPTS}"
+eval set -- "$OPTS"
 
-RUN=0
+HELP=0
+DRY_RUN=0
+RUN_SPECIFIED_TEST=0
+TEST_NAME=*
 COVERAGE=0
-if [[ "$#" == 1 ]]; then
-    #default
-    RUN=0
-    COVERAGE=0
-else
-    RUN=0
-    COVERAGE=0
-    while true; do
-        case "$1" in
-        --coverage)
-            COVERAGE=1
-            shift
-            ;;
-        --run)
-            RUN=1
-            shift
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            echo "Internal error"
-            exit 1
-            ;;
-        esac
-    done
+DUMPCASE=0
+while true; do 
+    case "$1" in
+        --coverage) COVERAGE=1 ; shift ;;
+        --test) RUN_SPECIFIED_TEST=1; TEST_NAME=$2; shift 2;;
+        --run) shift ;; # only used for compatibility
+        --dumpcase) DUMPCASE=1; shift ;;
+        --dry-run) DRY_RUN=1 ; shift ;;
+        --help) HELP=1 ; shift ;; 
+        --) shift ;  break ;;
+        *) echo "Internal error" ; exit 1 ;;
+    esac
+done
+
+if [ ${HELP} -eq 1 ]; then
+    usage
+    exit 0
 fi
 
-echo "Build Frontend UT"
+echo "*********************************"
+echo "  Starting to Run FE Unit Tests  "
+echo "*********************************"
 
-echo "******************************"
-echo "    Runing DorisFe Unittest    "
-echo "******************************"
-
-echo "Build docs"
-cd "${DORIS_HOME}/docs"
-./build_help_zip.sh
-cp build/help-resource.zip "${DORIS_HOME}"/fe/fe-core/src/test/resources/real-help-resource.zip
-cd "${DORIS_HOME}"
-
-"${DORIS_HOME}"/generated-source.sh
-
-cd "${DORIS_HOME}/fe"
+cd ${STARROCKS_HOME}/fe/
 mkdir -p build/compile
 
-if [[ -z "${FE_UT_PARALLEL}" ]]; then
+if [ -z "${FE_UT_PARALLEL}" ]; then
     # the default fe unit test parallel is 1
-    export FE_UT_PARALLEL=1
+    export FE_UT_PARALLEL=4
 fi
-echo "Unit test parallel is: ${FE_UT_PARALLEL}"
+echo "Unit test parallel is: $FE_UT_PARALLEL"
 
-if [[ "${COVERAGE}" -eq 1 ]]; then
-    echo "Run coverage statistic"
+if [ -d "./mocked" ]; then
+    rm -r ./mocked
+fi
+
+if [ -d "./ut_ports" ]; then
+    rm -r ./ut_ports
+fi
+
+mkdir ut_ports
+
+if [ ${COVERAGE} -eq 1 ]; then
+    echo "Run coverage statistic tasks"
     ant cover-test
+elif [ ${DUMPCASE} -eq 1 ]; then
+    ${MVN_CMD} test -DfailIfNoTests=false -DtrimStackTrace=false -D test=com.starrocks.sql.dump.QueryDumpRegressionTest -D dumpJsonConfig=$1
 else
-    if [[ "${RUN}" -eq 1 ]]; then
-        echo "Run the specified class: $1"
-        # eg:
-        # sh run-fe-ut.sh --run org.apache.doris.utframe.DemoTest
-        # sh run-fe-ut.sh --run org.apache.doris.utframe.DemoTest#testCreateDbAndTable+test2
-        "${MVN_CMD}" test -Dcheckstyle.skip=true -DfailIfNoTests=false -D test="$1"
-    else
-        echo "Run Frontend UT"
-        "${MVN_CMD}" test -Dcheckstyle.skip=true -DfailIfNoTests=false
-    fi
+    if [ ${RUN_SPECIFIED_TEST} -eq 1 ]; then
+        echo "Run test: $TEST_NAME"
+        if [ $DRY_RUN -eq 0 ]; then
+            # ./run-fe-ut.sh --test com.starrocks.utframe.Demo
+            # ./run-fe-ut.sh --test com.starrocks.utframe.Demo#testCreateDbAndTable+test2
+            # set trimStackTrace to false to show full stack when debugging specified class or case
+            ${MVN_CMD} test -DfailIfNoTests=false -DtrimStackTrace=false -D test=$TEST_NAME
+        fi
+    else    
+        echo "Run All Frontend Unittests"
+        if [ $DRY_RUN -eq 0 ]; then
+            ${MVN_CMD} test -DfailIfNoTests=false -DtrimStackTrace=false
+        fi
+    fi 
 fi

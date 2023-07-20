@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/faststring.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,35 +34,31 @@
 
 #pragma once
 
-#include <butil/macros.h>
-
 #include <cstdint>
 #include <cstring>
 #include <string>
 
 #include "gutil/dynamic_annotations.h"
+#include "gutil/macros.h"
 #include "gutil/port.h"
 #include "gutil/strings/fastmem.h"
 #include "util/slice.h"
-#include "vec/common/allocator.h"
 
-namespace doris {
+namespace starrocks {
 
 // A faststring is similar to a std::string, except that it is faster for many
 // common use cases (in particular, resize() will fill with uninitialized data
 // instead of memsetting to \0)
-// only build() can transfer data to the outside.
-class faststring : private Allocator<false, false, false> {
+class faststring {
 public:
     enum { kInitialCapacity = 32 };
 
-    faststring() : data_(initial_data_), len_(0), capacity_(kInitialCapacity) {}
+    faststring() : data_(initial_data_) {}
 
     // Construct a string with the given capacity, in bytes.
-    explicit faststring(size_t capacity)
-            : data_(initial_data_), len_(0), capacity_(kInitialCapacity) {
+    explicit faststring(size_t capacity) : data_(initial_data_) {
         if (capacity > capacity_) {
-            data_ = reinterpret_cast<uint8_t*>(Allocator::alloc(capacity));
+            data_ = new uint8_t[capacity];
             capacity_ = capacity;
         }
         ASAN_POISON_MEMORY_REGION(data_, capacity_);
@@ -54,7 +67,7 @@ public:
     ~faststring() {
         ASAN_UNPOISON_MEMORY_REGION(initial_data_, arraysize(initial_data_));
         if (data_ != initial_data_) {
-            Allocator::free(data_);
+            delete[] data_;
         }
     }
 
@@ -85,8 +98,8 @@ public:
     OwnedSlice build() {
         uint8_t* ret = data_;
         if (ret == initial_data_) {
-            ret = reinterpret_cast<uint8_t*>(Allocator::alloc(len_));
-            memcpy(ret, data_, len_);
+            ret = new uint8_t[len_];
+            strings::memcpy_inlined(ret, data_, len_);
         }
         OwnedSlice result(ret, len_);
         len_ = 0;
@@ -108,7 +121,7 @@ public:
 
     // Append the given data to the string, resizing capacity as necessary.
     void append(const void* src_v, size_t count) {
-        const uint8_t* src = reinterpret_cast<const uint8_t*>(src_v);
+        const auto* src = reinterpret_cast<const uint8_t*>(src_v);
         EnsureRoomForAppend(count);
         ASAN_UNPOISON_MEMORY_REGION(data_ + len_, count);
 
@@ -174,13 +187,11 @@ public:
         // contents of the array.
         len_ = 0;
         resize(len);
-        memcpy(data(), src, len);
+        strings::memcpy_inlined(data(), src, len);
     }
 
     // Reset the contents of this string by copying from the given std::string.
-    void assign_copy(const std::string& str) {
-        assign_copy(reinterpret_cast<const uint8_t*>(str.c_str()), str.size());
-    }
+    void assign_copy(const std::string& str) { assign_copy(reinterpret_cast<const uint8_t*>(str.c_str()), str.size()); }
 
     // Reallocates the internal storage to fit only the current data.
     //
@@ -195,12 +206,52 @@ public:
     }
 
     // Return a copy of this string as a std::string.
-    std::string ToString() const {
-        return std::string(reinterpret_cast<const char*>(data()), len_);
+    std::string ToString() const { return std::string(reinterpret_cast<const char*>(data()), len_); }
+
+    void swap(faststring& rhs) {
+        char tmp_buff[kInitialCapacity];
+        if (data_ == initial_data_ && rhs.data_ == rhs.initial_data_) {
+            assert(capacity_ == kInitialCapacity);
+            assert(rhs.capacity_ == kInitialCapacity);
+            ASAN_UNPOISON_MEMORY_REGION(initial_data_, kInitialCapacity);
+            ASAN_UNPOISON_MEMORY_REGION(rhs.initial_data_, kInitialCapacity);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuninitialized"
+            memcpy(tmp_buff, initial_data_, kInitialCapacity);
+            memcpy(initial_data_, rhs.initial_data_, kInitialCapacity);
+            memcpy(rhs.initial_data_, tmp_buff, kInitialCapacity);
+#pragma GCC diagnostic pop
+            std::swap(len_, rhs.len_);
+        } else if (data_ == initial_data_) {
+            assert(capacity_ == kInitialCapacity);
+            ASAN_UNPOISON_MEMORY_REGION(rhs.initial_data_, len_);
+            strings::memcpy_inlined(rhs.initial_data_, initial_data_, len_);
+            std::swap(len_, rhs.len_);
+            data_ = rhs.data_;
+            capacity_ = rhs.capacity_;
+            rhs.data_ = rhs.initial_data_;
+            rhs.capacity_ = kInitialCapacity;
+        } else if (rhs.data_ == rhs.initial_data_) {
+            assert(rhs.capacity_ == kInitialCapacity);
+            ASAN_UNPOISON_MEMORY_REGION(initial_data_, rhs.len_);
+            strings::memcpy_inlined(initial_data_, rhs.initial_data_, rhs.len_);
+            std::swap(len_, rhs.len_);
+            rhs.data_ = data_;
+            rhs.capacity_ = capacity_;
+            data_ = initial_data_;
+            capacity_ = kInitialCapacity;
+        } else {
+            std::swap(data_, rhs.data_);
+            std::swap(len_, rhs.len_);
+            std::swap(capacity_, rhs.capacity_);
+        }
+        ASAN_POISON_MEMORY_REGION(data_ + len_, capacity_ - len_);
+        ASAN_POISON_MEMORY_REGION(rhs.data_ + rhs.len_, rhs.capacity_ - rhs.len_);
     }
 
 private:
-    DISALLOW_COPY_AND_ASSIGN(faststring);
+    faststring(const faststring&) = delete;
+    const faststring& operator=(const faststring&) = delete;
 
     // If necessary, expand the buffer to fit at least 'count' more bytes.
     // If the array has to be grown, it is grown by at least 50%.
@@ -226,10 +277,10 @@ private:
 
     uint8_t* data_;
     uint8_t initial_data_[kInitialCapacity];
-    size_t len_;
+    size_t len_{0};
     // NOTE: we will make a initial buffer as part of the object, so the smallest
     // possible value of capacity_ is kInitialCapacity.
-    size_t capacity_;
+    size_t capacity_{kInitialCapacity};
 };
 
-} // namespace doris
+} // namespace starrocks

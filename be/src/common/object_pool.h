@@ -22,7 +22,7 @@
 
 #include "util/spinlock.h"
 
-namespace doris {
+namespace starrocks {
 
 // An ObjectPool maintains a list of C++ objects which are deallocated
 // by destroying the pool.
@@ -33,28 +33,23 @@ public:
 
     ~ObjectPool() { clear(); }
 
+    ObjectPool(const ObjectPool& pool) = delete;
+    ObjectPool& operator=(const ObjectPool& pool) = delete;
+    ObjectPool(ObjectPool&& pool) = default;
+    ObjectPool& operator=(ObjectPool&& pool) = default;
+
     template <class T>
     T* add(T* t) {
         // TODO: Consider using a lock-free structure.
         std::lock_guard<SpinLock> l(_lock);
-        _objects.emplace_back(Element {t, [](void* obj) { delete reinterpret_cast<T*>(obj); }});
-        return t;
-    }
-
-    template <class T>
-    T* add_array(T* t) {
-        std::lock_guard<SpinLock> l(_lock);
-        _objects.emplace_back(Element {t, [](void* obj) { delete[] reinterpret_cast<T*>(obj); }});
+        _objects.emplace_back(Element{t, [](void* obj) { delete reinterpret_cast<T*>(obj); }});
         return t;
     }
 
     void clear() {
         std::lock_guard<SpinLock> l(_lock);
-        // reverse delete object to make sure the obj can
-        // safe access the member object construt early by
-        // object pool
-        for (auto obj = _objects.rbegin(); obj != _objects.rend(); obj++) {
-            obj->delete_fn(obj->obj);
+        for (auto i = _objects.rbegin(); i != _objects.rend(); ++i) {
+            i->delete_fn(i->obj);
         }
         _objects.clear();
     }
@@ -64,19 +59,11 @@ public:
         src->_objects.clear();
     }
 
-    uint64_t size() {
-        std::lock_guard<SpinLock> l(_lock);
-        return _objects.size();
-    }
-
 private:
-    ObjectPool(const ObjectPool&) = delete;
-    void operator=(const ObjectPool&) = delete;
-
-    /// A generic deletion function pointer. Deletes its first argument.
+    // A generic deletion function pointer. Deletes its first argument.
     using DeleteFn = void (*)(void*);
 
-    /// For each object, a pointer to the object and a function that deletes it.
+    // For each object, a pointer to the object and a function that deletes it.
     struct Element {
         void* obj;
         DeleteFn delete_fn;
@@ -86,4 +73,4 @@ private:
     SpinLock _lock;
 };
 
-} // namespace doris
+} // namespace starrocks

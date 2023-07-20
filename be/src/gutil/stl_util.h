@@ -27,10 +27,9 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <string.h> // for memcpy
-
 #include <algorithm>
+#include <cstddef>
+#include <cstring> // for memcpy
 using std::copy;
 using std::max;
 using std::min;
@@ -41,6 +40,7 @@ using std::swap;
 #include <deque>
 using std::deque;
 #include <functional>
+using std::binary_function;
 using std::less;
 #include <iterator>
 using std::back_insert_iterator;
@@ -69,9 +69,6 @@ template <class T>
 void STLClearObject(T* obj) {
     T tmp;
     tmp.swap(*obj);
-    obj->reserve(0); // this is because sometimes "T tmp" allocates objects with
-                     // memory (arena implementation?).  use reserve()
-                     // to clear() even if it doesn't always work
 }
 
 // Specialization for deque. Same as STLClearObject but doesn't call reserve
@@ -85,7 +82,7 @@ void STLClearObject(deque<T, A>* obj) {
 // Reduce memory usage on behalf of object if its capacity is greater
 // than or equal to "limit", which defaults to 2^20.
 template <class T>
- void STLClearIfBig(T* obj, size_t limit = 1 << 20) {
+inline void STLClearIfBig(T* obj, size_t limit = 1 << 20) {
     if (obj->capacity() >= limit) {
         STLClearObject(obj);
     } else {
@@ -95,7 +92,7 @@ template <class T>
 
 // Specialization for deque, which doesn't implement capacity().
 template <class T, class A>
- void STLClearIfBig(deque<T, A>* obj, size_t limit = 1 << 20) {
+inline void STLClearIfBig(deque<T, A>* obj, size_t limit = 1 << 20) {
     if (obj->size() >= limit) {
         STLClearObject(obj);
     } else {
@@ -123,7 +120,7 @@ template <class T, class A>
 // operations cheap.  Note that the default number of buckets is 193
 // in the Gnu library implementation as of Jan '08.
 template <class T>
- void STLClearHashIfBig(T* obj, size_t limit) {
+inline void STLClearHashIfBig(T* obj, size_t limit) {
     if (obj->bucket_count() >= limit) {
         T tmp;
         tmp.swap(*obj);
@@ -311,7 +308,7 @@ inline void STLAppendToString(string* str, const char* ptr, size_t n) {
 // change this as well.
 
 template <typename T, typename Allocator>
- T* vector_as_array(vector<T, Allocator>* v) {
+inline T* vector_as_array(vector<T, Allocator>* v) {
 #ifdef NDEBUG
     return &*v->begin();
 #else
@@ -320,7 +317,7 @@ template <typename T, typename Allocator>
 }
 
 template <typename T, typename Allocator>
- const T* vector_as_array(const vector<T, Allocator>* v) {
+inline const T* vector_as_array(const vector<T, Allocator>* v) {
 #ifdef NDEBUG
     return &*v->begin();
 #else
@@ -342,7 +339,7 @@ template <typename T, typename Allocator>
 // implementations.
 inline char* string_as_array(string* str) {
     // DO NOT USE const_cast<char*>(str->data())! See the unittest for why.
-    return str->empty() ? NULL : &*str->begin();
+    return str->empty() ? nullptr : &*str->begin();
 }
 
 // These are methods that test two hash maps/sets for equality.  These exist
@@ -352,7 +349,7 @@ inline char* string_as_array(string* str) {
 // differed.
 
 template <class HashSet>
- bool HashSetEquality(const HashSet& set_a, const HashSet& set_b) {
+inline bool HashSetEquality(const HashSet& set_a, const HashSet& set_b) {
     if (set_a.size() != set_b.size()) return false;
     for (typename HashSet::const_iterator i = set_a.begin(); i != set_a.end(); ++i)
         if (set_b.find(*i) == set_b.end()) return false;
@@ -360,7 +357,7 @@ template <class HashSet>
 }
 
 template <class HashMap>
- bool HashMapEquality(const HashMap& map_a, const HashMap& map_b) {
+inline bool HashMapEquality(const HashMap& map_a, const HashMap& map_b) {
     if (map_a.size() != map_b.size()) return false;
     for (typename HashMap::const_iterator i = map_a.begin(); i != map_a.end(); ++i) {
         typename HashMap::const_iterator j = map_b.find(i->first);
@@ -417,13 +414,14 @@ void STLDeleteValues(T* v) {
 // directly.
 class BaseDeleter {
 public:
-    virtual ~BaseDeleter() {}
+    virtual ~BaseDeleter() = default;
 
 protected:
-    BaseDeleter() {}
+    BaseDeleter() = default;
 
 private:
-    DISALLOW_EVIL_CONSTRUCTORS(BaseDeleter);
+    BaseDeleter(const BaseDeleter&) = delete;
+    const BaseDeleter& operator=(const BaseDeleter&) = delete;
 };
 
 // Given a pointer to an STL container, this class will delete all the element
@@ -432,14 +430,15 @@ private:
 template <class STLContainer>
 class TemplatedElementDeleter : public BaseDeleter {
 public:
-    explicit TemplatedElementDeleter(STLContainer* ptr) : container_ptr_(ptr) {}
+    explicit TemplatedElementDeleter<STLContainer>(STLContainer* ptr) : container_ptr_(ptr) {}
 
-    virtual ~TemplatedElementDeleter() { STLDeleteElements(container_ptr_); }
+    ~TemplatedElementDeleter<STLContainer>() override { STLDeleteElements(container_ptr_); }
 
 private:
     STLContainer* container_ptr_;
 
-    DISALLOW_EVIL_CONSTRUCTORS(TemplatedElementDeleter);
+    TemplatedElementDeleter(const TemplatedElementDeleter&) = delete;
+    const TemplatedElementDeleter& operator=(const TemplatedElementDeleter&) = delete;
 };
 
 // Like TemplatedElementDeleter, this class will delete element pointers from a
@@ -448,15 +447,15 @@ private:
 class ElementDeleter {
 public:
     template <class STLContainer>
-    explicit ElementDeleter(STLContainer* ptr)
-            : deleter_(new TemplatedElementDeleter<STLContainer>(ptr)) {}
+    explicit ElementDeleter(STLContainer* ptr) : deleter_(new TemplatedElementDeleter<STLContainer>(ptr)) {}
 
     ~ElementDeleter() { delete deleter_; }
 
 private:
     BaseDeleter* deleter_;
 
-    DISALLOW_EVIL_CONSTRUCTORS(ElementDeleter);
+    ElementDeleter(const ElementDeleter&) = delete;
+    const ElementDeleter& operator=(const ElementDeleter&) = delete;
 };
 
 // Given a pointer to an STL container this class will delete all the value
@@ -465,14 +464,15 @@ private:
 template <class STLContainer>
 class TemplatedValueDeleter : public BaseDeleter {
 public:
-    explicit TemplatedValueDeleter(STLContainer* ptr) : container_ptr_(ptr) {}
+    explicit TemplatedValueDeleter<STLContainer>(STLContainer* ptr) : container_ptr_(ptr) {}
 
-    virtual ~TemplatedValueDeleter() { STLDeleteValues(container_ptr_); }
+    ~TemplatedValueDeleter<STLContainer>() override { STLDeleteValues(container_ptr_); }
 
 private:
     STLContainer* container_ptr_;
 
-    DISALLOW_EVIL_CONSTRUCTORS(TemplatedValueDeleter);
+    TemplatedValueDeleter(const TemplatedValueDeleter&) = delete;
+    const TemplatedValueDeleter& operator=(const TemplatedValueDeleter&) = delete;
 };
 
 // Similar to ElementDeleter, but wraps a TemplatedValueDeleter rather than an
@@ -480,15 +480,15 @@ private:
 class ValueDeleter {
 public:
     template <class STLContainer>
-    explicit ValueDeleter(STLContainer* ptr)
-            : deleter_(new TemplatedValueDeleter<STLContainer>(ptr)) {}
+    explicit ValueDeleter(STLContainer* ptr) : deleter_(new TemplatedValueDeleter<STLContainer>(ptr)) {}
 
     ~ValueDeleter() { delete deleter_; }
 
 private:
     BaseDeleter* deleter_;
 
-    DISALLOW_EVIL_CONSTRUCTORS(ValueDeleter);
+    ValueDeleter(const ValueDeleter&) = delete;
+    const ValueDeleter& operator=(const ValueDeleter&) = delete;
 };
 
 // STLElementDeleter and STLValueDeleter are similar to ElementDeleter and
@@ -501,8 +501,8 @@ private:
 template <class STLContainer>
 class STLElementDeleter {
 public:
-    STLElementDeleter(STLContainer* ptr) : container_ptr_(ptr) {}
-    ~STLElementDeleter() { STLDeleteElements(container_ptr_); }
+    STLElementDeleter<STLContainer>(STLContainer* ptr) : container_ptr_(ptr) {}
+    ~STLElementDeleter<STLContainer>() { STLDeleteElements(container_ptr_); }
 
 private:
     STLContainer* container_ptr_;
@@ -511,8 +511,8 @@ private:
 template <class STLContainer>
 class STLValueDeleter {
 public:
-    STLValueDeleter(STLContainer* ptr) : container_ptr_(ptr) {}
-    ~STLValueDeleter() { STLDeleteValues(container_ptr_); }
+    STLValueDeleter<STLContainer>(STLContainer* ptr) : container_ptr_(ptr) {}
+    ~STLValueDeleter<STLContainer>() { STLDeleteValues(container_ptr_); }
 
 private:
     STLContainer* container_ptr_;
@@ -546,8 +546,7 @@ private:
 // is an example of where RVO comes into play.
 
 template <typename SortedSTLContainerA, typename SortedSTLContainerB, typename SortedSTLContainerC>
-void STLSetDifference(const SortedSTLContainerA& a, const SortedSTLContainerB& b,
-                      SortedSTLContainerC* c) {
+void STLSetDifference(const SortedSTLContainerA& a, const SortedSTLContainerB& b, SortedSTLContainerC* c) {
     // The qualified name avoids an ambiguity error, particularly with C++11:
     assert(std::is_sorted(a.begin(), a.end()));
     assert(std::is_sorted(b.begin(), b.end()));
@@ -564,8 +563,7 @@ SortedSTLContainer STLSetDifference(const SortedSTLContainer& a, const SortedSTL
 }
 
 template <typename SortedSTLContainerA, typename SortedSTLContainerB, typename SortedSTLContainerC>
-void STLSetUnion(const SortedSTLContainerA& a, const SortedSTLContainerB& b,
-                 SortedSTLContainerC* c) {
+void STLSetUnion(const SortedSTLContainerA& a, const SortedSTLContainerB& b, SortedSTLContainerC* c) {
     assert(std::is_sorted(a.begin(), a.end()));
     assert(std::is_sorted(b.begin(), b.end()));
     assert(static_cast<const void*>(&a) != static_cast<const void*>(c));
@@ -574,19 +572,16 @@ void STLSetUnion(const SortedSTLContainerA& a, const SortedSTLContainerB& b,
 }
 
 template <typename SortedSTLContainerA, typename SortedSTLContainerB, typename SortedSTLContainerC>
-void STLSetSymmetricDifference(const SortedSTLContainerA& a, const SortedSTLContainerB& b,
-                               SortedSTLContainerC* c) {
+void STLSetSymmetricDifference(const SortedSTLContainerA& a, const SortedSTLContainerB& b, SortedSTLContainerC* c) {
     assert(std::is_sorted(a.begin(), a.end()));
     assert(std::is_sorted(b.begin(), b.end()));
     assert(static_cast<const void*>(&a) != static_cast<const void*>(c));
     assert(static_cast<const void*>(&b) != static_cast<const void*>(c));
-    std::set_symmetric_difference(a.begin(), a.end(), b.begin(), b.end(),
-                                  std::inserter(*c, c->end()));
+    std::set_symmetric_difference(a.begin(), a.end(), b.begin(), b.end(), std::inserter(*c, c->end()));
 }
 
 template <typename SortedSTLContainer>
-SortedSTLContainer STLSetSymmetricDifference(const SortedSTLContainer& a,
-                                             const SortedSTLContainer& b) {
+SortedSTLContainer STLSetSymmetricDifference(const SortedSTLContainer& a, const SortedSTLContainer& b) {
     SortedSTLContainer c;
     STLSetSymmetricDifference(a, b, &c);
     return c;
@@ -600,8 +595,7 @@ SortedSTLContainer STLSetUnion(const SortedSTLContainer& a, const SortedSTLConta
 }
 
 template <typename SortedSTLContainerA, typename SortedSTLContainerB, typename SortedSTLContainerC>
-void STLSetIntersection(const SortedSTLContainerA& a, const SortedSTLContainerB& b,
-                        SortedSTLContainerC* c) {
+void STLSetIntersection(const SortedSTLContainerA& a, const SortedSTLContainerB& b, SortedSTLContainerC* c) {
     assert(std::is_sorted(a.begin(), a.end()));
     assert(std::is_sorted(b.begin(), b.end()));
     assert(static_cast<const void*>(&a) != static_cast<const void*>(c));
@@ -640,9 +634,9 @@ bool STLIncludes(const SortedSTLContainerA& a, const SortedSTLContainerB& b) {
 // the contents of an STL map. For other sample usage, see the unittest.
 
 template <typename Pair, typename UnaryOp>
-class UnaryOperateOnFirst {
+class UnaryOperateOnFirst : public std::unary_function<Pair, typename UnaryOp::result_type> {
 public:
-    UnaryOperateOnFirst() {}
+    UnaryOperateOnFirst() = default;
 
     UnaryOperateOnFirst(const UnaryOp& f) : f_(f) { // TODO(user): explicit?
     }
@@ -659,9 +653,9 @@ UnaryOperateOnFirst<Pair, UnaryOp> UnaryOperate1st(const UnaryOp& f) {
 }
 
 template <typename Pair, typename UnaryOp>
-class UnaryOperateOnSecond {
+class UnaryOperateOnSecond : public std::unary_function<Pair, typename UnaryOp::result_type> {
 public:
-    UnaryOperateOnSecond() {}
+    UnaryOperateOnSecond() = default;
 
     UnaryOperateOnSecond(const UnaryOp& f) : f_(f) { // TODO(user): explicit?
     }
@@ -678,16 +672,14 @@ UnaryOperateOnSecond<Pair, UnaryOp> UnaryOperate2nd(const UnaryOp& f) {
 }
 
 template <typename Pair, typename BinaryOp>
-class BinaryOperateOnFirst {
+class BinaryOperateOnFirst : public std::binary_function<Pair, Pair, typename BinaryOp::result_type> {
 public:
-    BinaryOperateOnFirst() {}
+    BinaryOperateOnFirst() = default;
 
     BinaryOperateOnFirst(const BinaryOp& f) : f_(f) { // TODO(user): explicit?
     }
 
-    typename BinaryOp::result_type operator()(const Pair& p1, const Pair& p2) const {
-        return f_(p1.first, p2.first);
-    }
+    typename BinaryOp::result_type operator()(const Pair& p1, const Pair& p2) const { return f_(p1.first, p2.first); }
 
 private:
     BinaryOp f_;
@@ -700,15 +692,13 @@ BinaryOperateOnFirst<Pair, BinaryOp> BinaryOperate1st(const BinaryOp& f) {
 }
 
 template <typename Pair, typename BinaryOp>
-class BinaryOperateOnSecond {
+class BinaryOperateOnSecond : public std::binary_function<Pair, Pair, typename BinaryOp::result_type> {
 public:
-    BinaryOperateOnSecond() {}
+    BinaryOperateOnSecond() = default;
 
     BinaryOperateOnSecond(const BinaryOp& f) : f_(f) {}
 
-    typename BinaryOp::result_type operator()(const Pair& p1, const Pair& p2) const {
-        return f_(p1.second, p2.second);
-    }
+    typename BinaryOp::result_type operator()(const Pair& p1, const Pair& p2) const { return f_(p1.second, p2.second); }
 
 private:
     BinaryOp f_;
@@ -733,12 +723,12 @@ BinaryOperateOnSecond<Pair, BinaryOp> BinaryOperate2nd(const BinaryOp& f) {
 // F has to be a model of AdaptableBinaryFunction.
 // G1 and G2 have to be models of AdabtableUnaryFunction.
 template <typename F, typename G1, typename G2>
-class BinaryComposeBinary {
+class BinaryComposeBinary
+        : public binary_function<typename G1::argument_type, typename G2::argument_type, typename F::result_type> {
 public:
     BinaryComposeBinary(F f, G1 g1, G2 g2) : f_(f), g1_(g1), g2_(g2) {}
 
-    typename F::result_type operator()(typename G1::argument_type x,
-                                       typename G2::argument_type y) const {
+    typename F::result_type operator()(typename G1::argument_type x, typename G2::argument_type y) const {
         return f_(g1_(x), g2_(y));
     }
 
@@ -757,6 +747,48 @@ template <typename F, typename G1, typename G2>
 BinaryComposeBinary<F, G1, G2> BinaryCompose2(F f, G1 g1, G2 g2) {
     return BinaryComposeBinary<F, G1, G2>(f, g1, g2);
 }
+
+// This is a wrapper for an STL allocator which keeps a count of the
+// active bytes allocated by this class of allocators.  This is NOT
+// THREAD SAFE.  This should only be used in situations where you can
+// ensure that only a single thread performs allocation and
+// deallocation.
+template <typename T, typename Alloc = std::allocator<T> >
+class STLCountingAllocator : public Alloc {
+public:
+    typedef typename Alloc::pointer pointer;
+    typedef typename Alloc::size_type size_type;
+
+    STLCountingAllocator() {}
+    STLCountingAllocator(int64* b) : bytes_used_(b) {} // TODO(user): explicit?
+
+    // Constructor used for rebinding
+    template <class U>
+    STLCountingAllocator(const STLCountingAllocator<U>& x) : Alloc(x), bytes_used_(x.bytes_used()) {}
+
+    pointer allocate(size_type n, std::allocator<void>::const_pointer hint = nullptr) {
+        assert(bytes_used_ != NULL);
+        *bytes_used_ += n * sizeof(T);
+        return Alloc::allocate(n, hint);
+    }
+
+    void deallocate(pointer p, size_type n) {
+        Alloc::deallocate(p, n);
+        assert(bytes_used_ != NULL);
+        *bytes_used_ -= n * sizeof(T);
+    }
+
+    // Rebind allows an allocator<T> to be used for a different type
+    template <class U>
+    struct rebind {
+        typedef STLCountingAllocator<U, typename Alloc::template rebind<U>::other> other;
+    };
+
+    int64* bytes_used() const { return bytes_used_; }
+
+private:
+    int64* bytes_used_{nullptr};
+};
 
 // Even though a struct has no data members, it cannot have zero size
 // according to the standard.  However, "empty base-class

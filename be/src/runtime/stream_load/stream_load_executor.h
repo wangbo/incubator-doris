@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/runtime/stream_load/stream_load_executor.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,44 +34,34 @@
 
 #pragma once
 
-#include <memory>
-
-#include "common/factory_creator.h"
-
-namespace doris {
+namespace starrocks {
 
 class ExecEnv;
 class StreamLoadContext;
 class Status;
 class TTxnCommitAttachment;
-class TLoadTxnCommitRequest;
 
 class StreamLoadExecutor {
-    ENABLE_FACTORY_CREATOR(StreamLoadExecutor);
-
 public:
     StreamLoadExecutor(ExecEnv* exec_env) : _exec_env(exec_env) {}
 
     Status begin_txn(StreamLoadContext* ctx);
 
-    Status pre_commit_txn(StreamLoadContext* ctx);
-
-    Status operate_txn_2pc(StreamLoadContext* ctx);
-
     Status commit_txn(StreamLoadContext* ctx);
 
-    void get_commit_request(StreamLoadContext* ctx, TLoadTxnCommitRequest& request);
+    Status prepare_txn(StreamLoadContext* ctx);
 
-    void rollback_txn(StreamLoadContext* ctx);
+    Status rollback_txn(StreamLoadContext* ctx);
 
-    Status execute_plan_fragment(std::shared_ptr<StreamLoadContext> ctx);
+    Status execute_plan_fragment(StreamLoadContext* ctx);
 
 private:
     // collect the load statistics from context and set them to stat
     // return true if stat is set, otherwise, return false
     bool collect_load_stat(StreamLoadContext* ctx, TTxnCommitAttachment* attachment);
 
+private:
     ExecEnv* _exec_env;
 };
 
-} // namespace doris
+} // namespace starrocks

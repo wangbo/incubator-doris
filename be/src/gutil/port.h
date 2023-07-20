@@ -7,22 +7,17 @@
 
 #pragma once
 
-#include <limits.h> // So we can set the bounds of our types
-#include <stdlib.h> // for free()
-#include <string.h> // for memcpy()
+#include <climits> // So we can set the bounds of our types
+#include <cstdlib> // for free()
+#include <cstring> // for memcpy()
 
 #if defined(__APPLE__)
-// for getpagesize() on mac
-#ifndef _POSIX_C_SOURCE
-#include <unistd.h>
-#else
-#include <mach/vm_page_size.h>
-#endif
-
+#include <unistd.h> // for getpagesize() on mac
 #elif defined(OS_CYGWIN)
 #include <malloc.h> // for memalign()
 #endif
 
+#include "butil/compiler_specific.h"
 #include "gutil/integral_types.h"
 
 // Must happens before inttypes.h inclusion */
@@ -131,23 +126,21 @@ static inline uint16 bswap_16(uint16 x) {
 }
 #define bswap_16(x) bswap_16(x)
 static inline uint32 bswap_32(uint32 x) {
-    return (((x & 0xFF) << 24) | ((x & 0xFF00) << 8) | ((x & 0xFF0000) >> 8) |
-            ((x & 0xFF000000) >> 24));
+    return (((x & 0xFF) << 24) | ((x & 0xFF00) << 8) | ((x & 0xFF0000) >> 8) | ((x & 0xFF000000) >> 24));
 }
 #define bswap_32(x) bswap_32(x)
 static inline uint64 bswap_64(uint64 x) {
     return (((x & GG_ULONGLONG(0xFF)) << 56) | ((x & GG_ULONGLONG(0xFF00)) << 40) |
             ((x & GG_ULONGLONG(0xFF0000)) << 24) | ((x & GG_ULONGLONG(0xFF000000)) << 8) |
             ((x & GG_ULONGLONG(0xFF00000000)) >> 8) | ((x & GG_ULONGLONG(0xFF0000000000)) >> 24) |
-            ((x & GG_ULONGLONG(0xFF000000000000)) >> 40) |
-            ((x & GG_ULONGLONG(0xFF00000000000000)) >> 56));
+            ((x & GG_ULONGLONG(0xFF000000000000)) >> 40) | ((x & GG_ULONGLONG(0xFF00000000000000)) >> 56));
 }
 #define bswap_64(x) bswap_64(x)
 
 #endif
 
 // define the macros IS_LITTLE_ENDIAN or IS_BIG_ENDIAN
-// using the above endian definitions from endian.h if
+// using the above endian defintions from endian.h if
 // endian.h was included
 #ifdef __BYTE_ORDER
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -197,7 +190,7 @@ const char PATH_SEPARATOR = '/';
 // a compiler error here.
 //
 #include <stdarg.h>
-void va_copy(va_list& a, va_list& b) {
+inline void va_copy(va_list& a, va_list& b) {
     a = b;
 }
 
@@ -233,9 +226,7 @@ namespace std {}     // namespace std
 using namespace std; // Just like VC++, we need a using here.
 
 // Doesn't exist on OSX; used in google.cc for send() to mean "no flags".
-#ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
-#endif
 
 // No SIGPWR on MacOSX.  SIGINFO seems suitably obscure.
 #undef GOOGLE_OBSCURE_SIGNAL
@@ -280,10 +271,22 @@ inline void* memrchr(const void* bytes, int find_char, size_t len) {
 
 #endif
 
-// Klocwork static analysis tool's C/C++ compiler kwcc
+// Klocwork static analysis tool's C/C++ complier kwcc
 #if defined(__KLOCWORK__)
 #define STATIC_ANALYSIS
 #endif // __KLOCWORK__
+
+// Annotate a function indicating the caller must examine the return value.
+// Use like:
+//   int foo() WARN_UNUSED_RESULT;
+// To explicitly ignore a result, see |ignore_result()| in <base/basictypes.h>.
+#ifndef WARN_UNUSED_RESULT
+#if defined(__GNUC__)
+#define WARN_UNUSED_RESULT __attribute__((warn_unused_result))
+#else
+#define WARN_UNUSED_RESULT
+#endif
+#endif
 
 // GCC-specific features
 
@@ -325,6 +328,10 @@ inline void* memrchr(const void* bytes, int find_char, size_t len) {
 #elif defined(__ARM_ARCH_7A__)
 #define CACHELINE_SIZE 64
 #endif
+#elif defined(__aarch64__)
+// Cache line sizes for aarch64(huawei kunpeng):
+// https://support.huaweicloud.com/tuningtip-kunpenggrf/kunpengtuning_12_0052.html
+#define CACHELINE_SIZE 128
 #endif
 
 // This is a NOP if CACHELINE_SIZE is not defined.
@@ -367,8 +374,7 @@ inline void* memrchr(const void* bytes, int find_char, size_t len) {
 // For deprecated functions or variables, generate a warning at usage sites.
 // Verified to work as early as GCC 3.1.1 and clang 3.2 (so we'll assume any
 // clang is new enough).
-#if defined(__clang__) || \
-        (defined(COMPILER_GCC) && (__GNUC__ * 10000 + __GNUC_MINOR__ * 100) >= 30200)
+#if defined(__clang__) || (defined(COMPILER_GCC) && (__GNUC__ * 10000 + __GNUC_MINOR__ * 100) >= 30200)
 #define ATTRIBUTE_DEPRECATED(msg) __attribute__((deprecated(msg)))
 #else
 #define ATTRIBUTE_DEPRECATED(msg)
@@ -452,6 +458,38 @@ inline void* memrchr(const void* bytes, int find_char, size_t len) {
 #define MUST_USE_RESULT __attribute__((warn_unused_result))
 #else
 #define MUST_USE_RESULT
+#endif
+
+// Annotate a virtual method indicating it must be overriding a virtual
+// method in the parent class.
+// Use like:
+//   virtual void foo() OVERRIDE;
+#if defined(COMPILER_MSVC)
+#define OVERRIDE override
+#elif defined(__clang__)
+#define OVERRIDE override
+#elif defined(COMPILER_GCC) && __cplusplus >= 201103 && (__GNUC__ * 10000 + __GNUC_MINOR__ * 100) >= 40700
+// GCC 4.7 supports explicit virtual overrides when C++11 support is enabled.
+#define OVERRIDE override
+#else
+#define OVERRIDE
+#endif
+
+// Annotate a virtual method indicating that subclasses must not override it,
+// or annotate a class to indicate that it cannot be subclassed.
+// Use like:
+//   virtual void foo() FINAL;
+//   class B FINAL : public A {};
+#if defined(COMPILER_MSVC)
+// TODO(jered): Change this to "final" when chromium no longer uses MSVC 2010.
+#define FINAL sealed
+#elif defined(__clang__)
+#define FINAL final
+#elif defined(COMPILER_GCC) && __cplusplus >= 201103 && (__GNUC__ * 10000 + __GNUC_MINOR__ * 100) >= 40700
+// GCC 4.7 supports explicit virtual overrides when C++11 support is enabled.
+#define FINAL final
+#else
+#define FINAL
 #endif
 
 #if defined(__GNUC__)
@@ -579,21 +617,16 @@ inline void* aligned_malloc(size_t size, int minimum_alignment) {
     // http://stackoverflow.com/questions/196329/osx-lacks-memalign
     // mac allocs are already 16-byte aligned.
     if (minimum_alignment <= 16) return malloc(size);
-// next, try to return page-aligned memory. perhaps overkill
-#ifndef _POSIX_C_SOURCE
-    int page_size = getpagesize();
-#else
-    int page_size = vm_page_size;
-#endif
-    if (minimum_alignment <= page_size) return valloc(size);
+    // next, try to return page-aligned memory. perhaps overkill
+    if (minimum_alignment <= getpagesize()) return valloc(size);
     // give up
     return NULL;
 #elif defined(OS_CYGWIN)
     return memalign(minimum_alignment, size);
 #else // !__APPLE__ && !OS_CYGWIN
-    void* ptr = NULL;
+    void* ptr = nullptr;
     if (posix_memalign(&ptr, minimum_alignment, size) != 0)
-        return NULL;
+        return nullptr;
     else
         return ptr;
 #endif
@@ -680,8 +713,7 @@ BASE_PORT_H_ALIGNTYPE_TEMPLATE(4096);
 BASE_PORT_H_ALIGNTYPE_TEMPLATE(8192);
 // Any larger and MSVC++ will complain.
 
-#define ALIGNED_CHAR_ARRAY(T, Size) \
-    typename AlignType<BASE_PORT_H_ALIGN_OF(T), sizeof(T) * Size>::result
+#define ALIGNED_CHAR_ARRAY(T, Size) typename AlignType<BASE_PORT_H_ALIGN_OF(T), sizeof(T) * Size>::result
 
 #undef BASE_PORT_H_ALIGNTYPE_TEMPLATE
 #undef BASE_PORT_H_ALIGN_ATTRIBUTE
@@ -868,8 +900,7 @@ inline int fpclassify_double(double x) {
 inline int fpclassify_float(float x) {
     uint32 bitwise_representation;
     memcpy(&bitwise_representation, &x, 4);
-    if ((bitwise_representation & 0x7f800000) == 0 && (bitwise_representation & 0x007fffff) != 0)
-        return FP_SUBNORMAL;
+    if ((bitwise_representation & 0x7f800000) == 0 && (bitwise_representation & 0x007fffff) != 0) return FP_SUBNORMAL;
     return fpclassify_double(x);
 }
 //
@@ -975,65 +1006,7 @@ struct PortableHashBase {};
 #define STREAM_SETF(s, flag) (s).setf(ios::flag)
 #endif
 
-// Portable handling of unaligned loads, stores, and copies.
-// On some platforms, like ARM, the copy functions can be more efficient
-// then a load and a store.
-
-#if defined(__i386) || defined(ARCH_ATHLON) || defined(__x86_64__) || defined(_ARCH_PPC)
-
-// x86 and x86-64 can perform unaligned loads/stores directly;
-// modern PowerPC hardware can also do unaligned integer loads and stores;
-// but note: the FPU still sends unaligned loads and stores to a trap handler!
-
-#define UNALIGNED_LOAD16(_p) (*reinterpret_cast<const uint16*>(_p))
-#define UNALIGNED_LOAD32(_p) (*reinterpret_cast<const uint32*>(_p))
-#define UNALIGNED_LOAD64(_p) (*reinterpret_cast<const uint64*>(_p))
-
-#define UNALIGNED_STORE16(_p, _val) (*reinterpret_cast<uint16*>(_p) = (_val))
-#define UNALIGNED_STORE32(_p, _val) (*reinterpret_cast<uint32*>(_p) = (_val))
-#define UNALIGNED_STORE64(_p, _val) (*reinterpret_cast<uint64*>(_p) = (_val))
-
-#elif defined(__arm__) && !defined(__ARM_ARCH_5__) && !defined(__ARM_ARCH_5T__) &&               \
-        !defined(__ARM_ARCH_5TE__) && !defined(__ARM_ARCH_5TEJ__) && !defined(__ARM_ARCH_6__) && \
-        !defined(__ARM_ARCH_6J__) && !defined(__ARM_ARCH_6K__) && !defined(__ARM_ARCH_6Z__) &&   \
-        !defined(__ARM_ARCH_6ZK__) && !defined(__ARM_ARCH_6T2__)
-
-// ARMv7 and newer support native unaligned accesses, but only of 16-bit
-// and 32-bit values (not 64-bit); older versions either raise a fatal signal,
-// do an unaligned read and rotate the words around a bit, or do the reads very
-// slowly (trip through kernel mode). There's no simple #define that says just
-// “ARMv7 or higher”, so we have to filter away all ARMv5 and ARMv6
-// sub-architectures. Newer gcc (>= 4.6) set an __ARM_FEATURE_ALIGNED #define,
-// so in time, maybe we can move on to that.
-//
-// This is a mess, but there's not much we can do about it.
-
-#define UNALIGNED_LOAD16(_p) (*reinterpret_cast<const uint16*>(_p))
-#define UNALIGNED_LOAD32(_p) (*reinterpret_cast<const uint32*>(_p))
-
-#define UNALIGNED_STORE16(_p, _val) (*reinterpret_cast<uint16*>(_p) = (_val))
-#define UNALIGNED_STORE32(_p, _val) (*reinterpret_cast<uint32*>(_p) = (_val))
-
-// TODO(user): NEON supports unaligned 64-bit loads and stores.
-// See if that would be more efficient on platforms supporting it,
-// at least for copies.
-
-inline uint64 UNALIGNED_LOAD64(const void* p) {
-    uint64 t;
-    memcpy(&t, p, sizeof t);
-    return t;
-}
-
-inline void UNALIGNED_STORE64(void* p, uint64 v) {
-    memcpy(p, &v, sizeof v);
-}
-
-#else
-
 #define NEED_ALIGNED_LOADS
-
-// These functions are provided for architectures that don't support
-// unaligned loads and stores.
 
 inline uint16 UNALIGNED_LOAD16(const void* p) {
     uint16 t;
@@ -1064,8 +1037,6 @@ inline void UNALIGNED_STORE32(void* p, uint32 v) {
 inline void UNALIGNED_STORE64(void* p, uint64 v) {
     memcpy(p, &v, sizeof v);
 }
-
-#endif
 
 #ifdef _LP64
 #define UNALIGNED_LOADW(_p) UNALIGNED_LOAD64(_p)
@@ -1130,8 +1101,7 @@ inline void UnalignedCopy64(const void* src, void* dst) {
 
 #define SIZEOF_MEMBER(t, f) sizeof(((t*)4096)->f)
 
-#define OFFSETOF_MEMBER(t, f) \
-    (reinterpret_cast<char*>(&reinterpret_cast<t*>(16)->f) - reinterpret_cast<char*>(16))
+#define OFFSETOF_MEMBER(t, f) (reinterpret_cast<char*>(&reinterpret_cast<t*>(16)->f) - reinterpret_cast<char*>(16))
 
 #ifdef PTHREADS_REDHAT_WIN32
 #include <iosfwd>

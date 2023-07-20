@@ -25,13 +25,14 @@
 #define PACKAGE_VERSION
 #endif
 
-#include <bfd.h>
+class bfd;
+class bfd_symbol;
 
 #include <mutex>
 #include <string>
 #include <vector>
 
-namespace doris {
+namespace starrocks {
 
 class BfdParser {
 public:
@@ -39,7 +40,7 @@ public:
     static BfdParser* create();
     static BfdParser* create(const std::string& file_name);
 
-    BfdParser(const std::string& file_name);
+    BfdParser(std::string file_name);
     ~BfdParser();
     int parse();
 
@@ -47,8 +48,8 @@ public:
     // Call parse before call this function
     // Return 0 if found and fill file_name, function_name, lineno
     //  -1 otherwise
-    int decode_address(const char* str, const char** end, std::string* file_name,
-                       std::string* function_name, unsigned int* lineno);
+    int decode_address(const char* str, const char** end, std::string* file_name, std::string* function_name,
+                       unsigned int* lineno);
 
     long num_symbols() const { return _num_symbols; }
 
@@ -72,4 +73,4 @@ private:
     unsigned int _symbol_size;
 };
 
-} // namespace doris
+} // namespace starrocks

@@ -54,8 +54,7 @@
       Macros are defined as calls to non-inlinable empty functions
       that are intercepted by Valgrind. */
 
-#ifndef __DYNAMIC_ANNOTATIONS_H__
-#define __DYNAMIC_ANNOTATIONS_H__
+#pragma once
 
 #ifndef DYNAMIC_ANNOTATIONS_ENABLED
 #define DYNAMIC_ANNOTATIONS_ENABLED 0
@@ -127,12 +126,10 @@
      Note: this annotation may not work properly if the race detector uses
      sampling, i.e. does not observe all memory accesses.
      */
-#define ANNOTATE_PUBLISH_MEMORY_RANGE(pointer, size) \
-    AnnotatePublishMemoryRange(__FILE__, __LINE__, pointer, size)
+#define ANNOTATE_PUBLISH_MEMORY_RANGE(pointer, size) AnnotatePublishMemoryRange(__FILE__, __LINE__, pointer, size)
 
 /* DEPRECATED. Don't use it. */
-#define ANNOTATE_UNPUBLISH_MEMORY_RANGE(pointer, size) \
-    AnnotateUnpublishMemoryRange(__FILE__, __LINE__, pointer, size)
+#define ANNOTATE_UNPUBLISH_MEMORY_RANGE(pointer, size) AnnotateUnpublishMemoryRange(__FILE__, __LINE__, pointer, size)
 
 /* DEPRECATED. Don't use it. */
 #define ANNOTATE_SWAP_MEMORY_RANGE(pointer, size)       \
@@ -240,8 +237,7 @@
 /* Enable (enable!=0) or disable (enable==0) race detection for all threads.
      This annotation could be useful if you want to skip expensive race analysis
      during some period of program execution, e.g. during initialization. */
-#define ANNOTATE_ENABLE_RACE_DETECTION(enable) \
-    AnnotateEnableRaceDetection(__FILE__, __LINE__, enable)
+#define ANNOTATE_ENABLE_RACE_DETECTION(enable) AnnotateEnableRaceDetection(__FILE__, __LINE__, enable)
 
 /* -------------------------------------------------------------
      Annotations useful for debugging. */
@@ -303,8 +299,7 @@
 
 /* Report that we expect a race on the variable at "address".
      Use only in unit tests for a race detector. */
-#define ANNOTATE_EXPECT_RACE(address, description) \
-    AnnotateExpectRace(__FILE__, __LINE__, address, description)
+#define ANNOTATE_EXPECT_RACE(address, description) AnnotateExpectRace(__FILE__, __LINE__, address, description)
 
 /* A no-op. Insert where you like to test the interceptors. */
 #define ANNOTATE_NO_OP(arg) AnnotateNoOp(__FILE__, __LINE__, arg)
@@ -445,23 +440,18 @@ void AnnotateBarrierInit(const char* file, int line, const volatile void* barrie
 void AnnotateBarrierWaitBefore(const char* file, int line, const volatile void* barrier);
 void AnnotateBarrierWaitAfter(const char* file, int line, const volatile void* barrier);
 void AnnotateBarrierDestroy(const char* file, int line, const volatile void* barrier);
-void AnnotateCondVarWait(const char* file, int line, const volatile void* cv,
-                         const volatile void* lock);
+void AnnotateCondVarWait(const char* file, int line, const volatile void* cv, const volatile void* lock);
 void AnnotateCondVarSignal(const char* file, int line, const volatile void* cv);
 void AnnotateCondVarSignalAll(const char* file, int line, const volatile void* cv);
-void AnnotatePublishMemoryRange(const char* file, int line, const volatile void* address,
-                                long size);
-void AnnotateUnpublishMemoryRange(const char* file, int line, const volatile void* address,
-                                  long size);
+void AnnotatePublishMemoryRange(const char* file, int line, const volatile void* address, long size);
+void AnnotateUnpublishMemoryRange(const char* file, int line, const volatile void* address, long size);
 void AnnotatePCQCreate(const char* file, int line, const volatile void* pcq);
 void AnnotatePCQDestroy(const char* file, int line, const volatile void* pcq);
 void AnnotatePCQPut(const char* file, int line, const volatile void* pcq);
 void AnnotatePCQGet(const char* file, int line, const volatile void* pcq);
 void AnnotateNewMemory(const char* file, int line, const volatile void* address, long size);
-void AnnotateExpectRace(const char* file, int line, const volatile void* address,
-                        const char* description);
-void AnnotateBenignRace(const char* file, int line, const volatile void* address,
-                        const char* description);
+void AnnotateExpectRace(const char* file, int line, const volatile void* address, const char* description);
+void AnnotateBenignRace(const char* file, int line, const volatile void* address, const char* description);
 void AnnotateBenignRaceSized(const char* file, int line, const volatile void* address, long size,
                              const char* description);
 void AnnotateMutexIsUsedAsCondVar(const char* file, int line, const volatile void* mu);
@@ -470,17 +460,47 @@ void AnnotateThreadName(const char* file, int line, const char* name);
 ANNOTALYSIS_STATIC_INLINE
 void AnnotateIgnoreReadsBegin(const char* file, int line)
         ANNOTALYSIS_IGNORE_READS_BEGIN ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY ANNOTALYSIS_STATIC_INLINE
-        void AnnotateIgnoreReadsEnd(const char* file, int line) ANNOTALYSIS_IGNORE_READS_END
-        ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY ANNOTALYSIS_STATIC_INLINE
-        void AnnotateIgnoreWritesBegin(const char* file, int line) ANNOTALYSIS_IGNORE_WRITES_BEGIN
-        ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY ANNOTALYSIS_STATIC_INLINE
-        void AnnotateIgnoreWritesEnd(const char* file, int line)
-                ANNOTALYSIS_IGNORE_WRITES_END ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY
+        void AnnotateIgnoreReadsEnd(const char* file, int line)
+                ANNOTALYSIS_IGNORE_READS_END ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY ANNOTALYSIS_STATIC_INLINE
+        void AnnotateIgnoreWritesBegin(const char* file, int line)
+                ANNOTALYSIS_IGNORE_WRITES_BEGIN ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY ANNOTALYSIS_STATIC_INLINE
+        void AnnotateIgnoreWritesEnd(const char* file,
+                                     int line) ANNOTALYSIS_IGNORE_WRITES_END ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY
         void AnnotateIgnoreSyncBegin(const char* file, int line);
 void AnnotateIgnoreSyncEnd(const char* file, int line);
 void AnnotateEnableRaceDetection(const char* file, int line, int enable);
 void AnnotateNoOp(const char* file, int line, const volatile void* arg);
 void AnnotateFlushState(const char* file, int line);
+
+/* Return non-zero value if running under valgrind.
+
+  If "valgrind.h" is included into dynamic_annotations.c,
+  the regular valgrind mechanism will be used.
+  See http://valgrind.org/docs/manual/manual-core-adv.html about
+  RUNNING_ON_VALGRIND and other valgrind "client requests".
+  The file "valgrind.h" may be obtained by doing
+     svn co svn://svn.valgrind.org/valgrind/trunk/include
+
+  If for some reason you can't use "valgrind.h" or want to fake valgrind,
+  there are two ways to make this function return non-zero:
+    - Use environment variable: export RUNNING_ON_VALGRIND=1
+    - Make your tool intercept the function RunningOnValgrind() and
+      change its return value.
+ */
+int RunningOnValgrind(void);
+
+/* ValgrindSlowdown returns:
+    * 1.0, if (RunningOnValgrind() == 0)
+    * 50.0, if (RunningOnValgrind() != 0 && getenv("VALGRIND_SLOWDOWN") == NULL)
+    * atof(getenv("VALGRIND_SLOWDOWN")) otherwise
+   This function can be used to scale timeout values:
+   EXAMPLE:
+   for (;;) {
+     DoExpensiveBackgroundTask();
+     SleepForSeconds(5 * ValgrindSlowdown());
+   }
+ */
+double ValgrindSlowdown(void);
 
 /* AddressSanitizer annotations from LLVM asan_interface.h */
 
@@ -513,7 +533,7 @@ void __asan_unpoison_memory_region(void const volatile* addr, size_t size);
 
 // Sets the callback to be called right before death on error.
 // Passing 0 will unset the callback.
-void __asan_set_death_callback(void (*callback)(void));
+void __asan_set_death_callback(void (*callback)());
 
 #if defined(__SANITIZE_ADDRESS__) || defined(ADDRESS_SANITIZER)
 #define ASAN_SET_DEATH_CALLBACK(cb) __asan_set_death_callback((cb))
@@ -536,23 +556,22 @@ void __asan_set_death_callback(void (*callback)(void));
      one can use
         ... = ANNOTATE_UNPROTECTED_READ(x); */
 template <class T>
- T ANNOTATE_UNPROTECTED_READ(const volatile T& x) ANNOTALYSIS_UNPROTECTED_READ {
+inline T ANNOTATE_UNPROTECTED_READ(const volatile T& x) ANNOTALYSIS_UNPROTECTED_READ {
     ANNOTATE_IGNORE_READS_BEGIN();
     T res = x;
     ANNOTATE_IGNORE_READS_END();
     return res;
 }
 /* Apply ANNOTATE_BENIGN_RACE_SIZED to a static variable. */
-#define ANNOTATE_BENIGN_RACE_STATIC(static_var, description)            \
-    namespace {                                                         \
-    class static_var##_annotator {                                      \
-    public:                                                             \
-        static_var##_annotator() {                                      \
-            ANNOTATE_BENIGN_RACE_SIZED(&static_var, sizeof(static_var), \
-                                       #static_var ": " description);   \
-        }                                                               \
-    };                                                                  \
-    static static_var##_annotator the##static_var##_annotator;          \
+#define ANNOTATE_BENIGN_RACE_STATIC(static_var, description)                                           \
+    namespace {                                                                                        \
+    class static_var##_annotator {                                                                     \
+    public:                                                                                            \
+        static_var##_annotator() {                                                                     \
+            ANNOTATE_BENIGN_RACE_SIZED(&static_var, sizeof(static_var), #static_var ": " description); \
+        }                                                                                              \
+    };                                                                                                 \
+    static static_var##_annotator the##static_var##_annotator;                                         \
     }
 #else /* DYNAMIC_ANNOTATIONS_ENABLED == 0 */
 
@@ -605,7 +624,7 @@ template <class T>
 #if defined(__cplusplus)
 #undef ANNOTATE_UNPROTECTED_READ
 template <class T>
- T ANNOTATE_UNPROTECTED_READ(const volatile T& x) ANNOTALYSIS_UNPROTECTED_READ {
+inline T ANNOTATE_UNPROTECTED_READ(const volatile T& x) ANNOTALYSIS_UNPROTECTED_READ {
     ANNOTATE_IGNORE_READS_BEGIN();
     T res = x;
     ANNOTATE_IGNORE_READS_END();
@@ -645,7 +664,7 @@ template <class T>
 #if defined(__cplusplus)
 #undef ANNOTATE_UNPROTECTED_READ
 template <class T>
- T ANNOTATE_UNPROTECTED_READ(const volatile T& x) {
+inline T ANNOTATE_UNPROTECTED_READ(const volatile T& x) {
     ANNOTATE_IGNORE_READS_BEGIN();
     T res = x;
     ANNOTATE_IGNORE_READS_END();
@@ -658,5 +677,3 @@ template <class T>
 /* Undefine the macros intended only in this file. */
 #undef ANNOTALYSIS_STATIC_INLINE
 #undef ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY
-
-#endif /* __DYNAMIC_ANNOTATIONS_H__ */

@@ -21,7 +21,7 @@
 
 #define ENABLE_DEBUG_COUNTERS 1
 
-namespace doris {
+namespace starrocks {
 
 // Runtime counters have a two-phase lifecycle - creation and update. This is not
 // convenient for debugging where we would like to add and remove counters with a minimum
@@ -50,8 +50,7 @@ public:
 #define DEBUG_COUNTER_SET(counter_name, v) \
     COUNTER_SET(DebugRuntimeProfile::profile().AddCounter(counter_name, TUnit::UNIT), v)
 
-#define PRETTY_PRINT_DEBUG_COUNTERS(ostream_ptr) \
-    DebugRuntimeProfile::profile().PrettyPrint(ostream_ptr)
+#define PRETTY_PRINT_DEBUG_COUNTERS(ostream_ptr) DebugRuntimeProfile::profile().PrettyPrint(ostream_ptr)
 
 #else
 
@@ -62,4 +61,4 @@ public:
 
 #endif // ENABLE_DEBUG_COUNTERS
 
-} // namespace doris
+} // namespace starrocks

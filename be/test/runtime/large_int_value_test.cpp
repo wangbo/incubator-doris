@@ -17,24 +17,26 @@
 
 #include "runtime/large_int_value.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include <gtest/gtest.h>
 
+#include <boost/lexical_cast.hpp>
 #include <iostream>
-#include <limits>
+#include <sstream>
 #include <string>
 
-#include "gtest/gtest_pred_impl.h"
+#include "common/configbase.h"
+#include "common/logging.h"
+#include "types/constexpr.h"
 
-namespace doris {
+namespace starrocks {
 
 class LargeIntValueTest : public testing::Test {
 public:
-    LargeIntValueTest() {}
+    LargeIntValueTest() = default;
 
 protected:
-    virtual void SetUp() {}
-    virtual void TearDown() {}
+    void SetUp() override {}
+    void TearDown() override {}
 };
 
 TEST_F(LargeIntValueTest, string_to_largeint) {
@@ -44,7 +46,7 @@ TEST_F(LargeIntValueTest, string_to_largeint) {
         ss << str;
         __int128 v;
         ss >> v;
-        EXPECT_EQ(v, 1024);
+        ASSERT_EQ(v, 1024);
     }
 
     {
@@ -53,7 +55,7 @@ TEST_F(LargeIntValueTest, string_to_largeint) {
         ss << str;
         __int128 v;
         ss >> v;
-        EXPECT_TRUE(v == MAX_INT128);
+        ASSERT_TRUE(v == MAX_INT128);
     }
 
     {
@@ -62,7 +64,7 @@ TEST_F(LargeIntValueTest, string_to_largeint) {
         ss << str;
         __int128 v;
         ss >> v;
-        EXPECT_TRUE(v == MIN_INT128);
+        ASSERT_TRUE(v == MIN_INT128);
     }
 }
 
@@ -71,7 +73,7 @@ TEST_F(LargeIntValueTest, largeint_to_string) {
         __int128 v1 = std::numeric_limits<int64_t>::max();
         std::stringstream ss;
         ss << v1;
-        EXPECT_EQ(ss.str(), "9223372036854775807");
+        ASSERT_EQ(ss.str(), "9223372036854775807");
     }
 
     {
@@ -89,12 +91,4 @@ TEST_F(LargeIntValueTest, largeint_to_string) {
     }
 }
 
-TEST_F(LargeIntValueTest, largeint_to_string_benchmark) {
-    for (int i = 0; i < 10000000; i++) {
-        __int128 v2 = MAX_INT128;
-        EXPECT_EQ(LargeIntValue::to_string(v2), "170141183460469231731687303715884105727");
-        LargeIntValue::to_string(v2);
-    }
-}
-
-} // end namespace doris
+} // end namespace starrocks

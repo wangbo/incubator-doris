@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/http/action/reload_tablet_action.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,33 +34,28 @@
 
 #include "http/action/reload_tablet_action.h"
 
-#include <gen_cpp/AgentService_types.h>
-
-#include <boost/lexical_cast/bad_lexical_cast.hpp>
 #include <sstream>
 #include <string>
 
 #include "boost/lexical_cast.hpp"
 #include "common/logging.h"
-#include "common/status.h"
 #include "http/http_channel.h"
 #include "http/http_request.h"
 #include "http/http_status.h"
-#include "olap/storage_engine.h"
 #include "runtime/exec_env.h"
+#include "storage/storage_engine.h"
 
-namespace doris {
+namespace starrocks {
 
 const std::string PATH = "path";
 const std::string TABLET_ID = "tablet_id";
 const std::string SCHEMA_HASH = "schema_hash";
 
-ReloadTabletAction::ReloadTabletAction(ExecEnv* exec_env, TPrivilegeHier::type hier,
-                                       TPrivilegeType::type type)
-        : HttpHandlerWithAuth(exec_env, hier, type) {}
+ReloadTabletAction::ReloadTabletAction(ExecEnv* exec_env) : _exec_env(exec_env) {}
 
 void ReloadTabletAction::handle(HttpRequest* req) {
     LOG(INFO) << "accept one request " << req->debug_string();
+
     // Get path
     const std::string& path = req->param(PATH);
     if (path.empty()) {
@@ -87,14 +99,13 @@ void ReloadTabletAction::handle(HttpRequest* req) {
     LOG(INFO) << "deal with reload tablet request finished! tablet id: " << tablet_id;
 }
 
-void ReloadTabletAction::reload(const std::string& path, int64_t tablet_id, int32_t schema_hash,
-                                HttpRequest* req) {
+void ReloadTabletAction::reload(const std::string& path, int64_t tablet_id, int32_t schema_hash, HttpRequest* req) {
     TCloneReq clone_req;
     clone_req.__set_tablet_id(tablet_id);
     clone_req.__set_schema_hash(schema_hash);
 
     Status res = Status::OK();
-    res = _exec_env->storage_engine()->load_header(path, clone_req);
+    res = StorageEngine::instance()->load_header(path, clone_req);
     if (!res.ok()) {
         LOG(WARNING) << "load header failed. status: " << res << ", signature: " << tablet_id;
         std::string error_msg = std::string("load header failed");
@@ -108,4 +119,4 @@ void ReloadTabletAction::reload(const std::string& path, int64_t tablet_id, int3
     }
 }
 
-} // end namespace doris
+} // end namespace starrocks

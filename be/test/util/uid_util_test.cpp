@@ -17,30 +17,29 @@
 
 #include "util/uid_util.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include <gtest/gtest.h>
 
-#include "gtest/gtest_pred_impl.h"
+#include <iostream>
 
-namespace doris {
+namespace starrocks {
 class UidUtilTest : public testing::Test {
 public:
-    UidUtilTest() {}
-    virtual ~UidUtilTest() {}
+    UidUtilTest() = default;
+    ~UidUtilTest() override = default;
 };
 
 TEST_F(UidUtilTest, UniqueId) {
     {
         UniqueId id = UniqueId::gen_uid();
         std::string hex_str = id.to_string();
-        EXPECT_STRNE("0000000000000000-0000000000000000", hex_str.c_str());
+        ASSERT_STRNE("0000000000000000-0000000000000000", hex_str.c_str());
     }
     {
         UniqueId id(123456789, 987654321);
         std::string hex_str = id.to_string();
-        EXPECT_STREQ("00000000075bcd15-000000003ade68b1", hex_str.c_str());
+        ASSERT_STREQ("00000000075bcd15-000000003ade68b1", hex_str.c_str());
         UniqueId id2("00000000075bcd15", "000000003ade68b1");
-        EXPECT_TRUE(id == id2);
+        ASSERT_TRUE(id == id2);
     }
     {
         PUniqueId puid;
@@ -48,9 +47,9 @@ TEST_F(UidUtilTest, UniqueId) {
         puid.set_lo(98765432123456789);
         UniqueId id(puid);
         std::string hex_str = id.to_string();
-        EXPECT_STREQ("002bdc546291f4b1-015ee2a321ce7d15", hex_str.c_str());
+        ASSERT_STREQ("002bdc546291f4b1-015ee2a321ce7d15", hex_str.c_str());
         UniqueId id2("002bdc546291f4b1", "015ee2a321ce7d15");
-        EXPECT_TRUE(id == id2);
+        ASSERT_TRUE(id == id2);
     }
     {
         TUniqueId tuid;
@@ -58,9 +57,9 @@ TEST_F(UidUtilTest, UniqueId) {
         tuid.__set_lo(98765432123456789);
         UniqueId id(tuid);
         std::string hex_str = id.to_string();
-        EXPECT_STREQ("002bdc546291f4b1-015ee2a321ce7d15", hex_str.c_str());
+        ASSERT_STREQ("002bdc546291f4b1-015ee2a321ce7d15", hex_str.c_str());
         UniqueId id2("002bdc546291f4b1", "015ee2a321ce7d15");
-        EXPECT_TRUE(id == id2);
+        ASSERT_TRUE(id == id2);
     }
     {
         TUniqueId tuid;
@@ -69,9 +68,9 @@ TEST_F(UidUtilTest, UniqueId) {
         UniqueId id(tuid);
         std::stringstream ss;
         ss << id;
-        EXPECT_STREQ("002bdc546291f4b1-015ee2a321ce7d15", ss.str().c_str());
+        ASSERT_STREQ("002bdc546291f4b1-015ee2a321ce7d15", ss.str().c_str());
         UniqueId id2("002bdc546291f4b1", "015ee2a321ce7d15");
-        EXPECT_TRUE(id == id2);
+        ASSERT_TRUE(id == id2);
     }
 
     {
@@ -81,13 +80,13 @@ TEST_F(UidUtilTest, UniqueId) {
         UniqueId id(tuid);
         std::stringstream ss;
         ss << id;
-        EXPECT_STREQ("002bdc546291f4b1-015ee2a321ce7d15", ss.str().c_str());
+        ASSERT_STREQ("002bdc546291f4b1-015ee2a321ce7d15", ss.str().c_str());
         UniqueId id2("002bdc546291f4b1", "015ee2a321ce7d15");
-        EXPECT_TRUE(id == id2);
-        EXPECT_FALSE(id != id2);
+        ASSERT_TRUE(id == id2);
+        ASSERT_FALSE(id != id2);
         UniqueId id3("002bdc546291f4b1", "015ee2a321ce7d16");
-        EXPECT_TRUE(id != id3);
-        EXPECT_FALSE(id == id3);
+        ASSERT_TRUE(id != id3);
+        ASSERT_FALSE(id == id3);
     }
 }
 
@@ -99,16 +98,16 @@ TEST_F(UidUtilTest, Hash) {
         tuid.__set_hi(1);
         tuid.__set_lo(2);
 
-        EXPECT_EQ(hasher(uid), hasher(tuid));
-        EXPECT_TRUE(uid == UniqueId(tuid));
+        ASSERT_EQ(hasher(uid), hasher(tuid));
+        ASSERT_TRUE(uid == UniqueId(tuid));
     }
     {
         TUniqueId tuid;
         tuid.__set_hi(1);
         tuid.__set_lo(1);
 
-        EXPECT_NE(hasher(uid), hasher(tuid));
+        ASSERT_NE(hasher(uid), hasher(tuid));
     }
 }
 
-} // namespace doris
+} // namespace starrocks

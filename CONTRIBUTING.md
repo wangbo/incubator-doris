@@ -1,75 +1,143 @@
-<!-- 
-Licensed to the Apache Software Foundation (ASF) under one
-or more contributor license agreements.  See the NOTICE file
-distributed with this work for additional information
-regarding copyright ownership.  The ASF licenses this file
-to you under the Apache License, Version 2.0 (the
-"License"); you may not use this file except in compliance
-with the License.  You may obtain a copy of the License at
+# Contributing to StarRocks
 
-  http://www.apache.org/licenses/LICENSE-2.0
+StarRocks is built by an open and friendly community. We are dedicated to building a collaborative, inspiring, and exuberant open-source community for our members. Everyone is more than welcome to join our community to get help and to contribute to StarRocks.
 
-Unless required by applicable law or agreed to in writing,
-software distributed under the License is distributed on an
-"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-KIND, either express or implied.  See the License for the
-specific language governing permissions and limitations
-under the License.
--->
+## Table of content
 
-# Contribute to Doris
+- [How to contribute](#How-to-contribute)
+- [Contributing guideline](#Contributing-guideline)
+  - [Report a bug](#Report-a-bug)
+  - [Contributing code](#Contributing-code)
+    - [General workflow](#General-workflow)
+    - [StarRocks code structure](#StarRocks-code-structure)
+    - [Important directories](#Important-directories)
+    - [Set your development environment](#Set-your-development-environment)
+    - [Coding style](#Coding-style)
+    - [Unit test](#Unit-test)
+    - [Commit message](#Commit-message)
+    - [PR body](#PR-body)
+    - [Contributor License Agreement](#Contributor-License-Agreement)
+    - [Best practices](#Best-practices)
+    - [Important contacts](#Important-contacts)
+  - [Contributing test case](#Contributing-test-case)
+  - [Reviewing code](#Reviewing-code)
+  - [Contributing documentation](#Contributing-documentation)
+  - [Help community members](#Help-community-members)
+  - [Spread our idea](#Spread-our-idea)
+- [Code of conduct](#Code-of-conduct)
 
-Thank you very much for your interest in the Doris project. We welcome your suggestions, comments (including criticisms), comments and contributions to the Doris project.
+## How to contribute
 
-Your suggestions, comments and comments on Doris can be made directly through GitHub's [Issues](https://github.com/apache/doris/issues/new/choose).
+Contributions to StarRocks are cordially welcome from everyone. Contributing to StarRocks is not limited to contributing codes. Below, we list different approaches to contributing to our community.
 
-There are many ways to participate in and contribute to Doris projects: code implementation, test writing, process tool improvement, document improvement, and so on. Any contribution will be welcomed and you will be added to the list of contributors. Further, with sufficient contributions, you will have the opportunity to become a Committer of Apache with Apache mailbox and be included in the list of [Apache Committers](http://people.apache.org/committer-index.html).
+|Contribution|Details|
+|------------|-------|
+|Report a bug|You can [file an issue](https://github.com/StarRocks/starrocks/issues/new/choose) To report a bug with StarRock.|
+|Contribute code|You can contribute your code by fixing a bug or implementing a feature.|
+|Contribute test case|You can contribute your test cases.|
+|Help review code|If you are an active contributor or committer of StarRocks, you can help us review the pull requests (PRs).|
+|Contribute documentation|StarRocks community maintains a tremendous amount of documentation both in Chinese and English. You can contribute documentation changes by fixing a documentation bug or proposing a new piece of content.|
+|Help StarRocks users|You can help newcomers who meet difficulties in our community.|
+|Spread the word about StarRocks|You can author an article or give a talk about us to help us spread our technology to the world.|
 
-Any questions, you can contact us to get timely answers, including dev mail list or Slack.
+## Contributing guideline
 
-## Initial contact
+This guide describes how to make various types of contribution to StarRocks community.
 
-For the first time in Doris community, you can:
+### Report a bug
 
-* Follow [Doris GitHub](https://github.com/apache/doris)
-* Subscribe to our [mailing list](./docs/en/community/subscribe-mail-list.md);
-* Join Doris [Slack](https://join.slack.com/t/apachedoriscommunity/shared_invite/zt-11jb8gesh-7IukzSrdea6mqoG0HB4gZg)
+To report a bug with StarRocks, you should [file an issue](https://github.com/StarRocks/starrocks/issues/new/choose) in StarRocks repository, and provide necessary information and, if possible, steps to reproduce the bug in the issue body.
 
-Learn the development trends of Doris project in time and give your opinions on the topics you are concerned about.
+### Contributing code
 
-## Doris's code and documentation
+You can contribute your code by fixing a bug you identified or in an [existing issue](https://github.com/StarRocks/starrocks/issues). If you are new to this project, you may find the issues labelled good-first-issue suitable for your first contribution. Usually, such issues provide a detailed description of the procedure to solve the problem in its issue body.
 
-As you can see from [GitHub](https://github.com/apache/doris), Apache Doris code base mainly consists of three parts: Frontend (FE), Backend (BE) and Broker (to support file reading on external storage systems such as HDFS). Documents are mainly the wiki on Doris website and GitHub, as well as the online help manual when running Doris. Details of these components can be found in the following table:
+If you are confident with your programming proficiency, you can also contribute your code by helping develop a feature for StarRocks.
 
-| Component Name                                                    | Component Description                                      | Related Language |
-|-------------------------------------------------------------------|------------------------------------------------------------|------------------|
-| [Frontend daemon (FE)](https://github.com/apache/doris) | consists of a query coordinator and a metadata manager     | Java             |
-| [Backend daemon (BE)](https://github.com/apache/doris)  | Responsible for storing data and executing query fragments | C++              |
-| [Broker](https://github.com/apache/doris)               | Read HDFS data to Doris                                    | Java             |
-| [Website](https://github.com/apache/doris-website)      | Doris Website                                              | Markdown         |
-| [Github Wiki](https://github.com/apache/doris/wiki)     | Doris Github Wiki                                          | Markdown         |
-| Doris Runtime Help Document                                       | Online Help Manual at Doris Runtime                        | Markdown         |
+#### General workflow
 
-## Improving documentation
+Before getting your hands on codes, you should comment and mention the repository maintainer in the issue body, and inform him/her to assign to you the issue that you wish to solve. It is recommended to share your plan on how to solve this problem in the issue body as well.
 
-Documentation is the most important way for you to understand Apache Doris, and it's where we need help most!
+In StarRocks community, we follow the fork-and-merge GitHub workflow when contributing code.
 
-Browse the document, you can deepen your understanding of Doris, can also help you understand Doris's function and technical details, if you find that the document has problems, please contact us in time;
+1. Create a fork of StarRocks in your GitHub account.
+2. Clone this forked repository to your local device.
+3. Check out a new branch based on the branch you expect to contribute.
+4. Commit your code changes on the new branch.
+5. Push the branch with code changes to GitHub.
+6. Create a PR to submit your code changes.
 
-If you are interested in improving the quality of documents, whether it is revising the address of a page, correcting a link, and writing a better introductory document, we are very welcome!
+The repository maintainers will review your code changes as soon as possible. Your commits will be merged once approved.
 
-Most of our documents are written in Markdown format, and you can modify and submit document changes directly through `docs/` in [GitHub](https://github.com/apache/doris). If you submit code changes, you can refer to [Pull Request](./docs/en/community/how-to-contribute/pull-request.md).
+For detailed instruction on GitHub workflow, see [StarRocks GitHub Workflow](https://github.com/StarRocks/community/blob/main/Contributors/guide/workflow.md).
 
-## If a Bug or problem is found
+#### StarRocks code structure
 
-If a Bug or problem is found, you can directly raise a new Issue through GitHub's [Issues](https://github.com/apache/doris/issues/new/choose), and we will have someone deal with it regularly.
+TBC
 
-You can also fix it yourself by reading the analysis code (of course, it's better to talk to us before that, maybe someone has fixed the same problem) and submit a [Pull Request](./docs/en/community/how-to-contribute/pull-request.md).
+#### Important directories
 
-## Modify the code and submit PR (Pull Request)
+TBC
 
-You can download the code, compile and install it, deploy and run it for a try (refer to the [compilation document](./docs/en/installing/compilation.md)) to see if it works as you expected. If you have problems, you can contact us directly, ask questions or fix them by reading and analyzing the source code.
+#### Set your development environment
 
-Whether it's fixing Bugs or adding Features, we're all very welcome. If you want to submit code to Doris, you need to create a new branch for your submitted code from the fork code library on GitHub to your project space, add the source project upstream, and submit PR.
+1. For FE development environment, see [The development configuration setup for StarRocks on IDEA](https://github.com/StarRocks/community/blob/main/Contributors/guide/IDEA.md).
+2. For BE development environment, see [The development configuration setup for StarRocks on Clion](https://github.com/StarRocks/community/blob/main/Contributors/guide/Clion.md).
 
-About how to submit a PR refer to [Pull Request](./docs/en/community/how-to-contribute/pull-request.md).
+#### Coding style
+
+TBC
+
+#### Unit test
+
+TBC
+
+#### Commit message
+
+- Write your commit message in English.
+- Start your commit message with a verb clause initiated with an upper case letter.
+- Use concise, explicit language.
+
+#### PR body
+
+- You should relate the issue you worked on in the PR body.
+- It is recommended to submit ONE commit in ONE PR.
+See [PR template](https://github.com/StarRocks/starrocks/blob/main/.github/PULL_REQUEST_TEMPLATE.md) for more inforamtion.
+
+#### Contributor License Agreement
+
+To get your PR merged, you must [submit your Contributor License Agreement (CLA)](https://cla-assistant.io/StarRocks/starrocks) first. You only need to submit it ONCE.
+
+#### Best practices
+
+TBC
+
+#### Important contacts
+
+Whenever you have difficulties in development, you can reach out to the following members for help. You can mention them in your issue or PR.
+
+- TBC
+
+### Contributing test case
+
+TBC
+
+### Reviewing code
+
+TBC
+
+### Contributing documentation
+
+To contribute to StarRocks documentation, please refer to [Document Contribution Guideline](https://github.com/StarRocks/docs/blob/main/README.md).
+
+### Help community members
+
+If you are a proficient StarRocks user, you can contribute to our community by helping new members solve the problems when they use StarRocks.
+
+### Spread our idea
+
+You are welcome to author a blog article about StarRocks in the media, or host a live broadcast to spread StarRocks to the world. Please contact opensource@starrocks.com for more information and instructions.
+
+## Code of conduct
+
+All members in the community are instructed to follow our [Code of Conduct](https://github.com/StarRocks/starrocks/blob/main/CODE_OF_CONDUCT.md).

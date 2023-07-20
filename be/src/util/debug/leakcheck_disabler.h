@@ -14,28 +14,26 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-
 #pragma once
 
 #include "gutil/macros.h"
 #include "util/debug/leak_annotations.h"
 
-namespace doris {
-namespace debug {
+namespace starrocks::debug {
 
 // Scoped object that generically disables LSAN leak checking in a given scope.
 // While this object is alive, calls to "new" will not be checked for leaks.
 class ScopedLeakCheckDisabler {
 public:
-    ScopedLeakCheckDisabler() {}
+    ScopedLeakCheckDisabler() = default;
 
 private:
 #if defined(ADDRESS_SANITIZER) || defined(LEAK_SANITIZER)
     ScopedLSANDisabler lsan_disabler;
 #endif
 
-    DISALLOW_COPY_AND_ASSIGN(ScopedLeakCheckDisabler);
+    ScopedLeakCheckDisabler(const ScopedLeakCheckDisabler&) = delete;
+    const ScopedLeakCheckDisabler& operator=(const ScopedLeakCheckDisabler&) = delete;
 };
 
-} // namespace debug
-} // namespace doris
+} // namespace starrocks::debug

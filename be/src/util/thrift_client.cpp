@@ -17,16 +17,13 @@
 
 #include "util/thrift_client.h"
 
-#include <thrift/transport/TTransport.h>
-#include <thrift/transport/TTransportException.h>
-// IWYU pragma: no_include <bits/chrono.h>
-#include <chrono> // IWYU pragma: keep
+#include <ostream>
 #include <string>
-#include <thread>
 
 #include "gutil/strings/substitute.h"
+#include "util/monotime.h"
 
-namespace doris {
+namespace starrocks {
 
 Status ThriftClientImpl::open() {
     try {
@@ -37,16 +34,15 @@ Status ThriftClientImpl::open() {
         try {
             _transport->close();
         } catch (const apache::thrift::transport::TTransportException& e) {
-            VLOG_CRITICAL << "Error closing socket to: " << ipaddress() << ":" << port()
-                          << ", ignoring (" << e.what() << ")";
+            VLOG(1) << "Error closing socket to: " << ipaddress() << ":" << port() << ", ignoring (" << e.what() << ")";
         }
         // In certain cases in which the remote host is overloaded, this failure can
         // happen quite frequently. Let's print this error message without the stack
         // trace as there aren't many callers of this function.
-        const std::string& err_msg = strings::Substitute("Couldn't open transport for $0:$1 ($2)",
-                                                         ipaddress(), port(), e.what());
-        VLOG_CRITICAL << err_msg;
-        return Status::RpcError(err_msg);
+        const std::string& err_msg =
+                strings::Substitute("Couldn't open transport for $0:$1 ($2)", ipaddress(), port(), e.what());
+        VLOG(1) << err_msg;
+        return Status::ThriftRpcError(err_msg);
     }
     return Status::OK();
 }
@@ -72,7 +68,7 @@ Status ThriftClientImpl::open_with_retry(int num_tries, int wait_ms) {
             LOG(INFO) << "(Attempt " << try_count << " of " << num_tries << ")";
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(wait_ms));
+        SleepFor(MonoDelta::FromMilliseconds(wait_ms));
     }
 
     return status;
@@ -80,23 +76,19 @@ Status ThriftClientImpl::open_with_retry(int num_tries, int wait_ms) {
 
 void ThriftClientImpl::close() {
     try {
-        if (_transport != nullptr && _transport->isOpen()) {
-            _transport->close();
-        }
+        if (_transport != nullptr && _transport->isOpen()) _transport->close();
     } catch (const apache::thrift::transport::TTransportException& e) {
-        LOG(INFO) << "Error closing connection to: " << ipaddress() << ":" << port()
-                  << ", ignoring (" << e.what() << ")";
+        LOG(INFO) << "Error closing connection to: " << ipaddress() << ":" << port() << ", ignoring (" << e.what()
+                  << ")";
         // Forcibly close the socket (since the transport may have failed to get that far
         // during close())
         try {
-            if (_socket != nullptr) {
-                _socket->close();
-            }
+            if (_socket != nullptr) _socket->close();
         } catch (const apache::thrift::transport::TTransportException& e) {
-            LOG(INFO) << "Error closing socket to: " << ipaddress() << ":" << port()
-                      << ", ignoring (" << e.what() << ")";
+            LOG(INFO) << "Error closing socket to: " << ipaddress() << ":" << port() << ", ignoring (" << e.what()
+                      << ")";
         }
     }
 }
 
-} // namespace doris
+} // namespace starrocks

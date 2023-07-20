@@ -17,26 +17,20 @@
 
 #include "exec/es/es_scroll_query.h"
 
-#include <glog/logging.h>
-#include <rapidjson/encodings.h>
-#include <rapidjson/rapidjson.h>
-#include <stdlib.h>
-
 #include <sstream>
 
+#include "common/logging.h"
+#include "exec/es/es_query_builder.h"
 #include "exec/es/es_scan_reader.h"
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 
-namespace doris {
+namespace starrocks {
 
-ESScrollQueryBuilder::ESScrollQueryBuilder() {}
+ESScrollQueryBuilder::ESScrollQueryBuilder() = default;
 
-ESScrollQueryBuilder::~ESScrollQueryBuilder() {}
-
-std::string ESScrollQueryBuilder::build_next_scroll_body(const std::string& scroll_id,
-                                                         const std::string& scroll) {
+std::string ESScrollQueryBuilder::build_next_scroll_body(const std::string& scroll_id, const std::string& scroll) {
     rapidjson::Document scroll_dsl;
     rapidjson::Document::AllocatorType& allocator = scroll_dsl.GetAllocator();
     scroll_dsl.SetObject();
@@ -62,24 +56,22 @@ std::string ESScrollQueryBuilder::build_clear_scroll_body(const std::string& scr
 }
 
 std::string ESScrollQueryBuilder::build(const std::map<std::string, std::string>& properties,
-                                        const std::vector<std::string>& fields,
+                                        const std::vector<std::string>& fields, std::vector<EsPredicate*>& predicates,
                                         const std::map<std::string, std::string>& docvalue_context,
                                         bool* doc_value_mode) {
     rapidjson::Document es_query_dsl;
     rapidjson::Document::AllocatorType& allocator = es_query_dsl.GetAllocator();
     es_query_dsl.SetObject();
-    // generate the filter clause
+    // generate the filter caluse
     rapidjson::Document scratch_document;
     rapidjson::Value query_node(rapidjson::kObjectType);
-    // use fe generate dsl, it must be placed outside the if, otherwise it will cause problems in AddMember
-    rapidjson::Document fe_query_dsl;
-    DCHECK(properties.find(ESScanReader::KEY_QUERY_DSL) != properties.end());
-    auto query_dsl = properties.at(ESScanReader::KEY_QUERY_DSL);
-    es_query_dsl.AddMember("query", fe_query_dsl.Parse(query_dsl.c_str(), query_dsl.length()),
-                           allocator);
-
-    // Doris FE already has checked docvalue-scan optimization
+    query_node.SetObject();
+    BooleanQueryBuilder::to_query(predicates, &scratch_document, &query_node);
+    // note: add `query` for this value....
+    es_query_dsl.AddMember("query", query_node, allocator);
     bool pure_docvalue = true;
+
+    // StarRocks FE already has checked docvalue-scan optimization
     if (properties.find(ESScanReader::KEY_DOC_VALUES_MODE) != properties.end()) {
         pure_docvalue = atoi(properties.at(ESScanReader::KEY_DOC_VALUES_MODE).c_str());
     } else {
@@ -130,7 +122,7 @@ std::string ESScrollQueryBuilder::build(const std::map<std::string, std::string>
     rapidjson::Value field("_doc", allocator);
     sort_node.PushBack(field, allocator);
     es_query_dsl.AddMember("sort", sort_node, allocator);
-    // number of documents returned
+    // number of docuements returned
     es_query_dsl.AddMember("size", size, allocator);
     rapidjson::StringBuffer buffer;
     rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
@@ -139,4 +131,4 @@ std::string ESScrollQueryBuilder::build(const std::map<std::string, std::string>
     LOG(INFO) << "Generated ES queryDSL [ " << es_query_dsl_json << " ]";
     return es_query_dsl_json;
 }
-} // namespace doris
+} // namespace starrocks

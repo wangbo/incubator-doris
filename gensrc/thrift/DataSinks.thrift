@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/gensrc/thrift/DataSinks.thrift
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,8 +32,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-namespace cpp doris
-namespace java org.apache.doris.thrift
+namespace cpp starrocks
+namespace java com.starrocks.thrift
 
 include "Exprs.thrift"
 include "Types.thrift"
@@ -27,103 +44,46 @@ include "PlanNodes.thrift"
 enum TDataSinkType {
     DATA_STREAM_SINK,
     RESULT_SINK,
-    DATA_SPLIT_SINK, // deprecated
+    DATA_SPLIT_SINK,
     MYSQL_TABLE_SINK,
     EXPORT_SINK,
     OLAP_TABLE_SINK,
     MEMORY_SCRATCH_SINK,
-    ODBC_TABLE_SINK,
-    RESULT_FILE_SINK,
-    JDBC_TABLE_SINK,
     MULTI_CAST_DATA_STREAM_SINK,
+    SCHEMA_TABLE_SINK
 }
 
 enum TResultSinkType {
     MYSQL_PROTOCAL,
-    FILE,    // deprecated, should not be used any more. FileResultSink is covered by TRESULT_FILE_SINK for concurrent purpose.
+    FILE,
+    STATISTIC,
+    VARIABLE
 }
 
-enum TParquetCompressionType {
-    SNAPPY,
-    GZIP,
-    BROTLI,
-    ZSTD,
-    LZ4,
-    LZO,
-    BZ2,
-    UNCOMPRESSED,
-}
-
-enum TParquetVersion {
-    PARQUET_1_0,
-    PARQUET_2_LATEST,
-}
-
-enum TParquetDataType {
-    BOOLEAN,
-    INT32,
-    INT64,
-    INT96,
-    BYTE_ARRAY,
-    FLOAT,
-    DOUBLE,
-    FIXED_LEN_BYTE_ARRAY,
-}
-
-enum TParquetDataLogicalType {
-      UNDEFINED = 0,  // Not a real logical type
-      STRING = 1,
-      MAP,
-      LIST,
-      ENUM,
-      DECIMAL,
-      DATE,
-      TIME,
-      TIMESTAMP,
-      INTERVAL,
-      INT,
-      NIL,  // Thrift NullType: annotates data that is always null
-      JSON,
-      BSON,
-      UUID,
-      NONE  // Not a real logical type; should always be last element
-    }
-
-enum TParquetRepetitionType {
-    REQUIRED,
-    REPEATED,
-    OPTIONAL,
-}
-
-struct TParquetSchema {
-    1: optional TParquetRepetitionType schema_repetition_type
-    2: optional TParquetDataType schema_data_type
-    3: optional string schema_column_name    
-    4: optional TParquetDataLogicalType schema_data_logical_type
+struct TParquetOptions {
+    // parquet row group max size in bytes
+    1: optional i64 parquet_max_group_bytes
+    2: optional Types.TCompressionType compression_type
+    3: optional bool use_dict
 }
 
 struct TResultFileSinkOptions {
     1: required string file_path
     2: required PlanNodes.TFileFormatType file_format
     3: optional string column_separator    // only for csv
-    4: optional string line_delimiter  // only for csv
+    4: optional string row_delimiter  // only for csv
     5: optional i64 max_file_size_bytes
     6: optional list<Types.TNetworkAddress> broker_addresses; // only for remote file
-    7: optional map<string, string> broker_properties // only for remote file
-    8: optional string success_file_name
-    9: optional list<list<string>> schema            // for orc file
-    10: optional map<string, string> file_properties // for orc file
-
-    //note: use outfile with parquet format, have deprecated 9:schema and 10:file_properties
-    //because when this info thrift to BE, BE hava to find useful info in string,
-    //have to check by use string directly, and maybe not so efficient
-    11: optional list<TParquetSchema> parquet_schemas
-    12: optional TParquetCompressionType parquet_compression_type
-    13: optional bool parquet_disable_dictionary
-    14: optional TParquetVersion parquet_version
-    15: optional string orc_schema
-
-    16: optional bool delete_existing_files;
+    7: optional map<string, string> broker_properties // only for remote file.
+    // If use_broker is set, we will write hdfs thourgh broker
+    // If use_broker is not set, we will write through libhdfs/S3 directly
+    8: optional bool use_broker
+    // hdfs_write_buffer_size_kb for writing through lib hdfs directly
+    9: optional i32 hdfs_write_buffer_size_kb = 0
+    // properties from hdfs-site.xml, core-site.xml and load_properties
+    10: optional PlanNodes.THdfsProperties hdfs_properties
+    11: optional TParquetOptions parquet_options
+    12: optional list<string> file_column_names
 }
 
 struct TMemoryScratchSink {
@@ -138,6 +98,8 @@ struct TPlanFragmentDestination {
   // ... which is being executed on this server
   2: required Types.TNetworkAddress server
   3: optional Types.TNetworkAddress brpc_server
+
+  4: optional i32 pipeline_driver_sequence
 }
 
 // Sink which forwards data to a remote plan fragment,
@@ -154,47 +116,29 @@ struct TDataStreamSink {
 
   3: optional bool ignore_not_found
 
-    // per-destination projections
-    4: optional list<Exprs.TExpr> output_exprs
+  // Only useful in pipeline mode
+  // If receiver side is ExchangeMergeSortSourceOperator, then all the
+  // packets should be kept in order (according sequence), so the sender
+  // side need to maintain a send window in order to avoiding the receiver
+  // buffer too many out-of-order packets
+  4: optional bool is_merge
 
-    // project output tuple id
-    5: optional Types.TTupleId output_tuple_id
+  // degree of paralleliasm of destination
+  // only used in pipeline engine
+  5: optional i32 dest_dop
 
-    // per-destination filters
-    6: optional list<Exprs.TExpr> conjuncts
-
-    // per-destination runtime filters
-    7: optional list<PlanNodes.TRuntimeFilterDesc> runtime_filters
+  // Specify the columns which need to send
+  6: optional list<i32> output_columns;
 }
 
 struct TMultiCastDataStreamSink {
-    1: optional list<TDataStreamSink> sinks;
-    2: optional list<list<TPlanFragmentDestination>> destinations;
-}
-
-struct TFetchOption {
-    1: optional bool use_two_phase_fetch;
-    // Nodes in this cluster, used for second phase fetch
-    2: optional Descriptors.TPaloNodesInfo nodes_info;
-    // Whether fetch row store
-    3: optional bool fetch_row_store;
-    // Fetch schema
-    4: optional list<Descriptors.TColumn> column_desc;
+    1: required list<TDataStreamSink> sinks;
+    2: required list< list<TPlanFragmentDestination> > destinations;
 }
 
 struct TResultSink {
     1: optional TResultSinkType type;
-    2: optional TResultFileSinkOptions file_options; // deprecated
-    3: optional TFetchOption fetch_option;
-}
-
-struct TResultFileSink {
-    1: optional TResultFileSinkOptions file_options;
-    2: optional Types.TStorageBackendType storage_backend_type;
-    3: optional Types.TPlanNodeId dest_node_id;
-    4: optional Types.TTupleId output_tuple_id;
-    5: optional string header;
-    6: optional string header_type;
+    2: optional TResultFileSinkOptions file_options;
 }
 
 struct TMysqlTableSink {
@@ -204,31 +148,27 @@ struct TMysqlTableSink {
     4: required string passwd
     5: required string db
     6: required string table
-    7: required string charset
-}
-
-struct TOdbcTableSink {
-    1: optional string connect_string
-    2: optional string table
-    3: optional bool use_transaction
-}
-
-struct TJdbcTableSink {
-    1: optional Descriptors.TJdbcTable jdbc_table
-    2: optional bool use_transaction
-    3: optional Types.TOdbcTableType table_type
-    4: optional string insert_sql
 }
 
 struct TExportSink {
     1: required Types.TFileType file_type
     2: required string export_path
     3: required string column_separator
-    4: required string line_delimiter
+    4: required string row_delimiter
     // properties need to access broker.
     5: optional list<Types.TNetworkAddress> broker_addresses
     6: optional map<string, string> properties
-    7: optional string header
+
+    // If use_broker is set, we will write hdfs thourgh broker
+    // If use_broker is not set, we will write through libhdfs/S3 directly
+    7: optional bool use_broker
+    // hdfs_write_buffer_size_kb for writing through lib hdfs directly
+    8: optional i32 hdfs_write_buffer_size_kb = 0
+    // properties from hdfs-site.xml, core-site.xml and load_properties
+    9: optional PlanNodes.THdfsProperties hdfs_properties
+
+    // export file name prefix
+    30: optional string file_name_prefix
 }
 
 struct TOlapTableSink {
@@ -238,18 +178,29 @@ struct TOlapTableSink {
     4: required i64 table_id
     5: required i32 tuple_id
     6: required i32 num_replicas
-    7: required bool need_gen_rollup    // Deprecated, not used since alter job v2
+    7: required bool need_gen_rollup // Deprecated
     8: optional string db_name
     9: optional string table_name
     10: required Descriptors.TOlapTableSchemaParam schema
     11: required Descriptors.TOlapTablePartitionParam partition
     12: required Descriptors.TOlapTableLocationParam location
-    13: required Descriptors.TPaloNodesInfo nodes_info
+    13: required Descriptors.TNodesInfo nodes_info
     14: optional i64 load_channel_timeout_s // the timeout of load channels in second
-    15: optional i32 send_batch_parallelism
-    16: optional bool load_to_single_tablet
-    17: optional bool write_single_replica
-    18: optional Descriptors.TOlapTableLocationParam slave_location
+    15: optional bool is_lake_table
+    16: optional string txn_trace_parent
+    17: optional Types.TKeysType keys_type
+    18: optional Types.TWriteQuorumType write_quorum_type
+    19: optional bool enable_replicated_storage
+    20: optional string merge_condition
+    21: optional bool null_expr_in_auto_increment
+    22: optional bool miss_auto_increment_column
+    23: optional bool abort_delete // Deprecated
+    24: optional i32 auto_increment_slot_id
+}
+
+struct TSchemaTableSink {
+    1: optional string table
+    2: optional Descriptors.TNodesInfo nodes_info
 }
 
 struct TDataSink {
@@ -260,9 +211,6 @@ struct TDataSink {
   6: optional TExportSink export_sink
   7: optional TOlapTableSink olap_table_sink
   8: optional TMemoryScratchSink memory_scratch_sink
-  9: optional TOdbcTableSink odbc_table_sink
-  10: optional TResultFileSink result_file_sink
-  11: optional TJdbcTableSink jdbc_table_sink
-  12: optional TMultiCastDataStreamSink multi_cast_stream_sink
+  9: optional TMultiCastDataStreamSink multi_cast_stream_sink
+  10: optional TSchemaTableSink schema_table_sink
 }
-

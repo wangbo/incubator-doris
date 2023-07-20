@@ -1,16 +1,14 @@
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Use of this source code is governed by a BSD-style license.
+// (https://developers.google.com/open-source/licenses/bsd)
 
 #include "gutil/cpu.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
+#include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <utility>
 
 #if defined(__x86_64__)
 #if defined(_MSC_VER)
@@ -51,29 +49,7 @@ std::tuple<int, int, int, int> ComputeX86FamilyAndModel(const std::string& vendo
 }
 } // namespace internal
 #endif // defined(ARCH_CPU_X86_FAMILY)
-CPU::CPU()
-        : signature_(0),
-          type_(0),
-          family_(0),
-          model_(0),
-          stepping_(0),
-          ext_model_(0),
-          ext_family_(0),
-          has_mmx_(false),
-          has_sse_(false),
-          has_sse2_(false),
-          has_sse3_(false),
-          has_ssse3_(false),
-          has_sse41_(false),
-          has_sse42_(false),
-          has_popcnt_(false),
-          has_avx_(false),
-          has_avx2_(false),
-          has_avx512_(false),
-          has_aesni_(false),
-          has_non_stop_time_stamp_counter_(false),
-          is_running_in_vm_(false),
-          cpu_vendor_("unknown") {
+CPU::CPU() : cpu_vendor_("unknown") {
     Initialize();
 }
 namespace {
@@ -133,8 +109,7 @@ std::string* CpuInfoBrand() {
     }();
     return brand;
 }
-#endif  // defined(ARCH_CPU_ARM_FAMILY) && (defined(OS_ANDROID) || defined(OS_LINUX))
-
+#endif // defined(ARCH_CPU_ARM_FAMILY) && (defined(OS_ANDROID) || defined(OS_LINUX))
 } // namespace
 void CPU::Initialize() {
 #if defined(ARCH_CPU_X86_FAMILY)
@@ -155,8 +130,7 @@ void CPU::Initialize() {
     int num_ids = cpu_info[0];
     std::swap(cpu_info[2], cpu_info[3]);
     static constexpr size_t kVendorNameSize = 3 * sizeof(cpu_info[1]);
-    static_assert(kVendorNameSize < sizeof(cpu_string) / sizeof(cpu_string[0]),
-                  "cpu_string too small");
+    static_assert(kVendorNameSize < sizeof(cpu_string) / sizeof(cpu_string[0]), "cpu_string too small");
     memcpy(cpu_string, &cpu_info[1], kVendorNameSize);
     cpu_string[kVendorNameSize] = '\0';
     cpu_vendor_ = cpu_string;
@@ -178,7 +152,9 @@ void CPU::Initialize() {
         has_sse3_ = (cpu_info[2] & 0x00000001) != 0;
         has_ssse3_ = (cpu_info[2] & 0x00000200) != 0;
         has_sse41_ = (cpu_info[2] & 0x00080000) != 0;
+#if defined(__x86_64__) && defined(__SSE4_2__)
         has_sse42_ = (cpu_info[2] & 0x00100000) != 0;
+#endif
         has_popcnt_ = (cpu_info[2] & 0x00800000) != 0;
         // "Hypervisor Present Bit: Bit 31 of ECX of CPUID leaf 0x1."
         // See https://lwn.net/Articles/301888/
@@ -197,12 +173,17 @@ void CPU::Initialize() {
         // Because of that, we also test the XSAVE bit because its description in
         // the CPUID documentation suggests that it signals xgetbv support.
         has_avx_ = (cpu_info[2] & 0x10000000) != 0 && (cpu_info[2] & 0x04000000) != 0 /* XSAVE */ &&
-                   (cpu_info[2] & 0x08000000) != 0 /* OSXSAVE */ &&
-                   (xgetbv(0) & 6) == 6 /* XSAVE enabled by kernel */;
+                   (cpu_info[2] & 0x08000000) != 0 /* OSXSAVE */ && (xgetbv(0) & 6) == 6 /* XSAVE enabled by kernel */;
         has_aesni_ = (cpu_info[2] & 0x02000000) != 0;
+#if defined(__x86_64__) && defined(__AVX2__)
         has_avx2_ = has_avx_ && (cpu_info7[1] & 0x00000020) != 0;
-        has_avx512_ = has_avx2_ && (cpu_info7[1] & 0x00010000) != 0 &&
-                   (cpu_info7[1] & 0x40000000) != 0 && (cpu_info7[1] & 0x80000000) != 0;
+#endif
+#if defined(__x86_64__) && defined(__AVX512F__)
+        has_avx512f_ = has_avx2_ && (cpu_info7[1] & 0x00010000) != 0;
+#endif
+#if defined(__x86_64__) && defined(__AVX512BW__)
+        has_avx512bw_ = has_avx2_ && (cpu_info7[1] & 0x40000000) != 0;
+#endif
     }
     // Get the brand string of the cpu.
     __cpuid(cpu_info, 0x80000000);
@@ -210,9 +191,8 @@ void CPU::Initialize() {
     static constexpr int kParameterStart = 0x80000002;
     static constexpr int kParameterEnd = 0x80000004;
     static constexpr int kParameterSize = kParameterEnd - kParameterStart + 1;
-    static_assert(
-            kParameterSize * sizeof(cpu_info) + 1 == sizeof(cpu_string) / sizeof(cpu_string[0]),
-            "cpu_string has wrong size");
+    static_assert(kParameterSize * sizeof(cpu_info) + 1 == sizeof(cpu_string) / sizeof(cpu_string[0]),
+                  "cpu_string has wrong size");
     if (max_parameter >= kParameterEnd) {
         size_t i = 0;
         for (int parameter = kParameterStart; parameter <= kParameterEnd; ++parameter) {
@@ -255,7 +235,6 @@ void CPU::Initialize() {
 #endif
 }
 CPU::IntelMicroArchitecture CPU::GetIntelMicroArchitecture() const {
-    if (has_avx512()) return AVX512;
     if (has_avx2()) return AVX2;
     if (has_avx()) return AVX;
     if (has_sse42()) return SSE42;
@@ -266,4 +245,40 @@ CPU::IntelMicroArchitecture CPU::GetIntelMicroArchitecture() const {
     if (has_sse()) return SSE;
     return PENTIUM;
 }
+
+std::string CPU::debug_string() const {
+    std::stringstream ss;
+    // clang-format off
+    ss << "CPU Info:"
+       << "\n  Type: " << type_
+       << "\n  Family: " << family_
+       << "\n  Model: " << model_
+       << "\n  Stepping: " << stepping_
+       << "\n  ExtendModel: " << ext_model_
+       << "\n  ExtendFamily: " << ext_family_
+       << "\n  RunningInVM: " << is_running_in_vm_
+       << "\n  Vendor: " << cpu_vendor_
+       << "\n  Brand: " << cpu_brand_
+       << "\n  HardwareSupport:"
+       << (has_mmx_ ? " mmx" : "")
+       << (has_sse_ ? " sse" : "")
+       << (has_sse2_ ? " sse2" : "")
+       << (has_sse3_ ? " sse3" : "")
+       << (has_ssse3_ ? " ssse3" : "")
+       << (has_sse41_ ? " sse41" : "")
+       << (has_sse42_ ? " sse42" : "")
+       << (has_avx_ ? " avx" : "")
+       << (has_avx2_ ? " avx2" : "")
+       << (has_avx512f_ ? " avx512f" : "")
+       << (has_avx512bw_ ? " avx512bw" : "")
+       << (has_popcnt_ ? " popcnt" : "");
+    // clang-format on
+    return ss.str();
+}
+
+CPU _cpu_global_instance;
+const CPU* CPU::instance() {
+    return &_cpu_global_instance;
+}
+
 } // namespace base

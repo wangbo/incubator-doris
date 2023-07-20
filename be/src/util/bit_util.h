@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/bit_util.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -14,37 +31,28 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/bit-util.h
-// and modified by Doris
 
 #pragma once
 
-#ifndef __APPLE__
 #include <endian.h>
-#endif
 
-// IWYU pragma: no_include <opentelemetry/common/threadlocal.h>
-#include "common/compiler_util.h" // IWYU pragma: keep
+#include "common/compiler_util.h"
 #include "gutil/bits.h"
+#include "gutil/endian.h"
+#include "gutil/port.h"
 #include "util/cpu_info.h"
-#include "util/sse_util.hpp"
 
-namespace doris {
+namespace starrocks {
 
 // Utility class to do standard bit tricks
 // TODO: is this in boost or something else like that?
 class BitUtil {
 public:
     // Returns the ceil of value/divisor
-    static inline int64_t ceil(int64_t value, int64_t divisor) {
-        return value / divisor + (value % divisor != 0);
-    }
+    static inline int64_t ceil(int64_t value, int64_t divisor) { return value / divisor + (value % divisor != 0); }
 
     // Returns 'value' rounded up to the nearest multiple of 'factor'
-    static inline int64_t round_up(int64_t value, int64_t factor) {
-        return (value + (factor - 1)) / factor * factor;
-    }
+    static inline int64_t round_up(int64_t value, int64_t factor) { return (value + (factor - 1)) / factor * factor; }
 
     // Returns the smallest power of two that contains v. Taken from
     // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
@@ -122,68 +130,67 @@ public:
         return result;
     }
 
-    // Swaps the byte order (i.e. endianess)
-    static inline int64_t byte_swap(int64_t value) { return __builtin_bswap64(value); }
-    static inline uint64_t byte_swap(uint64_t value) {
-        return static_cast<uint64_t>(__builtin_bswap64(value));
-    }
-    static inline int32_t byte_swap(int32_t value) { return __builtin_bswap32(value); }
-    static inline uint32_t byte_swap(uint32_t value) {
-        return static_cast<uint32_t>(__builtin_bswap32(value));
-    }
-    static inline int16_t byte_swap(int16_t value) {
-        return (((value >> 8) & 0xff) | ((value & 0xff) << 8));
-    }
-    static inline uint16_t byte_swap(uint16_t value) {
-        return static_cast<uint16_t>(byte_swap(static_cast<int16_t>(value)));
-    }
-
-    // Write the swapped bytes into dst. len must be 1, 2, 4 or 8.
-    static inline void byte_swap(void* dst, void* src, int len) {
-        switch (len) {
-        case 1:
-            *reinterpret_cast<int8_t*>(dst) = *reinterpret_cast<int8_t*>(src);
-            break;
-
-        case 2:
-            *reinterpret_cast<int16_t*>(dst) = byte_swap(*reinterpret_cast<int16_t*>(src));
-            break;
-
-        case 4:
-            *reinterpret_cast<int32_t*>(dst) = byte_swap(*reinterpret_cast<int32_t*>(src));
-            break;
-
-        case 8:
-            *reinterpret_cast<int64_t*>(dst) = byte_swap(*reinterpret_cast<int64_t*>(src));
-            break;
-
-        default:
-            DCHECK(false);
-        }
-    }
-
     // Returns the rounded up to 64 multiple. Used for conversions of bits to i64.
     static inline uint32_t round_up_numi64(uint32_t bits) { return (bits + 63) >> 6; }
 
     // Returns the rounded up to 32 multiple. Used for conversions of bits to i32.
     constexpr static inline uint32_t round_up_numi32(uint32_t bits) { return (bits + 31) >> 5; }
 
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-    // Converts to big endian format (if not already in big endian).
-    static inline int64_t big_endian(int64_t value) { return byte_swap(value); }
-    static inline uint64_t big_endian(uint64_t value) { return byte_swap(value); }
-    static inline int32_t big_endian(int32_t value) { return byte_swap(value); }
-    static inline uint32_t big_endian(uint32_t value) { return byte_swap(value); }
-    static inline int16_t big_endian(int16_t value) { return byte_swap(value); }
-    static inline uint16_t big_endian(uint16_t value) { return byte_swap(value); }
-#else
-    static inline int64_t big_endian(int64_t val) { return val; }
-    static inline uint64_t big_endian(uint64_t val) { return val; }
-    static inline int32_t big_endian(int32_t val) { return val; }
-    static inline uint32_t big_endian(uint32_t val) { return val; }
-    static inline int16_t big_endian(int16_t val) { return val; }
-    static inline uint16_t big_endian(uint16_t val) { return val; }
-#endif
+    template <typename T>
+    static T big_endian(T value) {
+        if constexpr (std::is_same_v<T, __int128>) {
+            return BigEndian::FromHost128(value);
+        } else if constexpr (std::is_same_v<T, unsigned __int128>) {
+            return BigEndian::FromHost128(value);
+        } else if constexpr (std::is_same_v<T, int64_t>) {
+            return BigEndian::FromHost64(value);
+        } else if constexpr (std::is_same_v<T, uint64_t>) {
+            return BigEndian::FromHost64(value);
+        } else if constexpr (std::is_same_v<T, int32_t>) {
+            return BigEndian::FromHost32(value);
+        } else if constexpr (std::is_same_v<T, uint32_t>) {
+            return BigEndian::FromHost32(value);
+        } else if constexpr (std::is_same_v<T, int16_t>) {
+            return BigEndian::FromHost16(value);
+        } else if constexpr (std::is_same_v<T, uint16_t>) {
+            return BigEndian::FromHost16(value);
+        } else if constexpr (std::is_same_v<T, int8_t>) {
+            return value;
+        } else if constexpr (std::is_same_v<T, uint8_t>) {
+            return value;
+        } else {
+            static_assert(std::is_integral_v<T>, "endian change should be integer type");
+            return value;
+        }
+    }
+
+    template <typename T>
+    static T big_endian_to_host(T value) {
+        if constexpr (std::is_same_v<T, __int128>) {
+            return BigEndian::ToHost128(value);
+        } else if constexpr (std::is_same_v<T, unsigned __int128>) {
+            return BigEndian::ToHost128(value);
+        } else if constexpr (std::is_same_v<T, int64_t>) {
+            return BigEndian::ToHost64(value);
+        } else if constexpr (std::is_same_v<T, uint64_t>) {
+            return BigEndian::ToHost64(value);
+        } else if constexpr (std::is_same_v<T, int32_t>) {
+            return BigEndian::ToHost32(value);
+        } else if constexpr (std::is_same_v<T, uint32_t>) {
+            return BigEndian::ToHost32(value);
+        } else if constexpr (std::is_same_v<T, int16_t>) {
+            return BigEndian::ToHost16(value);
+        } else if constexpr (std::is_same_v<T, uint16_t>) {
+            return BigEndian::ToHost16(value);
+        } else if constexpr (std::is_same_v<T, int8_t>) {
+            return value;
+        } else if constexpr (std::is_same_v<T, uint8_t>) {
+            return value;
+        } else {
+            static_assert(std::is_integral_v<T>, "endian change should be integer type");
+            return value;
+        }
+    }
 
     /// Returns the smallest power of two that contains v. If v is a power of two, v is
     /// returned. Taken from
@@ -228,18 +235,13 @@ public:
         }
     }
 
-    // Returns the rounded up to 64 multiple. Used for conversions of bits to i64.
-    static inline uint32_t round_up_numi_64(uint32_t bits) { return (bits + 63) >> 6; }
-
     constexpr static inline int64_t Ceil(int64_t value, int64_t divisor) {
         return value / divisor + (value % divisor != 0);
     }
 
     constexpr static inline bool IsPowerOf2(int64_t value) { return (value & (value - 1)) == 0; }
 
-    constexpr static inline int64_t RoundDown(int64_t value, int64_t factor) {
-        return (value / factor) * factor;
-    }
+    constexpr static inline int64_t RoundDown(int64_t value, int64_t factor) { return (value / factor) * factor; }
 
     /// Specialized round up and down functions for frequently used factors,
     /// like 8 (bits->bytes), 32 (bits->i32), and 64 (bits->i64)
@@ -308,21 +310,13 @@ public:
         return (value + (factor - 1)) & ~(factor - 1);
     }
 
-    // speed up function compute for SIMD
-    static inline size_t RoundUpToPowerOf2Int32(size_t value, size_t factor) {
-        DCHECK((factor > 0) && ((factor & (factor - 1)) == 0));
-        return (value + (factor - 1)) & ~(factor - 1);
-    }
-
     static inline int64_t RoundDownToPowerOf2(int64_t value, int64_t factor) {
         DCHECK((factor > 0) && ((factor & (factor - 1)) == 0));
         return value & ~(factor - 1);
     }
 
     // Returns the ceil of value/divisor
-    static inline int Ceil(int value, int divisor) {
-        return value / divisor + (value % divisor != 0);
-    }
+    static inline int Ceil(int value, int divisor) { return value / divisor + (value % divisor != 0); }
 
     // Returns the 'num_bits' least-significant bits of 'v'.
     static inline uint64_t TrailingBits(uint64_t v, int num_bits) {
@@ -341,116 +335,6 @@ public:
         if (PREDICT_FALSE(num_bits >= 64)) return 0;
         return v >> num_bits;
     }
-
-    static void ByteSwapScalar(void* dest, const void* source, int len) {
-        uint8_t* dst = reinterpret_cast<uint8_t*>(dest);
-        const uint8_t* src = reinterpret_cast<const uint8_t*>(source);
-        switch (len) {
-        case 1:
-            *reinterpret_cast<uint8_t*>(dst) = *reinterpret_cast<const uint8_t*>(src);
-            return;
-        case 2:
-            *reinterpret_cast<uint16_t*>(dst) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint16_t*>(src));
-            return;
-        case 3:
-            *reinterpret_cast<uint16_t*>(dst + 1) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint16_t*>(src));
-            *reinterpret_cast<uint8_t*>(dst) = *reinterpret_cast<const uint8_t*>(src + 2);
-            return;
-        case 4:
-            *reinterpret_cast<uint32_t*>(dst) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint32_t*>(src));
-            return;
-        case 5:
-            *reinterpret_cast<uint32_t*>(dst + 1) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint32_t*>(src));
-            *reinterpret_cast<uint8_t*>(dst) = *reinterpret_cast<const uint8_t*>(src + 4);
-            return;
-        case 6:
-            *reinterpret_cast<uint32_t*>(dst + 2) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint32_t*>(src));
-            *reinterpret_cast<uint16_t*>(dst) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint16_t*>(src + 4));
-            return;
-        case 7:
-            *reinterpret_cast<uint32_t*>(dst + 3) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint32_t*>(src));
-            *reinterpret_cast<uint16_t*>(dst + 1) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint16_t*>(src + 4));
-            *reinterpret_cast<uint8_t*>(dst) = *reinterpret_cast<const uint8_t*>(src + 6);
-            return;
-        case 8:
-            *reinterpret_cast<uint64_t*>(dst) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src));
-            return;
-        case 9:
-            *reinterpret_cast<uint64_t*>(dst + 1) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src));
-            *reinterpret_cast<uint8_t*>(dst) = *reinterpret_cast<const uint8_t*>(src + 8);
-            return;
-        case 10:
-            *reinterpret_cast<uint64_t*>(dst + 2) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src));
-            *reinterpret_cast<uint16_t*>(dst) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint16_t*>(src + 8));
-            return;
-        case 11:
-            *reinterpret_cast<uint64_t*>(dst + 3) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src));
-            *reinterpret_cast<uint16_t*>(dst + 1) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint16_t*>(src + 8));
-            *reinterpret_cast<uint8_t*>(dst) = *reinterpret_cast<const uint8_t*>(src + 10);
-            return;
-        case 12:
-            *reinterpret_cast<uint64_t*>(dst + 4) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src));
-            *reinterpret_cast<uint32_t*>(dst) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint32_t*>(src + 8));
-            return;
-        case 13:
-            *reinterpret_cast<uint64_t*>(dst + 5) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src));
-            *reinterpret_cast<uint32_t*>(dst + 1) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint32_t*>(src + 8));
-            *reinterpret_cast<uint8_t*>(dst) = *reinterpret_cast<const uint8_t*>(src + 12);
-            return;
-        case 14:
-            *reinterpret_cast<uint64_t*>(dst + 6) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src));
-            *reinterpret_cast<uint32_t*>(dst + 2) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint32_t*>(src + 8));
-            *reinterpret_cast<uint16_t*>(dst) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint16_t*>(src + 12));
-            return;
-        case 15:
-            *reinterpret_cast<uint64_t*>(dst + 7) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src));
-            *reinterpret_cast<uint32_t*>(dst + 3) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint32_t*>(src + 8));
-            *reinterpret_cast<uint16_t*>(dst + 1) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint16_t*>(src + 12));
-            *reinterpret_cast<uint8_t*>(dst) = *reinterpret_cast<const uint8_t*>(src + 14);
-            return;
-        case 16:
-            *reinterpret_cast<uint64_t*>(dst + 8) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src));
-            *reinterpret_cast<uint64_t*>(dst) =
-                    BitUtil::byte_swap(*reinterpret_cast<const uint64_t*>(src + 8));
-            return;
-        default:
-            // Revert to slow loop-based swap.
-            ByteSwapScalarLoop(source, len, dest);
-            return;
-        }
-    }
-
-    static void ByteSwapScalarLoop(const void* src, int len, void* dst) {
-        //TODO: improve the performance of following code further using BSWAP intrinsic
-        uint8_t* d = reinterpret_cast<uint8_t*>(dst);
-        const uint8_t* s = reinterpret_cast<const uint8_t*>(src);
-        for (int i = 0; i < len; ++i) d[i] = s[len - i - 1];
-    }
 };
 
-} // namespace doris
+} // namespace starrocks

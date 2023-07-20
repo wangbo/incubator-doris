@@ -15,16 +15,35 @@
 // specific language governing permissions and limitations
 // under the License.
 
-namespace cpp doris
-namespace java org.apache.doris.thrift
+namespace cpp starrocks
+namespace java com.starrocks.thrift
 
 include "Metrics.thrift"
+
+enum TCounterAggregateType {
+    SUM,
+    AVG,
+}
+
+enum TCounterMergeType {
+    MERGE_ALL, 
+    SKIP_ALL,
+    SKIP_FIRST_MERGE,
+    SKIP_SECOND_MERGE,
+}
+
+struct TCounterStrategy {
+    1: required TCounterAggregateType aggregate_type
+    2: required TCounterMergeType merge_type
+    3: required i64 display_threshold = 0
+}
 
 // Counter data
 struct TCounter {
   1: required string name
   2: required Metrics.TUnit type
   3: required i64 value 
+  5: optional TCounterStrategy strategy 
 }
 
 // A single runtime profile
@@ -49,8 +68,6 @@ struct TRuntimeProfileNode {
   
   // map from parent counter name to child counter name
   8: required map<string, set<string>> child_counters_map
-
-  9: required i64 timestamp
 }
 
 // A flattened tree of runtime profiles, obtained by an

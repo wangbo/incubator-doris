@@ -21,11 +21,9 @@
 
 #include <atomic>
 
-#include "runtime/exec_env.h"
-#include "runtime/thread_context.h"
 #include "service/brpc.h"
 
-namespace doris {
+namespace starrocks {
 
 template <typename T>
 class RefCountClosure : public google::protobuf::Closure {
@@ -33,13 +31,14 @@ public:
     RefCountClosure() : _refs(0) {}
     ~RefCountClosure() override = default;
 
+    int count() { return _refs.load(); }
+
     void ref() { _refs.fetch_add(1); }
 
     // If unref() returns true, this object should be delete
     bool unref() { return _refs.fetch_sub(1) == 1; }
 
     void Run() override {
-        SCOPED_TRACK_MEMORY_TO_UNKNOWN();
         if (unref()) {
             delete this;
         }
@@ -54,4 +53,4 @@ private:
     std::atomic<int> _refs;
 };
 
-} // namespace doris
+} // namespace starrocks

@@ -18,7 +18,6 @@
 #include "util/easy_json.h"
 
 #include <glog/logging.h>
-#include <rapidjson/allocators.h>
 #include <rapidjson/document.h>
 #include <rapidjson/rapidjson.h>
 #include <rapidjson/stringbuffer.h>
@@ -33,12 +32,11 @@ using rapidjson::SizeType;
 using rapidjson::Value;
 using std::string;
 
-namespace doris {
+namespace starrocks {
 
 EasyJson::EasyJson() : alloc_(new EasyJsonAllocator), value_(&alloc_->value()) {}
 
-EasyJson::EasyJson(EasyJson::ComplexTypeInitializer type)
-        : alloc_(new EasyJsonAllocator), value_(&alloc_->value()) {
+EasyJson::EasyJson(EasyJson::ComplexTypeInitializer type) : alloc_(new EasyJsonAllocator), value_(&alloc_->value()) {
     if (type == kObject) {
         value_->SetObject();
     } else if (type == kArray) {
@@ -54,7 +52,7 @@ EasyJson EasyJson::Get(const string& key) {
         Value key_val(key.c_str(), alloc_->allocator());
         value_->AddMember(key_val, Value().SetNull(), alloc_->allocator());
     }
-    return EasyJson(&(*value_)[key.c_str()], alloc_);
+    return {&(*value_)[key.c_str()], alloc_};
 }
 
 EasyJson EasyJson::Get(int index) {
@@ -64,7 +62,7 @@ EasyJson EasyJson::Get(int index) {
     while (SizeType(index) >= value_->Size()) {
         value_->PushBack(Value().SetNull(), alloc_->allocator());
     }
-    return EasyJson(&(*value_)[index], alloc_);
+    return {&(*value_)[index], alloc_};
 }
 
 EasyJson EasyJson::operator[](const string& key) {
@@ -104,13 +102,6 @@ EasyJson& EasyJson::operator=(EasyJson::ComplexTypeInitializer val) {
     }
     return (*this);
 }
-
-#ifdef __APPLE__
-template <>
-EasyJson& EasyJson::operator=(unsigned long val) {
-    return EasyJson::operator=(static_cast<uint64_t>(val));
-}
-#endif
 
 EasyJson& EasyJson::SetObject() {
     if (!value_->IsObject()) {
@@ -164,7 +155,7 @@ EasyJson EasyJson::PushBack(const string& val) {
     }
     Value push_val(val.c_str(), alloc_->allocator());
     value_->PushBack(push_val, alloc_->allocator());
-    return EasyJson(&(*value_)[value_->Size() - 1], alloc_);
+    return {&(*value_)[value_->Size() - 1], alloc_};
 }
 template <typename T>
 EasyJson EasyJson::PushBack(T val) {
@@ -172,7 +163,7 @@ EasyJson EasyJson::PushBack(T val) {
         value_->SetArray();
     }
     value_->PushBack(val, alloc_->allocator());
-    return EasyJson(&(*value_)[value_->Size() - 1], alloc_);
+    return {&(*value_)[value_->Size() - 1], alloc_};
 }
 template EasyJson EasyJson::PushBack(bool val);
 template EasyJson EasyJson::PushBack(int32_t val);
@@ -187,7 +178,7 @@ EasyJson EasyJson::PushBack(const char* val) {
     }
     Value push_val(val, alloc_->allocator());
     value_->PushBack(push_val, alloc_->allocator());
-    return EasyJson(&(*value_)[value_->Size() - 1], alloc_);
+    return {&(*value_)[value_->Size() - 1], alloc_};
 }
 template <>
 EasyJson EasyJson::PushBack(EasyJson::ComplexTypeInitializer val) {
@@ -203,7 +194,7 @@ EasyJson EasyJson::PushBack(EasyJson::ComplexTypeInitializer val) {
         LOG(FATAL) << "Unknown initializer type";
     }
     value_->PushBack(push_val, alloc_->allocator());
-    return EasyJson(&(*value_)[value_->Size() - 1], alloc_);
+    return {&(*value_)[value_->Size() - 1], alloc_};
 }
 
 string EasyJson::ToString() const {
@@ -213,7 +204,6 @@ string EasyJson::ToString() const {
     return buffer.GetString();
 }
 
-EasyJson::EasyJson(Value* value, scoped_refptr<EasyJsonAllocator> alloc)
-        : alloc_(std::move(alloc)), value_(value) {}
+EasyJson::EasyJson(Value* value, scoped_refptr<EasyJsonAllocator> alloc) : alloc_(std::move(alloc)), value_(value) {}
 
-} // namespace doris
+} // namespace starrocks

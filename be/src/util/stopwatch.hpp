@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/stopwatch.hpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -14,15 +31,13 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/stopwatch.hpp
-// and modified by Doris
 
 #pragma once
 
-#include <time.h>
+#include <boost/cstdint.hpp>
+#include <ctime>
 
-namespace doris {
+namespace starrocks {
 
 // Stop watch for reporting elapsed time in nanosec based on CLOCK_MONOTONIC.
 // It is as fast as Rdtsc.
@@ -30,17 +45,17 @@ namespace doris {
 // it is not affected by user setting the system clock.
 // CLOCK_MONOTONIC represents monotonic time since some unspecified starting point.
 // It is good for computing elapsed time.
-template <clockid_t Clock>
-class CustomStopWatch {
+class MonotonicStopWatch {
 public:
-    CustomStopWatch() {
+    MonotonicStopWatch() {
+        _start = {};
         _total_time = 0;
         _running = false;
     }
 
     void start() {
         if (!_running) {
-            clock_gettime(Clock, &_start);
+            clock_gettime(CLOCK_MONOTONIC, &_start);
             _running = true;
         }
     }
@@ -57,7 +72,7 @@ public:
         uint64_t ret = elapsed_time();
 
         if (_running) {
-            clock_gettime(Clock, &_start);
+            clock_gettime(CLOCK_MONOTONIC, &_start);
         }
 
         return ret;
@@ -70,9 +85,8 @@ public:
         }
 
         timespec end;
-        clock_gettime(Clock, &end);
-        return (end.tv_sec - _start.tv_sec) * 1000L * 1000L * 1000L +
-               (end.tv_nsec - _start.tv_nsec);
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        return (end.tv_sec - _start.tv_sec) * 1000L * 1000L * 1000L + (end.tv_nsec - _start.tv_nsec);
     }
 
 private:
@@ -81,15 +95,4 @@ private:
     bool _running;
 };
 
-// Stop watch for reporting elapsed time in nanosec based on CLOCK_MONOTONIC.
-// It is as fast as Rdtsc.
-// It is also accurate because it not affected by cpu frequency changes and
-// it is not affected by user setting the system clock.
-// CLOCK_MONOTONIC represents monotonic time since some unspecified starting point.
-// It is good for computing elapsed time.
-using MonotonicStopWatch = CustomStopWatch<CLOCK_MONOTONIC>;
-
-// Stop watch for reporting elapsed nanosec based on CLOCK_THREAD_CPUTIME_ID.
-using ThreadCpuStopWatch = CustomStopWatch<CLOCK_THREAD_CPUTIME_ID>;
-
-} // namespace doris
+} // namespace starrocks

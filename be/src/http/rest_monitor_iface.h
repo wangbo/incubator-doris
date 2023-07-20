@@ -19,15 +19,15 @@
 
 #include <sstream>
 
-namespace doris {
+namespace starrocks {
 
 // This is a interface used to monitor internal module running state.
 class RestMonitorIface {
 public:
-    virtual ~RestMonitorIface() {}
+    virtual ~RestMonitorIface() = default;
 
     // this is called when client want to know it's content
     virtual void debug(std::stringstream& ss) = 0;
 };
 
-} // namespace doris
+} // namespace starrocks

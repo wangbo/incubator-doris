@@ -18,24 +18,22 @@
 #pragma once
 
 #include <curl/curl.h>
-#include <curl/system.h>
-#include <stdint.h>
 
 #include <cstdio>
-#include <functional>
 #include <string>
 
 #include "common/status.h"
+#include "http/http_headers.h"
 #include "http/http_method.h"
-
-namespace doris {
+#include "http/http_response.h"
+#include "http/utils.h"
+namespace starrocks {
 
 // Helper class to access HTTP resource
 class HttpClient {
 public:
     HttpClient();
     ~HttpClient();
-
     // you can call this function to execute HTTP request with retry,
     // if callback return OK, this function will end and return OK.
     // This function will return FAIL if three are more than retry_times
@@ -56,7 +54,7 @@ public:
     }
 
     // content_type such as "application/json"
-    void set_content_type(const std::string content_type) {
+    void set_content_type(const std::string& content_type) {
         std::string scratch_str = "Content-Type: " + content_type;
         _header_list = curl_slist_append(_header_list, scratch_str.c_str());
         curl_easy_setopt(_curl, CURLOPT_HTTPHEADER, _header_list);
@@ -65,12 +63,6 @@ public:
     void set_payload(const std::string& post_body) {
         curl_easy_setopt(_curl, CURLOPT_POSTFIELDSIZE, (long)post_body.length());
         curl_easy_setopt(_curl, CURLOPT_COPYPOSTFIELDS, post_body.c_str());
-    }
-
-    // Currently, only fake SSL configurations are supported
-    void use_untrusted_ssl() {
-        curl_easy_setopt(_curl, CURLOPT_SSL_VERIFYPEER, 0L);
-        curl_easy_setopt(_curl, CURLOPT_SSL_VERIFYHOST, 0L);
     }
 
     // TODO(zc): support set header
@@ -84,35 +76,24 @@ public:
         if (code == CURLE_OK && ct != nullptr) {
             return ct;
         }
-        return std::string();
+        return {};
     }
 
     // Set the long gohead parameter to 1L to continue send authentication (user+password)
     // credentials when following locations, even when hostname changed.
-    void set_unrestricted_auth(int gohead) {
-        curl_easy_setopt(_curl, CURLOPT_UNRESTRICTED_AUTH, gohead);
-    }
+    void set_unrestricted_auth(int gohead) { curl_easy_setopt(_curl, CURLOPT_UNRESTRICTED_AUTH, gohead); }
 
-    void set_timeout_ms(int64_t timeout_ms) {
-        curl_easy_setopt(_curl, CURLOPT_TIMEOUT_MS, timeout_ms);
-    }
+    void set_timeout_ms(int64_t timeout_ms) { curl_easy_setopt(_curl, CURLOPT_TIMEOUT_MS, timeout_ms); }
 
+    void trust_all_ssl() {
+        curl_easy_setopt(_curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(_curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
     // used to get content length
-    // return -1 as error
-    Status get_content_length(uint64_t* length) const {
-        curl_off_t cl;
-        auto code = curl_easy_getinfo(_curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &cl);
-        if (!code) {
-            if (cl < 0) {
-                return Status::InternalError(
-                        fmt::format("failed to get content length, it should be a positive value, "
-                                    "actrual is : {}",
-                                    cl));
-            }
-            *length = cl;
-            return Status::OK();
-        }
-        return Status::InternalError("failed to get content length. err code: {}", code);
+    int64_t get_content_length() const {
+        double cl = 0.0f;
+        curl_easy_getinfo(_curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &cl);
+        return cl;
     }
 
     long get_http_status() const {
@@ -127,7 +108,7 @@ public:
         return execute();
     }
 
-    // helper function to download a file, you can call this function to download
+    // helper function to download a file, you can call this function to downlaod
     // a file to local_path
     Status download(const std::string& local_path);
 
@@ -154,4 +135,4 @@ private:
     curl_slist* _header_list = nullptr;
 };
 
-} // namespace doris
+} // namespace starrocks

@@ -15,22 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#pragma once
+#include <memory>
 
-#include <stddef.h>
-
+#include "common/status.h"
 #include "geo/geo_common.h"
 
-namespace doris {
+namespace starrocks {
 
 class GeoShape;
 
 class WktParse {
 public:
     // Parse WKT(Well Known Text) to a GeoShape.
-    // Return a valid GeoShape if input WKT is supported.
+    // Return a valid GeoShape if input WKT is supppored.
     // Return null if WKT is not supported or invalid
     static GeoParseStatus parse_wkt(const char* str, size_t len, GeoShape** shape);
 };
 
-} // namespace doris
+} // namespace starrocks

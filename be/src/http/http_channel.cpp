@@ -20,22 +20,19 @@
 #include <event2/buffer.h>
 #include <event2/http.h>
 
-#include <algorithm>
 #include <sstream>
 #include <string>
-#include <vector>
 
-#include "common/logging.h"
-#include "common/status.h"
-#include "gutil/strings/split.h"
-#include "gutil/strings/strip.h"
 #include "http/http_headers.h"
 #include "http/http_request.h"
 #include "http/http_status.h"
-#include "util/slice.h"
-#include "util/zlib.h"
 
-namespace doris {
+namespace starrocks {
+
+#ifdef BE_TEST
+// Allow injected send_reply in BE TEST mode
+void (*s_injected_send_reply)(HttpRequest*, HttpStatus, const std::string&) = nullptr;
+#endif
 
 // Send Unauthorized status with basic challenge
 void HttpChannel::send_basic_challenge(HttpRequest* req, const std::string& realm) {
@@ -47,62 +44,31 @@ void HttpChannel::send_basic_challenge(HttpRequest* req, const std::string& real
 }
 
 void HttpChannel::send_error(HttpRequest* request, HttpStatus status) {
-    evhttp_send_error(request->get_evhttp_request(), status, default_reason(status).c_str());
+    evhttp_send_error(request->get_evhttp_request(), status, defalut_reason(status).c_str());
 }
 
 void HttpChannel::send_reply(HttpRequest* request, HttpStatus status) {
-    evhttp_send_reply(request->get_evhttp_request(), status, default_reason(status).c_str(),
-                      nullptr);
+    evhttp_send_reply(request->get_evhttp_request(), status, defalut_reason(status).c_str(), nullptr);
 }
 
 void HttpChannel::send_reply(HttpRequest* request, HttpStatus status, const std::string& content) {
-    auto evb = evbuffer_new();
-    std::string compressed_content;
-    if (compress_content(request->header(HttpHeaders::ACCEPT_ENCODING), content,
-                         &compressed_content)) {
-        request->add_output_header(HttpHeaders::CONTENT_ENCODING, "gzip");
-        evbuffer_add(evb, compressed_content.c_str(), compressed_content.size());
-    } else {
-        evbuffer_add(evb, content.c_str(), content.size());
+#ifdef BE_TEST
+    if (s_injected_send_reply != nullptr) {
+        s_injected_send_reply(request, status, content);
+        return;
     }
-    evhttp_send_reply(request->get_evhttp_request(), status, default_reason(status).c_str(), evb);
+#endif
+    auto evb = evbuffer_new();
+    evbuffer_add(evb, content.c_str(), content.size());
+    evhttp_send_reply(request->get_evhttp_request(), status, defalut_reason(status).c_str(), evb);
     evbuffer_free(evb);
 }
 
 void HttpChannel::send_file(HttpRequest* request, int fd, size_t off, size_t size) {
     auto evb = evbuffer_new();
     evbuffer_add_file(evb, fd, off, size);
-    evhttp_send_reply(request->get_evhttp_request(), HttpStatus::OK,
-                      default_reason(HttpStatus::OK).c_str(), evb);
+    evhttp_send_reply(request->get_evhttp_request(), HttpStatus::OK, defalut_reason(HttpStatus::OK).c_str(), evb);
     evbuffer_free(evb);
 }
 
-bool HttpChannel::compress_content(const std::string& accept_encoding, const std::string& input,
-                                   std::string* output) {
-    // Don't bother compressing empty content.
-    if (input.empty()) {
-        return false;
-    }
-
-    // Check if gzip compression is accepted by the caller. If so, compress the
-    // content and replace the prerendered output.
-    bool is_compressed = false;
-    std::vector<string> encodings = strings::Split(accept_encoding, ",");
-    for (string& encoding : encodings) {
-        StripWhiteSpace(&encoding);
-        if (encoding == "gzip") {
-            std::ostringstream oss;
-            Status s = zlib::CompressLevel(Slice(input), 1, &oss);
-            if (s.ok()) {
-                *output = oss.str();
-                is_compressed = true;
-            } else {
-                LOG(WARNING) << "Could not compress output: " << s.to_string();
-            }
-            break;
-        }
-    }
-    return is_compressed;
-}
-
-} // namespace doris
+} // namespace starrocks

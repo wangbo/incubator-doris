@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/runtime/routine_load/routine_load_task_executor.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,27 +34,22 @@
 
 #pragma once
 
-#include <stdint.h>
-
 #include <functional>
-#include <memory>
+#include <map>
 #include <mutex>
-#include <string>
-#include <unordered_map>
-#include <vector>
 
+#include "gen_cpp/internal_service.pb.h"
 #include "runtime/routine_load/data_consumer_pool.h"
 #include "util/priority_thread_pool.hpp"
+#include "util/starrocks_metrics.h"
 #include "util/uid_util.h"
 
-namespace doris {
+namespace starrocks {
 
 class ExecEnv;
 class Status;
 class StreamLoadContext;
 class TRoutineLoadTask;
-class PIntegerPair;
-class PKafkaMetaProxyRequest;
 
 // A routine load task executor will receive routine load
 // tasks from FE, put it to a fixed thread pool.
@@ -45,37 +57,55 @@ class PKafkaMetaProxyRequest;
 // to FE finally.
 class RoutineLoadTaskExecutor {
 public:
-    using ExecFinishCallback = std::function<void(std::shared_ptr<StreamLoadContext>)>;
+    typedef std::function<void(StreamLoadContext*)> ExecFinishCallback;
 
-    RoutineLoadTaskExecutor(ExecEnv* exec_env);
+    RoutineLoadTaskExecutor(ExecEnv* exec_env)
+            : _exec_env(exec_env),
+              _thread_pool("routine_load", config::routine_load_thread_pool_size,
+                           config::routine_load_thread_pool_size),
+              _data_consumer_pool(10) {
+        REGISTER_GAUGE_STARROCKS_METRIC(routine_load_task_count, [this]() {
+            std::lock_guard<std::mutex> l(_lock);
+            return _task_map.size();
+        });
 
-    ~RoutineLoadTaskExecutor();
+        _data_consumer_pool.start_bg_worker();
+    }
+
+    ~RoutineLoadTaskExecutor() noexcept {
+        _thread_pool.shutdown();
+        _thread_pool.join();
+
+        for (auto& it : _task_map) {
+            auto ctx = it.second;
+            if (ctx->unref()) {
+                delete ctx;
+            }
+        }
+        _task_map.clear();
+    }
 
     // submit a routine load task
     Status submit_task(const TRoutineLoadTask& task);
 
-    Status get_kafka_partition_meta(const PKafkaMetaProxyRequest& request,
-                                    std::vector<int32_t>* partition_ids);
+    Status get_kafka_partition_meta(const PKafkaMetaProxyRequest& request, std::vector<int32_t>* partition_ids,
+                                    int timeout, std::string* group_id);
 
-    Status get_kafka_partition_offsets_for_times(const PKafkaMetaProxyRequest& request,
-                                                 std::vector<PIntegerPair>* partition_offsets);
+    Status get_kafka_partition_offset(const PKafkaOffsetProxyRequest& request, std::vector<int64_t>* beginning_offsets,
+                                      std::vector<int64_t>* latest_offsets, int timeout, std::string* group_id);
 
-    Status get_kafka_latest_offsets_for_partitions(const PKafkaMetaProxyRequest& request,
-                                                   std::vector<PIntegerPair>* partition_offsets);
+    Status get_pulsar_partition_meta(const PPulsarMetaProxyRequest& request, std::vector<std::string>* partitions);
+
+    Status get_pulsar_partition_backlog(const PPulsarBacklogProxyRequest& request, std::vector<int64_t>* backlog_num);
 
 private:
     // execute the task
-    void exec_task(std::shared_ptr<StreamLoadContext> ctx, DataConsumerPool* pool,
-                   ExecFinishCallback cb);
+    void exec_task(StreamLoadContext* ctx, DataConsumerPool* pool, const ExecFinishCallback& cb);
 
-    void err_handler(std::shared_ptr<StreamLoadContext> ctx, const Status& st,
-                     const std::string& err_msg);
+    void err_handler(StreamLoadContext* ctx, const Status& st, const std::string& err_msg);
 
     // for test only
-    Status _execute_plan_for_test(std::shared_ptr<StreamLoadContext> ctx);
-    // create a dummy StreamLoadContext for PKafkaMetaProxyRequest
-    Status _prepare_ctx(const PKafkaMetaProxyRequest& request,
-                        std::shared_ptr<StreamLoadContext> ctx);
+    Status _execute_plan_for_test(StreamLoadContext* ctx);
 
 private:
     ExecEnv* _exec_env;
@@ -84,7 +114,7 @@ private:
 
     std::mutex _lock;
     // task id -> load context
-    std::unordered_map<UniqueId, std::shared_ptr<StreamLoadContext>> _task_map;
+    std::unordered_map<UniqueId, StreamLoadContext*> _task_map;
 };
 
-} // namespace doris
+} // namespace starrocks

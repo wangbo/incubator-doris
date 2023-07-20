@@ -17,7 +17,7 @@
 
 #include "http/http_parser.h"
 
-namespace doris {
+namespace starrocks {
 
 std::ostream& operator<<(std::ostream& os, const HttpChunkParseCtx& ctx) {
     os << "HttpChunkParseCtx("
@@ -269,4 +269,4 @@ HttpParser::ParseState HttpParser::http_parse_chunked(const uint8_t** buf, const
     return rc;
 }
 
-} // namespace doris
+} // namespace starrocks

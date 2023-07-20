@@ -21,7 +21,7 @@
 
 #include "common/logging.h"
 
-namespace doris {
+namespace starrocks {
 class GeoShape;
 }
 

@@ -17,17 +17,14 @@
 
 #pragma once
 
-#include <stdint.h>
-
-#include <functional>
-#include <string>
-
 #include "common/config.h"
 #include "common/status.h"
+#include "gen_cpp/FrontendService_types.h"
 
-namespace doris {
+namespace starrocks {
 
 class ExecEnv;
+class FrontendServiceClient;
 template <class T>
 class ClientConnection;
 
@@ -38,17 +35,16 @@ public:
 
     // for default timeout
     template <typename T>
-    static Status rpc(const std::string& ip, const int32_t port,
-                      std::function<void(ClientConnection<T>&)> callback) {
+    static Status rpc(const std::string& ip, const int32_t port, std::function<void(ClientConnection<T>&)> callback) {
         return rpc(ip, port, callback, config::thrift_rpc_timeout_ms);
     }
 
     template <typename T>
-    static Status rpc(const std::string& ip, const int32_t port,
-                      std::function<void(ClientConnection<T>&)> callback, int timeout_ms);
+    static Status rpc(const std::string& ip, const int32_t port, std::function<void(ClientConnection<T>&)> callback,
+                      int timeout_ms);
 
 private:
     static ExecEnv* _s_exec_env;
 };
 
-} // namespace doris
+} // namespace starrocks

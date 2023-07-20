@@ -1,6 +1,6 @@
 // Copyright (c) cyb70289(https://github.com/cyb70289). All rights reserved.
-// Use of this source code is governed by a MIT license that can be
-// found in the LICENSE file.
+// Use of this source code is governed by a MIT license.
+// (https://github.com/cyb70289/utf8/blob/master/LICENSE)
 
 /*
  * These functions are used for validating utf8 string.
@@ -9,7 +9,7 @@
 
 #include "util/utf8_check.h"
 
-#if defined(__i386) || defined(__x86_64__)
+#if defined(__x86_64__) && defined(__SSE4_2__)
 #include "util/simdutf8check.h"
 #elif defined(__aarch64__)
 #include <arm_neon.h>
@@ -42,7 +42,7 @@
  * | U+100000..U+10FFFF | F4         | 80..8F      | 80..BF     | 80..BF      |
  * +--------------------+------------+-------------+------------+-------------+
  */
-namespace doris {
+namespace starrocks {
 bool validate_utf8_naive(const char* data, size_t len) {
     while (len) {
         int bytes;
@@ -52,8 +52,7 @@ bool validate_utf8_naive(const char* data, size_t len) {
         if (byte1 <= 0x7F) {
             bytes = 1;
             /* C2..DF, 80..BF */
-        } else if (len >= 2 && byte1 >= 0xC2 && byte1 <= 0xDF &&
-                   (signed char)data[1] <= (signed char)0xBF) {
+        } else if (len >= 2 && byte1 >= 0xC2 && byte1 <= 0xDF && (signed char)data[1] <= (signed char)0xBF) {
             bytes = 2;
         } else if (len >= 3) {
             const unsigned char byte2 = data[1];
@@ -101,9 +100,13 @@ bool validate_utf8_naive(const char* data, size_t len) {
     return true;
 }
 
-#if defined(__i386) || defined(__x86_64__)
+#if defined(__x86_64__) && defined(__SSE4_2__)
 bool validate_utf8(const char* src, size_t len) {
     return validate_utf8_fast(src, len);
+}
+#elif defined(__x86_64__)
+bool validate_utf8(const char* src, size_t len) {
+    return validate_utf8_naive(src, len);
 }
 #elif defined(__aarch64__)
 /*
@@ -134,12 +137,10 @@ static const uint8_t _first_range_tbl[] = {
  * Index 9~15 : illegal: u >= 255 && u <= 0
  */
 static const uint8_t _range_min_tbl[] = {
-        0x00, 0x80, 0x80, 0x80, 0xA0, 0x80, 0x90, 0x80,
-        0xC2, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0x00, 0x80, 0x80, 0x80, 0xA0, 0x80, 0x90, 0x80, 0xC2, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 };
 static const uint8_t _range_max_tbl[] = {
-        0x7F, 0xBF, 0xBF, 0xBF, 0xBF, 0x9F, 0xBF, 0x8F,
-        0xF4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x7F, 0xBF, 0xBF, 0xBF, 0xBF, 0x9F, 0xBF, 0x8F, 0xF4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
 /*
@@ -327,4 +328,4 @@ bool validate_utf8(const char* src, size_t len) {
     return validate_utf8_naive(src, len);
 }
 #endif
-} // namespace doris
+} // namespace starrocks

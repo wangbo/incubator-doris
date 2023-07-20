@@ -18,7 +18,7 @@
 
 #include "gutil/hash/jenkins.h"
 
-#include "common/logging.h"
+#include <common/logging.h>
 
 #include "gutil/hash/jenkins_lookup2.h"
 #include "gutil/integral_types.h"
@@ -37,8 +37,7 @@ uint32 Hash32StringWithSeedReferenceImplementation(const char* s, uint32 len, ui
 
     a = b = 0x9e3779b9UL; // the golden ratio; an arbitrary value
 
-    for (keylen = len; keylen >= 3 * sizeof(a);
-         keylen -= static_cast<uint32>(3 * sizeof(a)), s += 3 * sizeof(a)) {
+    for (keylen = len; keylen >= 3 * sizeof(a); keylen -= static_cast<uint32>(3 * sizeof(a)), s += 3 * sizeof(a)) {
         a += Google1At(s);
         b += Google1At(s + sizeof(a));
         c += Google1At(s + sizeof(a) * 2);
@@ -187,8 +186,7 @@ uint64 Hash64StringWithSeed(const char* s, uint32 len, uint64 c) {
 
     a = b = GG_ULONGLONG(0xe08c1d668b756f82); // the golden ratio; an arbitrary value
 
-    for (keylen = len; keylen >= 3 * sizeof(a);
-         keylen -= 3 * static_cast<uint32>(sizeof(a)), s += 3 * sizeof(a)) {
+    for (keylen = len; keylen >= 3 * sizeof(a); keylen -= 3 * static_cast<uint32>(sizeof(a)), s += 3 * sizeof(a)) {
         a += Word64At(s);
         b += Word64At(s + sizeof(a));
         c += Word64At(s + sizeof(a) * 2);

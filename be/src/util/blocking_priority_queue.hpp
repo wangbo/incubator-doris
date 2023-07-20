@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/blocking_priority_queue.hpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -14,155 +31,117 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/blocking-priority-queue.hpp
-// and modified by Doris
 
 #pragma once
 
-#include <unistd.h>
-
+#include <algorithm>
 #include <condition_variable>
 #include <mutex>
-#include <queue>
+#include <vector>
 
 #include "common/config.h"
-#include "util/lock.h"
-#include "util/stopwatch.hpp"
+#include "gutil/port.h"
 
-namespace doris {
+namespace starrocks {
 
 // Fixed capacity FIFO queue, where both blocking_get and blocking_put operations block
 // if the queue is empty or full, respectively.
 template <typename T>
 class BlockingPriorityQueue {
 public:
-    BlockingPriorityQueue(size_t max_elements)
-            : _shutdown(false),
-              _max_element(max_elements),
-              _upgrade_counter(0),
-              _total_get_wait_time(0),
-              _total_put_wait_time(0) {}
+    explicit BlockingPriorityQueue(size_t max_elements) : _max_element(max_elements) {}
+    ~BlockingPriorityQueue() { shutdown(); }
 
-    // Get an element from the queue, waiting indefinitely (or until timeout) for one to become available.
-    // Returns false if we were shut down prior to getting the element, and there
-    // are no more elements available.
-    // -- timeout_ms: 0 means wait indefinitely
-    bool blocking_get(T* out, uint32_t timeout_ms = 0) {
-        MonotonicStopWatch timer;
-        timer.start();
-        std::unique_lock unique_lock(_lock);
-        bool wait_successful = false;
-#if !defined(USE_BTHREAD_SCANNER)
-        if (timeout_ms > 0) {
-            wait_successful = _get_cv.wait_for(unique_lock, std::chrono::milliseconds(timeout_ms),
-                                               [this] { return _shutdown || !_queue.empty(); });
-        } else {
-            _get_cv.wait(unique_lock, [this] { return _shutdown || !_queue.empty(); });
-            wait_successful = true;
-        }
-#else
-        if (timeout_ms > 0) {
-            wait_successful = true;
-            while (!(_shutdown || !_queue.empty())) {
-                if (_get_cv.wait_for(unique_lock, timeout_ms * 1000) != 0) {
-                    // timeout
-                    wait_successful = _shutdown || !_queue.empty();
-                    break;
-                }
-            }
-        } else {
-            while (!(_shutdown || !_queue.empty())) {
-                _get_cv.wait(unique_lock);
-            }
-            wait_successful = true;
-        }
-#endif
-        _total_get_wait_time += timer.elapsed_time();
-        if (wait_successful) {
-            if (_upgrade_counter > config::priority_queue_remaining_tasks_increased_frequency) {
-                std::priority_queue<T> tmp_queue;
-                while (!_queue.empty()) {
-                    T v = _queue.top();
-                    _queue.pop();
-                    ++v;
-                    tmp_queue.push(v);
-                }
-                swap(_queue, tmp_queue);
-                _upgrade_counter = 0;
-            }
-            if (!_queue.empty()) {
-                *out = _queue.top();
-                _queue.pop();
-                ++_upgrade_counter;
-                _put_cv.notify_one();
-                return true;
+    // Return false iff has been shutdown.
+    bool blocking_get(T* out) {
+        std::unique_lock<std::mutex> unique_lock(_lock);
+        _get_cv.wait(unique_lock, [this]() { return !_heap.empty() || _shutdown; });
+        if (!_heap.empty()) {
+            _adjust_priority_if_needed();
+            std::pop_heap(_heap.begin(), _heap.end());
+            if constexpr (std::is_move_assignable_v<T>) {
+                *out = std::move(_heap.back());
             } else {
-                assert(_shutdown);
-                return false;
+                *out = _heap.back();
             }
-        } else {
-            //time out
-            assert(!_shutdown);
-            return false;
-        }
-    }
-
-    bool non_blocking_get(T* out) {
-        MonotonicStopWatch timer;
-        timer.start();
-        std::unique_lock unique_lock(_lock);
-
-        if (!_queue.empty()) {
-            // 定期提高队列中残留的任务优先级
-            // 保证优先级较低的大查询不至于完全饿死
-            if (_upgrade_counter > config::priority_queue_remaining_tasks_increased_frequency) {
-                std::priority_queue<T> tmp_queue;
-                while (!_queue.empty()) {
-                    T v = _queue.top();
-                    _queue.pop();
-                    ++v;
-                    tmp_queue.push(v);
-                }
-                swap(_queue, tmp_queue);
-                _upgrade_counter = 0;
-            }
-            *out = _queue.top();
-            _queue.pop();
+            _heap.pop_back();
             ++_upgrade_counter;
-            _total_get_wait_time += timer.elapsed_time();
+            unique_lock.unlock();
             _put_cv.notify_one();
             return true;
         }
-
         return false;
     }
 
-    // Puts an element into the queue, waiting indefinitely until there is space.
-    // If the queue is shut down, returns false.
+    // Return false iff has been shutdown or empty.
+    bool non_blocking_get(T* out) {
+        std::unique_lock<std::mutex> unique_lock(_lock);
+        if (!_heap.empty()) {
+            _adjust_priority_if_needed();
+            std::pop_heap(_heap.begin(), _heap.end());
+            if constexpr (std::is_move_assignable_v<T>) {
+                *out = std::move(_heap.back());
+            } else {
+                *out = _heap.back();
+            }
+            _heap.pop_back();
+            ++_upgrade_counter;
+            unique_lock.unlock();
+            _put_cv.notify_one();
+            return true;
+        }
+        return false;
+    }
+
+    // Return false iff has been shutdown.
     bool blocking_put(const T& val) {
-        MonotonicStopWatch timer;
-        timer.start();
-        std::unique_lock unique_lock(_lock);
-        while (!(_shutdown || _queue.size() < _max_element)) {
-            _put_cv.wait(unique_lock);
+        std::unique_lock<std::mutex> unique_lock(_lock);
+        _put_cv.wait(unique_lock, [this]() { return _heap.size() < _max_element || _shutdown; });
+        if (!_shutdown) {
+            DCHECK_LT(_heap.size(), _max_element);
+            _heap.emplace_back(val);
+            std::push_heap(_heap.begin(), _heap.end());
+            unique_lock.unlock();
+            _get_cv.notify_one();
+            return true;
         }
-        _total_put_wait_time += timer.elapsed_time();
+        return false;
+    }
 
-        if (_shutdown) {
-            return false;
+    // Return false iff has been shutdown.
+    bool blocking_put(T&& val) {
+        std::unique_lock<std::mutex> unique_lock(_lock);
+        _put_cv.wait(unique_lock, [this]() { return _heap.size() < _max_element || _shutdown; });
+        if (!_shutdown) {
+            DCHECK_LT(_heap.size(), _max_element);
+            _heap.emplace_back(std::move(val));
+            std::push_heap(_heap.begin(), _heap.end());
+            unique_lock.unlock();
+            _get_cv.notify_one();
+            return true;
         }
-
-        _queue.push(val);
-        _get_cv.notify_one();
-        return true;
+        return false;
     }
 
     // Return false if queue full or has been shutdown.
     bool try_put(const T& val) {
-        std::unique_lock unique_lock(_lock);
-        if (_queue.size() < _max_element && !_shutdown) {
-            _queue.push(val);
+        std::unique_lock<std::mutex> unique_lock(_lock);
+        if (_heap.size() < _max_element && !_shutdown) {
+            _heap.emplace_back(val);
+            std::push_heap(_heap.begin(), _heap.end());
+            unique_lock.unlock();
+            _get_cv.notify_one();
+            return true;
+        }
+        return false;
+    }
+
+    // Return false if queue full or has been shutdown.
+    bool try_put(T&& val) {
+        std::unique_lock<std::mutex> unique_lock(_lock);
+        if (_heap.size() < _max_element && !_shutdown) {
+            _heap.emplace_back(std::move(val));
+            std::push_heap(_heap.begin(), _heap.end());
             unique_lock.unlock();
             _get_cv.notify_one();
             return true;
@@ -173,35 +152,42 @@ public:
     // Shut down the queue. Wakes up all threads waiting on blocking_get or blocking_put.
     void shutdown() {
         {
-            std::lock_guard l(_lock);
+            std::lock_guard<std::mutex> guard(_lock);
+            if (_shutdown) return;
             _shutdown = true;
         }
+
         _get_cv.notify_all();
         _put_cv.notify_all();
     }
 
+    size_t get_capacity() const { return _max_element; }
     uint32_t get_size() const {
-        std::lock_guard l(_lock);
-        return _queue.size();
+        std::unique_lock<std::mutex> l(_lock);
+        return _heap.size();
     }
 
-    // Returns the total amount of time threads have blocked in blocking_get.
-    uint64_t total_get_wait_time() const { return _total_get_wait_time; }
-
-    // Returns the total amount of time threads have blocked in blocking_put.
-    uint64_t total_put_wait_time() const { return _total_put_wait_time; }
-
 private:
-    bool _shutdown;
+    // REQUIRES: _lock has been acquired.
+    ALWAYS_INLINE void _adjust_priority_if_needed() {
+        if (_upgrade_counter <= config::priority_queue_remaining_tasks_increased_frequency) {
+            return;
+        }
+        const size_t n = _heap.size();
+        for (size_t i = 0; i < n; i++) {
+            ++_heap[i];
+        }
+        std::make_heap(_heap.begin(), _heap.end());
+        _upgrade_counter = 0;
+    }
+
     const int _max_element;
-    doris::ConditionVariable _get_cv; // 'get' callers wait on this
-    doris::ConditionVariable _put_cv; // 'put' callers wait on this
-    // _lock guards access to _queue, total_get_wait_time, and total_put_wait_time
-    mutable doris::Mutex _lock;
-    std::priority_queue<T> _queue;
-    int _upgrade_counter;
-    std::atomic<uint64_t> _total_get_wait_time;
-    std::atomic<uint64_t> _total_put_wait_time;
+    mutable std::mutex _lock;
+    std::condition_variable _get_cv; // 'get' callers wait on this
+    std::condition_variable _put_cv; // 'put' callers wait on this
+    std::vector<T> _heap;
+    int _upgrade_counter = 0;
+    bool _shutdown = false;
 };
 
-} // namespace doris
+} // namespace starrocks

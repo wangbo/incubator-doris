@@ -4,423 +4,186 @@
 
 #pragma once
 
-#include <fmt/format.h>
-#include <gen_cpp/Status_types.h> // for TStatus
-#include <gen_cpp/types.pb.h>
-#include <glog/logging.h>
-#include <stdint.h>
-
-#include <iostream>
-#include <memory>
 #include <string>
-#include <string_view>
-#include <utility>
+#include <vector>
 
-// IWYU pragma: no_include <opentelemetry/common/threadlocal.h>
-#include "common/compiler_util.h" // IWYU pragma: keep
-#ifdef ENABLE_STACKTRACE
-#include "util/stack_util.h"
-#endif
+#include "common/compiler_util.h"
+#include "common/logging.h"
+#include "gen_cpp/StatusCode_types.h" // for TStatus
+#include "util/slice.h"               // for Slice
+#include "util/time.h"
+namespace starrocks {
 
-#include "common/expected.h"
+class StatusPB;
+class TStatus;
 
-namespace doris {
-
-class PStatus;
-
-namespace ErrorCode {
-#define E(name, code) static constexpr int name = code
-E(OK, 0);
-#define TStatusError(name) E(name, TStatusCode::name)
-// Errors defined in TStatus
-TStatusError(PUBLISH_TIMEOUT);
-TStatusError(MEM_ALLOC_FAILED);
-TStatusError(BUFFER_ALLOCATION_FAILED);
-TStatusError(INVALID_ARGUMENT);
-TStatusError(MINIMUM_RESERVATION_UNAVAILABLE);
-TStatusError(CORRUPTION);
-TStatusError(IO_ERROR);
-TStatusError(NOT_FOUND);
-TStatusError(ALREADY_EXIST);
-TStatusError(NOT_IMPLEMENTED_ERROR);
-TStatusError(END_OF_FILE);
-TStatusError(INTERNAL_ERROR);
-TStatusError(RUNTIME_ERROR);
-TStatusError(CANCELLED);
-TStatusError(MEM_LIMIT_EXCEEDED);
-TStatusError(THRIFT_RPC_ERROR);
-TStatusError(TIMEOUT);
-TStatusError(TOO_MANY_TASKS);
-TStatusError(SERVICE_UNAVAILABLE);
-TStatusError(UNINITIALIZED);
-TStatusError(ABORTED);
-TStatusError(DATA_QUALITY_ERROR);
-TStatusError(LABEL_ALREADY_EXISTS);
-TStatusError(NOT_AUTHORIZED);
-#undef TStatusError
-// BE internal errors
-E(OS_ERROR, -100);
-E(DIR_NOT_EXIST, -101);
-E(FILE_NOT_EXIST, -102);
-E(CREATE_FILE_ERROR, -103);
-E(STL_ERROR, -105);
-E(MUTEX_ERROR, -107);
-E(PTHREAD_ERROR, -108);
-E(NETWORK_ERROR, -109);
-E(UB_FUNC_ERROR, -110);
-E(COMPRESS_ERROR, -111);
-E(DECOMPRESS_ERROR, -112);
-E(UNKNOWN_COMPRESSION_TYPE, -113);
-E(MMAP_ERROR, -114);
-E(READ_UNENOUGH, -116);
-E(CANNOT_CREATE_DIR, -117);
-E(UB_NETWORK_ERROR, -118);
-E(FILE_FORMAT_ERROR, -119);
-E(EVAL_CONJUNCTS_ERROR, -120);
-E(COPY_FILE_ERROR, -121);
-E(FILE_ALREADY_EXIST, -122);
-E(BAD_CAST, -123);
-E(CALL_SEQUENCE_ERROR, -202);
-E(BUFFER_OVERFLOW, -204);
-E(CONFIG_ERROR, -205);
-E(INIT_FAILED, -206);
-E(INVALID_SCHEMA, -207);
-E(CHECKSUM_ERROR, -208);
-E(SIGNATURE_ERROR, -209);
-E(CATCH_EXCEPTION, -210);
-E(PARSE_PROTOBUF_ERROR, -211);
-E(SERIALIZE_PROTOBUF_ERROR, -212);
-E(WRITE_PROTOBUF_ERROR, -213);
-E(VERSION_NOT_EXIST, -214);
-E(TABLE_NOT_FOUND, -215);
-E(TRY_LOCK_FAILED, -216);
-E(OUT_OF_BOUND, -218);
-E(FILE_DATA_ERROR, -220);
-E(TEST_FILE_ERROR, -221);
-E(INVALID_ROOT_PATH, -222);
-E(NO_AVAILABLE_ROOT_PATH, -223);
-E(CHECK_LINES_ERROR, -224);
-E(INVALID_CLUSTER_INFO, -225);
-E(TRANSACTION_NOT_EXIST, -226);
-E(DISK_FAILURE, -227);
-E(TRANSACTION_ALREADY_COMMITTED, -228);
-E(TRANSACTION_ALREADY_VISIBLE, -229);
-E(VERSION_ALREADY_MERGED, -230);
-E(LZO_DISABLED, -231);
-E(DISK_REACH_CAPACITY_LIMIT, -232);
-E(TOO_MANY_TRANSACTIONS, -233);
-E(INVALID_SNAPSHOT_VERSION, -234);
-E(TOO_MANY_VERSION, -235);
-E(NOT_INITIALIZED, -236);
-E(ALREADY_CANCELLED, -237);
-E(TOO_MANY_SEGMENTS, -238);
-E(ALREADY_CLOSED, -239);
-E(CE_CMD_PARAMS_ERROR, -300);
-E(CE_BUFFER_TOO_SMALL, -301);
-E(CE_CMD_NOT_VALID, -302);
-E(CE_LOAD_TABLE_ERROR, -303);
-E(CE_NOT_FINISHED, -304);
-E(CE_TABLET_ID_EXIST, -305);
-E(TABLE_VERSION_DUPLICATE_ERROR, -400);
-E(TABLE_VERSION_INDEX_MISMATCH_ERROR, -401);
-E(TABLE_INDEX_VALIDATE_ERROR, -402);
-E(TABLE_INDEX_FIND_ERROR, -403);
-E(TABLE_CREATE_FROM_HEADER_ERROR, -404);
-E(TABLE_CREATE_META_ERROR, -405);
-E(TABLE_ALREADY_DELETED_ERROR, -406);
-E(ENGINE_INSERT_EXISTS_TABLE, -500);
-E(ENGINE_DROP_NOEXISTS_TABLE, -501);
-E(ENGINE_LOAD_INDEX_TABLE_ERROR, -502);
-E(TABLE_INSERT_DUPLICATION_ERROR, -503);
-E(DELETE_VERSION_ERROR, -504);
-E(GC_SCAN_PATH_ERROR, -505);
-E(ENGINE_INSERT_OLD_TABLET, -506);
-E(FETCH_OTHER_ERROR, -600);
-E(FETCH_TABLE_NOT_EXIST, -601);
-E(FETCH_VERSION_ERROR, -602);
-E(FETCH_SCHEMA_ERROR, -603);
-E(FETCH_COMPRESSION_ERROR, -604);
-E(FETCH_CONTEXT_NOT_EXIST, -605);
-E(FETCH_GET_READER_PARAMS_ERR, -606);
-E(FETCH_SAVE_SESSION_ERR, -607);
-E(FETCH_MEMORY_EXCEEDED, -608);
-E(READER_IS_UNINITIALIZED, -700);
-E(READER_GET_ITERATOR_ERROR, -701);
-E(CAPTURE_ROWSET_READER_ERROR, -702);
-E(READER_READING_ERROR, -703);
-E(READER_INITIALIZE_ERROR, -704);
-E(BE_VERSION_NOT_MATCH, -800);
-E(BE_REPLACE_VERSIONS_ERROR, -801);
-E(BE_MERGE_ERROR, -802);
-E(CAPTURE_ROWSET_ERROR, -804);
-E(BE_SAVE_HEADER_ERROR, -805);
-E(BE_INIT_OLAP_DATA, -806);
-E(BE_TRY_OBTAIN_VERSION_LOCKS, -807);
-E(BE_NO_SUITABLE_VERSION, -808);
-E(BE_INVALID_NEED_MERGED_VERSIONS, -810);
-E(BE_ERROR_DELETE_ACTION, -811);
-E(BE_SEGMENTS_OVERLAPPING, -812);
-E(BE_CLONE_OCCURRED, -813);
-E(PUSH_INIT_ERROR, -900);
-E(PUSH_VERSION_INCORRECT, -902);
-E(PUSH_SCHEMA_MISMATCH, -903);
-E(PUSH_CHECKSUM_ERROR, -904);
-E(PUSH_ACQUIRE_DATASOURCE_ERROR, -905);
-E(PUSH_CREAT_CUMULATIVE_ERROR, -906);
-E(PUSH_BUILD_DELTA_ERROR, -907);
-E(PUSH_VERSION_ALREADY_EXIST, -908);
-E(PUSH_TABLE_NOT_EXIST, -909);
-E(PUSH_INPUT_DATA_ERROR, -910);
-E(PUSH_TRANSACTION_ALREADY_EXIST, -911);
-E(PUSH_BATCH_PROCESS_REMOVED, -912);
-E(PUSH_COMMIT_ROWSET, -913);
-E(PUSH_ROWSET_NOT_FOUND, -914);
-E(INDEX_LOAD_ERROR, -1000);
-E(INDEX_CHECKSUM_ERROR, -1002);
-E(INDEX_DELTA_PRUNING, -1003);
-E(DATA_ROW_BLOCK_ERROR, -1100);
-E(DATA_FILE_TYPE_ERROR, -1101);
-E(WRITER_INDEX_WRITE_ERROR, -1200);
-E(WRITER_DATA_WRITE_ERROR, -1201);
-E(WRITER_ROW_BLOCK_ERROR, -1202);
-E(WRITER_SEGMENT_NOT_FINALIZED, -1203);
-E(ROWBLOCK_DECOMPRESS_ERROR, -1300);
-E(ROWBLOCK_FIND_ROW_EXCEPTION, -1301);
-E(HEADER_ADD_VERSION, -1400);
-E(HEADER_DELETE_VERSION, -1401);
-E(HEADER_ADD_PENDING_DELTA, -1402);
-E(HEADER_ADD_INCREMENTAL_VERSION, -1403);
-E(HEADER_INVALID_FLAG, -1404);
-E(HEADER_LOAD_INVALID_KEY, -1408);
-E(HEADER_LOAD_JSON_HEADER, -1410);
-E(HEADER_INIT_FAILED, -1411);
-E(HEADER_PB_PARSE_FAILED, -1412);
-E(HEADER_HAS_PENDING_DATA, -1413);
-E(SCHEMA_SCHEMA_INVALID, -1500);
-E(SCHEMA_SCHEMA_FIELD_INVALID, -1501);
-E(ALTER_MULTI_TABLE_ERR, -1600);
-E(ALTER_DELTA_DOES_NOT_EXISTS, -1601);
-E(ALTER_STATUS_ERR, -1602);
-E(PREVIOUS_SCHEMA_CHANGE_NOT_FINISHED, -1603);
-E(SCHEMA_CHANGE_INFO_INVALID, -1604);
-E(QUERY_SPLIT_KEY_ERR, -1605);
-E(DATA_QUALITY_ERR, -1606);
-E(COLUMN_DATA_LOAD_BLOCK, -1700);
-E(COLUMN_DATA_RECORD_INDEX, -1701);
-E(COLUMN_DATA_MAKE_FILE_HEADER, -1702);
-E(COLUMN_DATA_READ_VAR_INT, -1703);
-E(COLUMN_DATA_PATCH_LIST_NUM, -1704);
-E(COLUMN_READ_STREAM, -1706);
-E(COLUMN_STREAM_NOT_EXIST, -1716);
-E(COLUMN_VALUE_NULL, -1717);
-E(COLUMN_SEEK_ERROR, -1719);
-E(COLUMN_NO_MATCH_OFFSETS_SIZE, -1720);
-E(COLUMN_NO_MATCH_FILTER_SIZE, -1721);
-E(DELETE_INVALID_CONDITION, -1900);
-E(DELETE_UPDATE_HEADER_FAILED, -1901);
-E(DELETE_SAVE_HEADER_FAILED, -1902);
-E(DELETE_INVALID_PARAMETERS, -1903);
-E(DELETE_INVALID_VERSION, -1904);
-E(CUMULATIVE_NO_SUITABLE_VERSION, -2000);
-E(CUMULATIVE_REPEAT_INIT, -2001);
-E(CUMULATIVE_INVALID_PARAMETERS, -2002);
-E(CUMULATIVE_FAILED_ACQUIRE_DATA_SOURCE, -2003);
-E(CUMULATIVE_INVALID_NEED_MERGED_VERSIONS, -2004);
-E(CUMULATIVE_ERROR_DELETE_ACTION, -2005);
-E(CUMULATIVE_MISS_VERSION, -2006);
-E(CUMULATIVE_CLONE_OCCURRED, -2007);
-E(FULL_NO_SUITABLE_VERSION, -2008);
-E(FULL_MISS_VERSION, -2009);
-E(META_INVALID_ARGUMENT, -3000);
-E(META_OPEN_DB_ERROR, -3001);
-E(META_KEY_NOT_FOUND, -3002);
-E(META_GET_ERROR, -3003);
-E(META_PUT_ERROR, -3004);
-E(META_ITERATOR_ERROR, -3005);
-E(META_DELETE_ERROR, -3006);
-E(META_ALREADY_EXIST, -3007);
-E(ROWSET_WRITER_INIT, -3100);
-E(ROWSET_SAVE_FAILED, -3101);
-E(ROWSET_GENERATE_ID_FAILED, -3102);
-E(ROWSET_DELETE_FILE_FAILED, -3103);
-E(ROWSET_BUILDER_INIT, -3104);
-E(ROWSET_TYPE_NOT_FOUND, -3105);
-E(ROWSET_ALREADY_EXIST, -3106);
-E(ROWSET_CREATE_READER, -3107);
-E(ROWSET_INVALID, -3108);
-E(ROWSET_READER_INIT, -3110);
-E(ROWSET_INVALID_STATE_TRANSITION, -3112);
-E(STRING_OVERFLOW_IN_VEC_ENGINE, -3113);
-E(ROWSET_ADD_MIGRATION_V2, -3114);
-E(PUBLISH_VERSION_NOT_CONTINUOUS, -3115);
-E(ROWSET_RENAME_FILE_FAILED, -3116);
-E(SEGCOMPACTION_INIT_READER, -3117);
-E(SEGCOMPACTION_INIT_WRITER, -3118);
-E(SEGCOMPACTION_FAILED, -3119);
-E(PIP_WAIT_FOR_RF, -3120);
-E(PIP_WAIT_FOR_SC, -3121);
-E(ROWSET_ADD_TO_BINLOG_FAILED, -3122);
-E(ROWSET_BINLOG_NOT_ONLY_ONE_VERSION, -3123);
-E(INVERTED_INDEX_INVALID_PARAMETERS, -6000);
-E(INVERTED_INDEX_NOT_SUPPORTED, -6001);
-E(INVERTED_INDEX_CLUCENE_ERROR, -6002);
-E(INVERTED_INDEX_FILE_NOT_FOUND, -6003);
-E(INVERTED_INDEX_BYPASS, -6004);
-E(INVERTED_INDEX_NO_TERMS, -6005);
-E(INVERTED_INDEX_RENAME_FILE_FAILED, -6006);
-E(INVERTED_INDEX_EVALUATE_SKIPPED, -6007);
-E(INVERTED_INDEX_BUILD_WAITTING, -6008);
-#undef E
-} // namespace ErrorCode
-
-// clang-format off
-// whether to capture stacktrace
-inline bool capture_stacktrace(int code) {
-    return code != ErrorCode::OK
-        && code != ErrorCode::END_OF_FILE
-        && code != ErrorCode::MEM_LIMIT_EXCEEDED
-        && code != ErrorCode::TRY_LOCK_FAILED
-        && code != ErrorCode::TOO_MANY_SEGMENTS
-        && code != ErrorCode::TOO_MANY_VERSION
-        && code != ErrorCode::ALREADY_CANCELLED
-        && code != ErrorCode::ALREADY_CLOSED
-        && code != ErrorCode::PUSH_TRANSACTION_ALREADY_EXIST
-        && code != ErrorCode::BE_NO_SUITABLE_VERSION
-        && code != ErrorCode::CUMULATIVE_NO_SUITABLE_VERSION
-        && code != ErrorCode::FULL_NO_SUITABLE_VERSION
-        && code != ErrorCode::PUBLISH_VERSION_NOT_CONTINUOUS
-        && code != ErrorCode::ROWSET_RENAME_FILE_FAILED
-        && code != ErrorCode::SEGCOMPACTION_INIT_READER
-        && code != ErrorCode::SEGCOMPACTION_INIT_WRITER
-        && code != ErrorCode::SEGCOMPACTION_FAILED
-        && code != ErrorCode::INVERTED_INDEX_INVALID_PARAMETERS
-        && code != ErrorCode::INVERTED_INDEX_NOT_SUPPORTED
-        && code != ErrorCode::INVERTED_INDEX_CLUCENE_ERROR
-        && code != ErrorCode::INVERTED_INDEX_FILE_NOT_FOUND
-        && code != ErrorCode::INVERTED_INDEX_BYPASS
-        && code != ErrorCode::INVERTED_INDEX_NO_TERMS
-        && code != ErrorCode::INVERTED_INDEX_EVALUATE_SKIPPED
-        && code != ErrorCode::INVERTED_INDEX_BUILD_WAITTING
-        && code != ErrorCode::META_KEY_NOT_FOUND
-        && code != ErrorCode::PUSH_VERSION_ALREADY_EXIST
-        && code != ErrorCode::TABLE_ALREADY_DELETED_ERROR
-        && code != ErrorCode::TRANSACTION_NOT_EXIST
-        && code != ErrorCode::TRANSACTION_ALREADY_VISIBLE
-        && code != ErrorCode::TOO_MANY_TRANSACTIONS
-        && code != ErrorCode::TRANSACTION_ALREADY_COMMITTED;
-}
-// clang-format on
+template <typename T>
+class StatusOr;
 
 class Status {
 public:
-    Status() : _code(ErrorCode::OK) {}
+    Status() {}
+    ~Status() noexcept {
+        if (!is_moved_from(_state)) {
+            delete[] _state;
+        }
+    }
 
-    // copy c'tor makes copy of error detail so Status can be returned by value
-    Status(const Status& rhs) { *this = rhs; }
+#if defined(ENABLE_STATUS_FAILED)
+    static int32_t get_cardinality_of_inject();
+    static inline std::unordered_map<std::string, bool> dircetory_enable;
+    static void access_directory_of_inject();
+    static bool in_directory_of_inject(const std::string&);
+#endif
 
-    // move c'tor
-    Status(Status&& rhs) noexcept = default;
+    // Copy c'tor makes copy of error detail so Status can be returned by value
+    Status(const Status& s) : _state(s._state == nullptr ? nullptr : copy_state(s._state)) {}
 
-    // same as copy c'tor
-    Status& operator=(const Status& rhs) {
-        _code = rhs._code;
-        if (rhs._err_msg) {
-            _err_msg = std::make_unique<ErrMsg>(*rhs._err_msg);
+    // Move c'tor
+    Status(Status&& s) noexcept : _state(s._state) { s._state = moved_from_state(); }
+
+    // Same as copy c'tor
+    Status& operator=(const Status& s) {
+        if (this != &s) {
+            Status tmp(s);
+            std::swap(this->_state, tmp._state);
         }
         return *this;
     }
 
-    // move assign
-    Status& operator=(Status&& rhs) noexcept = default;
-
-    Status static create(const TStatus& status) {
-        return Error<true>(status.status_code,
-                           status.error_msgs.empty() ? "" : status.error_msgs[0]);
-    }
-
-    Status static create(const PStatus& pstatus) {
-        return Error<true>(pstatus.status_code(),
-                           pstatus.error_msgs_size() == 0 ? "" : pstatus.error_msgs(0));
-    }
-
-    template <int code, bool stacktrace = true, typename... Args>
-    Status static Error(std::string_view msg, Args&&... args) {
-        return Error<stacktrace>(code, msg, std::forward<Args>(args)...);
-    }
-
-    template <bool stacktrace = true, typename... Args>
-    Status static Error(int code, std::string_view msg, Args&&... args) {
-        Status status;
-        status._code = code;
-        status._err_msg = std::make_unique<ErrMsg>();
-        if constexpr (sizeof...(args) == 0) {
-            status._err_msg->_msg = msg;
-        } else {
-            status._err_msg->_msg = fmt::format(msg, std::forward<Args>(args)...);
+    // Move assign.
+    Status& operator=(Status&& s) noexcept {
+        if (this != &s) {
+            Status tmp(std::move(s));
+            std::swap(this->_state, tmp._state);
         }
-#ifdef ENABLE_STACKTRACE
-        if (stacktrace && capture_stacktrace(code)) {
-            status._err_msg->_stack = get_stack_trace();
-            LOG(WARNING) << "meet error status: " << status;
-        }
-#endif
-        return status;
+        return *this;
     }
+
+    // "Copy" c'tor from TStatus.
+    Status(const TStatus& status); // NOLINT
+
+    Status(const StatusPB& pstatus); // NOLINT
+
+    // Inspired by absl::Status::Update()
+    // https://github.com/abseil/abseil-cpp/blob/63c9eeca0464c08ccb861b21e33e10faead414c9/absl/status/status.h#L467
+    //
+    // Status::update()
+    //
+    // Updates the existing status with `new_status` provided that `this->ok()`.
+    // If the existing status already contains a non-OK error, this update has no
+    // effect and preserves the current data.
+    //
+    // `update()` provides a convenient way of keeping track of the first error
+    // encountered.
+    //
+    // Example:
+    //   // Instead of "if (overall_status.ok()) overall_status = new_status"
+    //   overall_status.update(new_status);
+    //
+    void update(const Status& new_status);
+    void update(Status&& new_status);
 
     static Status OK() { return Status(); }
 
-#define ERROR_CTOR(name, code)                                                  \
-    template <typename... Args>                                                 \
-    static Status name(std::string_view msg, Args&&... args) {                  \
-        return Error<ErrorCode::code, false>(msg, std::forward<Args>(args)...); \
+    static Status Unknown(const Slice& msg) { return Status(TStatusCode::UNKNOWN, msg); }
+
+    static Status PublishTimeout(const Slice& msg) { return Status(TStatusCode::PUBLISH_TIMEOUT, msg); }
+    static Status MemoryAllocFailed(const Slice& msg) { return Status(TStatusCode::MEM_ALLOC_FAILED, msg); }
+    static Status BufferAllocFailed(const Slice& msg) { return Status(TStatusCode::BUFFER_ALLOCATION_FAILED, msg); }
+    static Status InvalidArgument(const Slice& msg) { return Status(TStatusCode::INVALID_ARGUMENT, msg); }
+    static Status MinimumReservationUnavailable(const Slice& msg) {
+        return Status(TStatusCode::MINIMUM_RESERVATION_UNAVAILABLE, msg);
+    }
+    static Status Corruption(const Slice& msg) { return Status(TStatusCode::CORRUPTION, msg); }
+    static Status IOError(const Slice& msg) { return Status(TStatusCode::IO_ERROR, msg); }
+    static Status NotFound(const Slice& msg) { return Status(TStatusCode::NOT_FOUND, msg); }
+    static Status AlreadyExist(const Slice& msg) { return Status(TStatusCode::ALREADY_EXIST, msg); }
+    static Status NotSupported(const Slice& msg) { return Status(TStatusCode::NOT_IMPLEMENTED_ERROR, msg); }
+    static Status EndOfFile(const Slice& msg) { return Status(TStatusCode::END_OF_FILE, msg); }
+    static Status InternalError(const Slice& msg, int16_t precise_code = 1, const Slice& msg2 = Slice()) {
+        return Status(TStatusCode::INTERNAL_ERROR, msg);
+    }
+    static Status RuntimeError(const Slice& msg, int16_t precise_code = 1, const Slice& msg2 = Slice()) {
+        return Status(TStatusCode::RUNTIME_ERROR, msg);
+    }
+    static Status Cancelled(const Slice& msg, int16_t precise_code = 1, const Slice& msg2 = Slice()) {
+        return Status(TStatusCode::CANCELLED, msg);
     }
 
-    ERROR_CTOR(PublishTimeout, PUBLISH_TIMEOUT)
-    ERROR_CTOR(MemoryAllocFailed, MEM_ALLOC_FAILED)
-    ERROR_CTOR(BufferAllocFailed, BUFFER_ALLOCATION_FAILED)
-    ERROR_CTOR(InvalidArgument, INVALID_ARGUMENT)
-    ERROR_CTOR(MinimumReservationUnavailable, MINIMUM_RESERVATION_UNAVAILABLE)
-    ERROR_CTOR(Corruption, CORRUPTION)
-    ERROR_CTOR(IOError, IO_ERROR)
-    ERROR_CTOR(NotFound, NOT_FOUND)
-    ERROR_CTOR(AlreadyExist, ALREADY_EXIST)
-    ERROR_CTOR(NotSupported, NOT_IMPLEMENTED_ERROR)
-    ERROR_CTOR(EndOfFile, END_OF_FILE)
-    ERROR_CTOR(InternalError, INTERNAL_ERROR)
-    ERROR_CTOR(WaitForRf, PIP_WAIT_FOR_RF)
-    ERROR_CTOR(WaitForScannerContext, PIP_WAIT_FOR_SC)
-    ERROR_CTOR(RuntimeError, RUNTIME_ERROR)
-    ERROR_CTOR(Cancelled, CANCELLED)
-    ERROR_CTOR(MemoryLimitExceeded, MEM_LIMIT_EXCEEDED)
-    ERROR_CTOR(RpcError, THRIFT_RPC_ERROR)
-    ERROR_CTOR(TimedOut, TIMEOUT)
-    ERROR_CTOR(TooManyTasks, TOO_MANY_TASKS)
-    ERROR_CTOR(ServiceUnavailable, SERVICE_UNAVAILABLE)
-    ERROR_CTOR(Uninitialized, UNINITIALIZED)
-    ERROR_CTOR(Aborted, ABORTED)
-    ERROR_CTOR(DataQualityError, DATA_QUALITY_ERROR)
-    ERROR_CTOR(NotAuthorized, NOT_AUTHORIZED)
-#undef ERROR_CTOR
-
-    template <int code>
-    bool is() const {
-        return code == _code;
+    static Status MemoryLimitExceeded(const Slice& msg, int16_t precise_code = 1, const Slice& msg2 = Slice()) {
+        return Status(TStatusCode::MEM_LIMIT_EXCEEDED, msg);
     }
 
-    void set_code(int code) { _code = code; }
-
-    bool ok() const { return _code == ErrorCode::OK; }
-
-    bool is_io_error() const {
-        return ErrorCode::IO_ERROR == _code || ErrorCode::READ_UNENOUGH == _code ||
-               ErrorCode::CHECKSUM_ERROR == _code || ErrorCode::FILE_DATA_ERROR == _code ||
-               ErrorCode::TEST_FILE_ERROR == _code;
+    static Status ThriftRpcError(const Slice& msg, int16_t precise_code = 1, const Slice& msg2 = Slice()) {
+        return Status(TStatusCode::THRIFT_RPC_ERROR, msg);
+    }
+    static Status TimedOut(const Slice& msg, int16_t precise_code = 1, const Slice& msg2 = Slice()) {
+        return Status(TStatusCode::TIMEOUT, msg);
+    }
+    static Status TooManyTasks(const Slice& msg, int16_t precise_code = 1, const Slice& msg2 = Slice()) {
+        return Status(TStatusCode::TOO_MANY_TASKS, msg);
+    }
+    static Status ServiceUnavailable(const Slice& msg) { return Status(TStatusCode::SERVICE_UNAVAILABLE, msg); }
+    static Status Uninitialized(const Slice& msg) { return Status(TStatusCode::UNINITIALIZED, msg); }
+    static Status Aborted(const Slice& msg) { return Status(TStatusCode::ABORTED, msg); }
+    static Status DataQualityError(const Slice& msg) { return Status(TStatusCode::DATA_QUALITY_ERROR, msg); }
+    static Status VersionAlreadyMerged(const Slice& msg) {
+        return Status(TStatusCode::OLAP_ERR_VERSION_ALREADY_MERGED, msg);
+    }
+    static Status DuplicateRpcInvocation(const Slice& msg) {
+        return Status(TStatusCode::DUPLICATE_RPC_INVOCATION, msg);
+    }
+    static Status JsonFormatError(const Slice& msg) {
+        // TODO(mofei) define json format error.
+        return Status(TStatusCode::DATA_QUALITY_ERROR, msg);
     }
 
-    bool is_invalid_argument() const { return ErrorCode::INVALID_ARGUMENT == _code; }
+    static Status GlobalDictError(const Slice& msg) { return Status(TStatusCode::GLOBAL_DICT_ERROR, msg); }
 
-    bool is_not_found() const { return _code == ErrorCode::NOT_FOUND; }
-    bool is_not_authorized() const { return code() == TStatusCode::NOT_AUTHORIZED; }
+    static Status TransactionInProcessing(const Slice& msg) { return Status(TStatusCode::TXN_IN_PROCESSING, msg); }
+    static Status TransactionNotExists(const Slice& msg) { return Status(TStatusCode::TXN_NOT_EXISTS, msg); }
+    static Status LabelAlreadyExists(const Slice& msg) { return Status(TStatusCode::LABEL_ALREADY_EXISTS, msg); }
+
+    static Status ResourceBusy(const Slice& msg) { return Status(TStatusCode::RESOURCE_BUSY, msg); }
+
+    static Status EAgain(const Slice& msg) { return Status(TStatusCode::SR_EAGAIN, msg); }
+
+    static Status RemoteFileNotFound(const Slice& msg) { return Status(TStatusCode::REMOTE_FILE_NOT_FOUND, msg); }
+
+    bool ok() const { return _state == nullptr; }
+
+    bool is_cancelled() const { return code() == TStatusCode::CANCELLED; }
+    bool is_mem_limit_exceeded() const { return code() == TStatusCode::MEM_LIMIT_EXCEEDED; }
+    bool is_thrift_rpc_error() const { return code() == TStatusCode::THRIFT_RPC_ERROR; }
+    bool is_end_of_file() const { return code() == TStatusCode::END_OF_FILE; }
+    bool is_ok_or_eof() const { return ok() || is_end_of_file(); }
+    bool is_not_found() const { return code() == TStatusCode::NOT_FOUND; }
+    bool is_already_exist() const { return code() == TStatusCode::ALREADY_EXIST; }
+    bool is_io_error() const { return code() == TStatusCode::IO_ERROR; }
+    bool is_not_supported() const { return code() == TStatusCode::NOT_IMPLEMENTED_ERROR; }
+
+    /// @return @c true if the status indicates Uninitialized.
+    bool is_uninitialized() const { return code() == TStatusCode::UNINITIALIZED; }
+
+    // @return @c true if the status indicates an Aborted error.
+    bool is_aborted() const { return code() == TStatusCode::ABORTED; }
+
+    /// @return @c true if the status indicates an InvalidArgument error.
+    bool is_invalid_argument() const { return code() == TStatusCode::INVALID_ARGUMENT; }
+
+    // @return @c true if the status indicates ServiceUnavailable.
+    bool is_service_unavailable() const { return code() == TStatusCode::SERVICE_UNAVAILABLE; }
+
+    bool is_data_quality_error() const { return code() == TStatusCode::DATA_QUALITY_ERROR; }
+
+    bool is_version_already_merged() const { return code() == TStatusCode::OLAP_ERR_VERSION_ALREADY_MERGED; }
+
+    bool is_duplicate_rpc_invocation() const { return code() == TStatusCode::DUPLICATE_RPC_INVOCATION; }
+
+    bool is_time_out() const { return code() == TStatusCode::TIMEOUT; }
+
+    bool is_eagain() const { return code() == TStatusCode::SR_EAGAIN; }
 
     // Convert into TStatus. Call this if 'status_container' contains an optional
     // TStatus field named 'status'. This also sets __isset.status.
@@ -432,15 +195,37 @@ public:
 
     // Convert into TStatus.
     void to_thrift(TStatus* status) const;
-    TStatus to_thrift() const;
-    void to_protobuf(PStatus* status) const;
+    void to_protobuf(StatusPB* status) const;
 
+    std::string get_error_msg() const {
+        auto msg = message();
+        return std::string(msg.data, msg.size);
+    }
+
+    /// @return A string representation of this status suitable for printing.
+    ///   Returns the string "OK" for success.
     std::string to_string() const;
 
-    /// @return A json representation of this status.
-    std::string to_json() const;
+    /// @return A string representation of the status code, without the message
+    ///   text or sub code information.
+    std::string code_as_string() const;
 
-    int code() const { return _code; }
+    // This is similar to to_string, except that it does not include
+    // the context info.
+    //
+    // @note The returned Slice is only valid as long as this Status object
+    //   remains live and unchanged.
+    //
+    // @return The message portion of the Status. For @c OK statuses,
+    //   this returns an empty string.
+    Slice message() const;
+
+    // Error message with extra context info, like file name, line number.
+    Slice detailed_message() const;
+
+    TStatusCode::type code() const {
+        return _state == nullptr ? TStatusCode::OK : static_cast<TStatusCode::type>(_state[4]);
+    }
 
     /// Clone this status and add the specified prefix to the message.
     ///
@@ -448,129 +233,219 @@ public:
     ///
     /// @param [in] msg
     ///   The message to prepend.
-    /// @return A ref to Status object
-    Status& prepend(std::string_view msg);
+    /// @return A new Status object with the same state plus an additional
+    ///   leading message.
+    Status clone_and_prepend(const Slice& msg) const;
 
-    /// Add the specified suffix to the message.
+    /// Clone this status and add the specified suffix to the message.
     ///
     /// If this status is OK, then an OK status will be returned.
     ///
     /// @param [in] msg
     ///   The message to append.
-    /// @return A ref to Status object
-    Status& append(std::string_view msg);
+    /// @return A new Status object with the same state plus an additional
+    ///   trailing message.
+    Status clone_and_append(const Slice& msg) const;
 
-    // if(!status) or if (status) will use this operator
-    operator bool() const { return this->ok(); }
-
-    // Used like if (res == Status::OK())
-    // if the state is ok, then both code and precise code is not initialized properly, so that should check ok state
-    // ignore error messages during comparison
-    bool operator==(const Status& st) const { return _code == st._code; }
-
-    // Used like if (res != Status::OK())
-    bool operator!=(const Status& st) const { return _code != st._code; }
-
-    friend std::ostream& operator<<(std::ostream& ostr, const Status& status);
+    Status clone_and_append_context(const char* filename, int line, const char* expr) const;
 
 private:
-    int _code;
-    struct ErrMsg {
-        std::string _msg;
-#ifdef ENABLE_STACKTRACE
-        std::string _stack;
-#endif
-    };
-    std::unique_ptr<ErrMsg> _err_msg;
+    static const char* copy_state(const char* state);
+    static const char* copy_state_with_extra_ctx(const char* state, Slice ctx);
 
-    std::string code_as_string() const {
-        return (int)_code >= 0 ? doris::to_string(static_cast<TStatusCode::type>(_code))
-                               : fmt::format("E{}", (int16_t)_code);
-    }
+    // Indicates whether this Status was the rhs of a move operation.
+    static bool is_moved_from(const char* state);
+    static const char* moved_from_state();
+
+    Status(TStatusCode::type code, Slice msg) : Status(code, msg, {}) {}
+    Status(TStatusCode::type code, Slice msg, Slice ctx);
+
+private:
+    // OK status has a nullptr _state.  Otherwise, _state is a new[] array
+    // of the following form:
+    //    _state[0..1]                        == len1: length of message
+    //    _state[2..3]                        == len2: length of context
+    //    _state[4]                           == code
+    //    _state[5.. 5 + len1]                == message
+    //    _state[5 + len1 .. 5 + len1 + len2] == context
+    const char* _state = nullptr;
 };
 
-inline std::ostream& operator<<(std::ostream& ostr, const Status& status) {
-    ostr << '[' << status.code_as_string() << ']';
-    ostr << (status._err_msg ? status._err_msg->_msg : "");
-#ifdef ENABLE_STACKTRACE
-    if (status._err_msg && !status._err_msg->_stack.empty()) {
-        ostr << '\n' << status._err_msg->_stack;
+inline void Status::update(const Status& new_status) {
+    if (ok()) {
+        *this = new_status;
     }
+}
+
+inline void Status::update(Status&& new_status) {
+    if (ok()) {
+        *this = std::move(new_status);
+    }
+}
+
+inline Status ignore_not_found(const Status& status) {
+    return status.is_not_found() ? Status::OK() : status;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const Status& st) {
+    return os << st.to_string();
+}
+
+inline const Status& to_status(const Status& st) {
+    return st;
+}
+
+template <typename T>
+inline const Status& to_status(const StatusOr<T>& st) {
+    return st.status();
+}
+
+#ifndef AS_STRING
+#define AS_STRING(x) AS_STRING_INTERNAL(x)
+#define AS_STRING_INTERNAL(x) #x
 #endif
-    return ostr;
-}
 
-inline std::string Status::to_string() const {
-    std::stringstream ss;
-    ss << *this;
-    return ss.str();
-}
-
-// some generally useful macros
-#define RETURN_IF_ERROR(stmt)           \
-    do {                                \
-        Status _status_ = (stmt);       \
-        if (UNLIKELY(!_status_.ok())) { \
-            return _status_;            \
-        }                               \
+#define RETURN_IF_ERROR_INTERNAL(stmt)                                                                \
+    do {                                                                                              \
+        auto&& status__ = (stmt);                                                                     \
+        if (UNLIKELY(!status__.ok())) {                                                               \
+            return to_status(status__).clone_and_append_context(__FILE__, __LINE__, AS_STRING(stmt)); \
+        }                                                                                             \
     } while (false)
 
-#define RETURN_ERROR_IF_NON_VEC \
-    return Status::NotSupported("Non-vectorized engine is not supported since Doris 2.0.");
+#if defined(ENABLE_STATUS_FAILED)
+struct StatusInstance {
+    static constexpr Status (*random[])(const Slice& msg) = {&Status::Unknown,
+                                                             &Status::PublishTimeout,
+                                                             &Status::MemoryAllocFailed,
+                                                             &Status::BufferAllocFailed,
+                                                             &Status::InvalidArgument,
+                                                             &Status::MinimumReservationUnavailable,
+                                                             &Status::Corruption,
+                                                             &Status::IOError,
+                                                             &Status::NotFound,
+                                                             &Status::AlreadyExist,
+                                                             &Status::NotSupported,
+                                                             &Status::EndOfFile,
+                                                             &Status::ServiceUnavailable,
+                                                             &Status::Uninitialized,
+                                                             &Status::Aborted,
+                                                             &Status::DataQualityError,
+                                                             &Status::VersionAlreadyMerged,
+                                                             &Status::DuplicateRpcInvocation,
+                                                             &Status::JsonFormatError,
+                                                             &Status::GlobalDictError,
+                                                             &Status::TransactionInProcessing,
+                                                             &Status::TransactionNotExists,
+                                                             &Status::LabelAlreadyExists,
+                                                             &Status::ResourceBusy};
 
-#define RETURN_IF_STATUS_ERROR(status, stmt) \
-    do {                                     \
-        status = (stmt);                     \
-        if (UNLIKELY(!status.ok())) {        \
-            return;                          \
-        }                                    \
+    static constexpr TStatusCode::type codes[] = {TStatusCode::UNKNOWN,
+                                                  TStatusCode::PUBLISH_TIMEOUT,
+                                                  TStatusCode::MEM_ALLOC_FAILED,
+                                                  TStatusCode::BUFFER_ALLOCATION_FAILED,
+                                                  TStatusCode::INVALID_ARGUMENT,
+                                                  TStatusCode::MINIMUM_RESERVATION_UNAVAILABLE,
+                                                  TStatusCode::CORRUPTION,
+                                                  TStatusCode::IO_ERROR,
+                                                  TStatusCode::NOT_FOUND,
+                                                  TStatusCode::ALREADY_EXIST,
+                                                  TStatusCode::NOT_IMPLEMENTED_ERROR,
+                                                  TStatusCode::END_OF_FILE,
+                                                  TStatusCode::SERVICE_UNAVAILABLE,
+                                                  TStatusCode::UNINITIALIZED,
+                                                  TStatusCode::ABORTED,
+                                                  TStatusCode::DATA_QUALITY_ERROR,
+                                                  TStatusCode::OLAP_ERR_VERSION_ALREADY_MERGED,
+                                                  TStatusCode::DUPLICATE_RPC_INVOCATION,
+                                                  TStatusCode::DATA_QUALITY_ERROR,
+                                                  TStatusCode::GLOBAL_DICT_ERROR,
+                                                  TStatusCode::TXN_IN_PROCESSING,
+                                                  TStatusCode::TXN_NOT_EXISTS,
+                                                  TStatusCode::LABEL_ALREADY_EXISTS,
+                                                  TStatusCode::RESOURCE_BUSY};
+
+    static constexpr int SIZE = sizeof(random) / sizeof(Status(*)(const Slice& msg));
+};
+
+#define RETURN_INJECT(index)                                                         \
+    std::stringstream ss;                                                            \
+    ss << "INJECT ERROR: " << __FILE__ << " " << __LINE__ << " "                     \
+       << starrocks::StatusInstance::codes[index % starrocks::StatusInstance::SIZE]; \
+    return starrocks::StatusInstance::random[index % starrocks::StatusInstance::SIZE](ss.str());
+
+#define RETURN_IF_ERROR(stmt)                                                                             \
+    do {                                                                                                  \
+        uint32_t seed = starrocks::GetCurrentTimeNanos();                                                 \
+        seed = ::rand_r(&seed);                                                                           \
+        uint32_t boundary_value = RAND_MAX / (1.0 * starrocks::Status::get_cardinality_of_inject());      \
+        /* Pre-condition of inject errors: probability and File scope*/                                   \
+        if (seed <= boundary_value && starrocks::Status::in_directory_of_inject(__FILE__)) {              \
+            RETURN_INJECT(seed);                                                                          \
+        } else {                                                                                          \
+            auto&& status__ = (stmt);                                                                     \
+            if (UNLIKELY(!status__.ok())) {                                                               \
+                return to_status(status__).clone_and_append_context(__FILE__, __LINE__, AS_STRING(stmt)); \
+            }                                                                                             \
+        }                                                                                                 \
     } while (false)
+#else
+#define RETURN_IF_ERROR(stmt) RETURN_IF_ERROR_INTERNAL(stmt)
+#endif
 
-#define EXIT_IF_ERROR(stmt)             \
-    do {                                \
-        Status _status_ = (stmt);       \
-        if (UNLIKELY(!_status_.ok())) { \
-            LOG(ERROR) << _status_;     \
-            exit(1);                    \
-        }                               \
+#define EXIT_IF_ERROR(stmt)                        \
+    do {                                           \
+        auto&& status__ = (stmt);                  \
+        if (UNLIKELY(!status__.ok())) {            \
+            string msg = status__.get_error_msg(); \
+            LOG(ERROR) << msg;                     \
+            exit(1);                               \
+        }                                          \
     } while (false)
 
 /// @brief Emit a warning if @c to_call returns a bad status.
-#define WARN_IF_ERROR(to_call, warning_prefix)              \
-    do {                                                    \
-        Status _s = (to_call);                              \
-        if (UNLIKELY(!_s.ok())) {                           \
-            LOG(WARNING) << (warning_prefix) << ": " << _s; \
-        }                                                   \
-    } while (false);
+#define WARN_IF_ERROR(to_call, warning_prefix)                \
+    do {                                                      \
+        auto&& st__ = (to_call);                              \
+        if (UNLIKELY(!st__.ok())) {                           \
+            LOG(WARNING) << (warning_prefix) << ": " << st__; \
+        }                                                     \
+    } while (0);
 
-#define RETURN_WITH_WARN_IF_ERROR(stmt, ret_code, warning_prefix)  \
-    do {                                                           \
-        Status _s = (stmt);                                        \
-        if (UNLIKELY(!_s.ok())) {                                  \
-            LOG(WARNING) << (warning_prefix) << ", error: " << _s; \
-            return ret_code;                                       \
-        }                                                          \
-    } while (false);
+#define RETURN_IF_ERROR_WITH_WARN(stmt, warning_prefix)              \
+    do {                                                             \
+        auto&& st__ = (stmt);                                        \
+        if (UNLIKELY(!st__.ok())) {                                  \
+            LOG(WARNING) << (warning_prefix) << ", error: " << st__; \
+            return std::move(st__);                                  \
+        }                                                            \
+    } while (0);
 
-#define RETURN_NOT_OK_STATUS_WITH_WARN(stmt, warning_prefix)       \
-    do {                                                           \
-        Status _s = (stmt);                                        \
-        if (UNLIKELY(!_s.ok())) {                                  \
-            LOG(WARNING) << (warning_prefix) << ", error: " << _s; \
-            return _s;                                             \
-        }                                                          \
-    } while (false);
+#define DCHECK_IF_ERROR(stmt)      \
+    do {                           \
+        auto&& st__ = (stmt);      \
+        DCHECK(st__.ok()) << st__; \
+    } while (0)
 
-template <typename T>
-using Result = expected<T, Status>;
+} // namespace starrocks
 
-#define RETURN_IF_ERROR_RESULT(stmt)                \
-    do {                                            \
-        Status _status_ = (stmt);                   \
-        if (UNLIKELY(!_status_.ok())) {             \
-            return unexpected(std::move(_status_)); \
-        }                                           \
-    } while (false)
+#define RETURN_IF(cond, ret) \
+    do {                     \
+        if (cond) {          \
+            return ret;      \
+        }                    \
+    } while (0)
 
-} // namespace doris
+#define RETURN_IF_UNLIKELY_NULL(ptr, ret) \
+    do {                                  \
+        if (UNLIKELY(ptr == nullptr)) {   \
+            return ret;                   \
+        }                                 \
+    } while (0)
+
+#define RETURN_IF_UNLIKELY(cond, ret) \
+    do {                              \
+        if (UNLIKELY(cond)) {         \
+            return ret;               \
+        }                             \
+    } while (0)

@@ -4,19 +4,16 @@
 
 #include "gutil/strings/stringpiece.h"
 
-// IWYU pragma: no_include <pstl/glue_algorithm_defs.h>
+#include <common/logging.h>
 
-#include "common/logging.h"
-#include <string.h>
 #include <algorithm>
 #include <climits>
+#include <cstring>
 #include <string>
-#include <deque>
-#include <ostream>
 
+#include "gutil/hash/hash.h"
 #include "gutil/stl_util.h"
 #include "gutil/strings/memutil.h"
-#include "gutil/hash/legacy_hash.h"
 
 using std::copy;
 using std::max;
@@ -26,9 +23,11 @@ using std::sort;
 using std::swap;
 using std::string;
 
-size_t std::hash<StringPiece>::operator()(StringPiece s) const {
+namespace std {
+size_t hash<StringPiece>::operator()(StringPiece s) const {
     return HashTo32(s.data(), s.size());
 }
+} // namespace std
 
 std::ostream& operator<<(std::ostream& o, StringPiece piece) {
     o.write(piece.data(), piece.size());
@@ -40,8 +39,7 @@ StringPiece::StringPiece(StringPiece x, int pos) : ptr_(x.ptr_ + pos), length_(x
     DCHECK_LE(pos, x.length_);
 }
 
-StringPiece::StringPiece(StringPiece x, int pos, int len)
-        : ptr_(x.ptr_ + pos), length_(min(len, x.length_ - pos)) {
+StringPiece::StringPiece(StringPiece x, int pos, int len) : ptr_(x.ptr_ + pos), length_(min(len, x.length_ - pos)) {
     DCHECK_LE(0, pos);
     DCHECK_LE(pos, x.length_);
     DCHECK_GE(len, 0);
@@ -212,7 +210,7 @@ int StringPiece::find_last_not_of(char c, size_type pos) const {
 StringPiece StringPiece::substr(size_type pos, size_type n) const {
     if (pos > length_) pos = length_;
     if (n > length_ - pos) n = length_ - pos;
-    return StringPiece(ptr_ + pos, n);
+    return {ptr_ + pos, static_cast<int>(n)};
 }
 
 const StringPiece::size_type StringPiece::npos = size_type(-1);

@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-namespace java org.apache.doris.thrift
+namespace java com.starrocks.thrift
 
 enum TExprOpcode {
     INVALID_OPCODE,
@@ -25,8 +25,8 @@ enum TExprOpcode {
     CAST,
     FILTER_IN,
     FILTER_NOT_IN,
-    FILTER_NEW_IN,
-    FILTER_NEW_NOT_IN,
+    FILTER_NEW_IN, // deprecated
+    FILTER_NEW_NOT_IN, // deprecated
     EQ,
     NE,
     LT,
@@ -48,7 +48,6 @@ enum TExprOpcode {
     TIMESTAMP_HOUR,
     TIMESTAMP_HOURS_ADD,
     TIMESTAMP_HOURS_SUB,
-    TIMESTAMP_MICROSECOND,
     TIMESTAMP_MICROSECONDS_ADD,
     TIMESTAMP_MICROSECONDS_SUB,
     TIMESTAMP_MINUTE,
@@ -84,13 +83,15 @@ enum TExprOpcode {
     FACTORIAL,
     LAST_OPCODE,
     EQ_FOR_NULL,
-    RT_FILTER,
-    MATCH_ANY,
-    MATCH_ALL,
-    MATCH_PHRASE,
-    MATCH_ELEMENT_EQ,
-    MATCH_ELEMENT_LT,
-    MATCH_ELEMENT_GT,
-    MATCH_ELEMENT_LE,
-    MATCH_ELEMENT_GE,
+    BIT_SHIFT_LEFT,
+    BIT_SHIFT_RIGHT,
+    BIT_SHIFT_RIGHT_LOGICAL,
+}
+
+// Stream Operation Types
+enum TStreamOpType {
+    INSERT = 0,
+    UPDATE_BEFORE = 1,
+    UPDATE_AFTER = 2,
+    DELETE = 3,
 }

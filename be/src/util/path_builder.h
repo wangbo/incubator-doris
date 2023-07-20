@@ -14,31 +14,28 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/path-builder.h
-// and modified by Doris
 
 #pragma once
 
 #include <string>
 
-namespace doris {
+namespace starrocks {
 
-// Utility class to construct full paths relative to the doris_home path.
+// Utility class to construct full paths relative to the starrocks_home path.
 class PathBuilder {
 public:
-    // Sets full_path to <DORIS_HOME>/path
+    // Sets full_path to <STARROCKS_HOME>/path
     static void get_full_path(const std::string& path, std::string* full_path);
 
-    // Sets full_path to <DORIS_HOME>/<build><debug OR release>/path
+    // Sets full_path to <STARROCKS_HOME>/<build><debug OR release>/path
     static void get_full_build_path(const std::string& path, std::string* full_path);
 
 private:
-    // Cache of env['DORIS_HOME']
-    static const char* _s_doris_home;
+    // Cache of env['STARROCKS_HOME']
+    static const char* _s_starrocks_home;
 
-    // Load _s_doris_home if it is not already loaded
-    static void load_doris_home();
+    // Load _s_starrocks_home if it is not already loaded
+    static void load_starrocks_home();
 };
 
-} // namespace doris
+} // namespace starrocks

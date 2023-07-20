@@ -17,20 +17,16 @@
 
 #include "util/countdown_latch.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include <gtest/gtest.h>
 
 #include <functional>
-#include <memory>
-#include <thread>
 
-#include "common/status.h"
-#include "gtest/gtest_pred_impl.h"
 #include "gutil/ref_counted.h"
+#include "util/monotime.h"
 #include "util/thread.h"
 #include "util/threadpool.h"
 
-namespace doris {
+namespace starrocks {
 
 static void decrement_latch(CountDownLatch* latch, int amount) {
     if (amount == 1) {
@@ -44,21 +40,21 @@ static void decrement_latch(CountDownLatch* latch, int amount) {
 // as 1 by one.
 TEST(TestCountDownLatch, TestLatch) {
     std::unique_ptr<ThreadPool> pool;
-    EXPECT_TRUE(ThreadPoolBuilder("cdl-test").set_max_threads(1).build(&pool).ok());
+    ASSERT_TRUE(ThreadPoolBuilder("cdl-test").set_max_threads(1).build(&pool).ok());
 
     CountDownLatch latch(1000);
 
     // Decrement the count by 1 in another thread, this should not fire the
     // latch.
-    EXPECT_TRUE(pool->submit_func(std::bind(decrement_latch, &latch, 1)).ok());
-    EXPECT_FALSE(latch.wait_for(std::chrono::milliseconds(200)));
-    EXPECT_EQ(999, latch.count());
+    ASSERT_TRUE(pool->submit_func([capture0 = &latch] { return decrement_latch(capture0, 1); }).ok());
+    ASSERT_FALSE(latch.wait_for(MonoDelta::FromMilliseconds(200)));
+    ASSERT_EQ(999, latch.count());
 
     // Now decrement by 1000 this should decrement to 0 and fire the latch
     // (even though 1000 is one more than the current count).
-    EXPECT_TRUE(pool->submit_func(std::bind(decrement_latch, &latch, 1000)).ok());
+    ASSERT_TRUE(pool->submit_func([capture0 = &latch] { return decrement_latch(capture0, 1000); }).ok());
     latch.wait();
-    EXPECT_EQ(0, latch.count());
+    ASSERT_EQ(0, latch.count());
 }
 
 // Test that resetting to zero while there are waiters lets the waiters
@@ -66,12 +62,12 @@ TEST(TestCountDownLatch, TestLatch) {
 TEST(TestCountDownLatch, TestResetToZero) {
     CountDownLatch cdl(100);
     scoped_refptr<Thread> t;
-    EXPECT_TRUE(Thread::create("test", "cdl-test", &CountDownLatch::wait, &cdl, &t).ok());
+    ASSERT_TRUE(Thread::create("test", "cdl-test", &CountDownLatch::wait, &cdl, &t).ok());
 
     // Sleep for a bit until it's likely the other thread is waiting on the latch.
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    SleepFor(MonoDelta::FromMilliseconds(10));
     cdl.reset(0);
     t->join();
 }
 
-} // namespace doris
+} // namespace starrocks

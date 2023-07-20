@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/http/action/stream_load.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,22 +34,24 @@
 
 #pragma once
 
-#include <memory>
-#include <string>
+#include <functional>
 
+#include "gen_cpp/PlanNodes_types.h"
 #include "http/http_handler.h"
-#include "util/metrics.h"
+#include "runtime/client_cache.h"
+#include "runtime/mem_tracker.h"
+#include "runtime/message_body_sink.h"
 
-namespace doris {
+namespace starrocks {
 
 class ExecEnv;
 class Status;
 class StreamLoadContext;
-class HttpRequest;
+class ConcurrentLimiter;
 
 class StreamLoadAction : public HttpHandler {
 public:
-    StreamLoadAction(ExecEnv* exec_env);
+    explicit StreamLoadAction(ExecEnv* exec_env, ConcurrentLimiter* limiter);
     ~StreamLoadAction() override;
 
     void handle(HttpRequest* req) override;
@@ -42,22 +61,18 @@ public:
     int on_header(HttpRequest* req) override;
 
     void on_chunk_data(HttpRequest* req) override;
-    void free_handler_ctx(std::shared_ptr<void> ctx) override;
+    void free_handler_ctx(void* ctx) override;
 
 private:
-    Status _on_header(HttpRequest* http_req, std::shared_ptr<StreamLoadContext> ctx);
-    Status _handle(std::shared_ptr<StreamLoadContext> ctx);
+    Status _on_header(HttpRequest* http_req, StreamLoadContext* ctx);
+    Status _handle(StreamLoadContext* ctx);
     Status _data_saved_path(HttpRequest* req, std::string* file_path);
-    Status _process_put(HttpRequest* http_req, std::shared_ptr<StreamLoadContext> ctx);
-    void _save_stream_load_record(std::shared_ptr<StreamLoadContext> ctx, const std::string& str);
+    Status _execute_plan_fragment(StreamLoadContext* ctx);
+    Status _process_put(HttpRequest* http_req, StreamLoadContext* ctx);
 
 private:
     ExecEnv* _exec_env;
-
-    std::shared_ptr<MetricEntity> _stream_load_entity;
-    IntCounter* streaming_load_requests_total;
-    IntCounter* streaming_load_duration_ms;
-    IntGauge* streaming_load_current_processing;
+    ConcurrentLimiter* _http_concurrent_limiter = nullptr;
 };
 
-} // namespace doris
+} // namespace starrocks

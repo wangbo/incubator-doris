@@ -17,18 +17,11 @@
 
 #include "http/http_client.h"
 
-#include <glog/logging.h>
-#include <unistd.h>
-
-#include <memory>
-#include <ostream>
-
 #include "common/config.h"
-#include "util/stack_util.h"
 
-namespace doris {
+namespace starrocks {
 
-HttpClient::HttpClient() {}
+HttpClient::HttpClient() = default;
 
 HttpClient::~HttpClient() {
     if (_curl != nullptr) {
@@ -87,7 +80,7 @@ Status HttpClient::init(const std::string& url) {
     }
 
     curl_write_callback callback = [](char* buffer, size_t size, size_t nmemb, void* param) {
-        HttpClient* client = (HttpClient*)param;
+        auto* client = (HttpClient*)param;
         return client->on_response_data(buffer, size * nmemb);
     };
 
@@ -169,8 +162,7 @@ Status HttpClient::execute(const std::function<bool(const void* data, size_t len
     _callback = &callback;
     auto code = curl_easy_perform(_curl);
     if (code != CURLE_OK) {
-        LOG(WARNING) << "fail to execute HTTP client, errmsg=" << _to_errmsg(code)
-                     << ", trace=" << get_stack_trace();
+        LOG(WARNING) << "fail to execute HTTP client, errmsg=" << _to_errmsg(code);
         return Status::InternalError(_to_errmsg(code));
     }
     return Status::OK();
@@ -196,8 +188,7 @@ Status HttpClient::download(const std::string& local_path) {
     auto callback = [&status, &fp, &local_path](const void* data, size_t length) {
         auto res = fwrite(data, length, 1, fp.get());
         if (res != 1) {
-            LOG(WARNING) << "fail to write data to file, file=" << local_path
-                         << ", error=" << ferror(fp.get());
+            LOG(WARNING) << "fail to write data to file, file=" << local_path << ", error=" << ferror(fp.get());
             status = Status::InternalError("fail to write data when download");
             return false;
         }
@@ -236,4 +227,4 @@ Status HttpClient::execute_with_retry(int retry_times, int sleep_time,
     return status;
 }
 
-} // namespace doris
+} // namespace starrocks

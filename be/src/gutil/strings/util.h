@@ -25,21 +25,20 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <stdio.h>
-#include <string.h>
+#include <cstddef>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #ifndef _MSC_VER
 #include <strings.h> // for strcasecmp, but msvc does not have this header
 #endif
 
 #include <functional>
-
+using std::binary_function;
 using std::less;
 #include <string>
-
 using std::string;
 #include <vector>
-
 using std::vector;
 
 #include "gutil/integral_types.h"
@@ -73,7 +72,7 @@ StringPiece FindEol(StringPiece sp);
 // string, or NULL if the input is null or empty.
 inline char* strdup_nonempty(const char* src) {
     if (src && src[0]) return strdup(src);
-    return NULL;
+    return nullptr;
 }
 
 // Finds the first occurrence of a character in at most a given number of bytes
@@ -88,7 +87,7 @@ inline char* strnchr(const char* buf, char c, int sz) {
         if (*buf == c) return const_cast<char*>(buf);
         ++buf;
     }
-    return NULL;
+    return nullptr;
 }
 
 // Finds the first occurrence of the null-terminated needle in at most the first
@@ -104,8 +103,7 @@ char* strnstr(const char* haystack, const char* needle, size_t haystack_len);
 //
 // The ""'s catch people who don't pass in a literal for "prefix"
 #ifndef strprefix
-#define strprefix(str, prefix) \
-    (strncmp(str, prefix, sizeof("" prefix "") - 1) == 0 ? str + sizeof(prefix) - 1 : NULL)
+#define strprefix(str, prefix) (strncmp(str, prefix, sizeof("" prefix "") - 1) == 0 ? str + sizeof(prefix) - 1 : NULL)
 #endif
 
 // Same as strprefix() (immediately above), but matches a case-insensitive
@@ -128,23 +126,21 @@ char* strnstr(const char* haystack, const char* needle, size_t haystack_len);
 #ifdef strnprefix
 #undef strnprefix
 #endif
-const char* strnprefix(const char* haystack, int haystack_size, const char* needle,
-                       int needle_size);
+const char* strnprefix(const char* haystack, int haystack_size, const char* needle, int needle_size);
 
 // Matches a case-insensitive prefix (up to the first needle_size bytes of
 // needle) in the first haystack_size byte of haystack. Returns a pointer past
 // the prefix, or NULL if the prefix wasn't matched.
 //
 // Always returns either NULL or haystack + needle_size.
-const char* strncaseprefix(const char* haystack, int haystack_size, const char* needle,
-                           int needle_size);
+const char* strncaseprefix(const char* haystack, int haystack_size, const char* needle, int needle_size);
 
 // Matches a prefix; returns a pointer past the prefix, or NULL if not found.
 // (Like strprefix() and strcaseprefix() but not restricted to searching for
 // char* literals). Templated so searching a const char* returns a const char*,
 // and searching a non-const char* returns a non-const char*.
 template <class CharStar>
-CharStar var_strprefix(CharStar str, const char* prefix) {
+inline CharStar var_strprefix(CharStar str, const char* prefix) {
     const int len = strlen(prefix);
     return strncmp(str, prefix, len) == 0 ? str + len : NULL;
 }
@@ -152,14 +148,14 @@ CharStar var_strprefix(CharStar str, const char* prefix) {
 // Same as var_strprefix() (immediately above), but matches a case-insensitive
 // prefix.
 template <class CharStar>
-CharStar var_strcaseprefix(CharStar str, const char* prefix) {
+inline CharStar var_strcaseprefix(CharStar str, const char* prefix) {
     const int len = strlen(prefix);
     return strncasecmp(str, prefix, len) == 0 ? str + len : NULL;
 }
 
 // Returns input, or "(null)" if NULL. (Useful for logging.)
 inline const char* GetPrintableString(const char* const in) {
-    return NULL == in ? "(null)" : in;
+    return nullptr == in ? "(null)" : in;
 }
 
 // Returns whether str begins with prefix.
@@ -188,7 +184,7 @@ inline char* strsuffix(char* str, const char* suffix) {
     if (lenstr >= lensuffix && 0 == strcmp(strbeginningoftheend, suffix)) {
         return (strbeginningoftheend);
     } else {
-        return (NULL);
+        return (nullptr);
     }
 }
 inline const char* strsuffix(const char* str, const char* suffix) {
@@ -202,15 +198,13 @@ inline const char* strcasesuffix(const char* str, const char* suffix) {
     return const_cast<const char*>(strcasesuffix(const_cast<char*>(str), suffix));
 }
 
-const char* strnsuffix(const char* haystack, int haystack_size, const char* needle,
-                       int needle_size);
-const char* strncasesuffix(const char* haystack, int haystack_size, const char* needle,
-                           int needle_size);
+const char* strnsuffix(const char* haystack, int haystack_size, const char* needle, int needle_size);
+const char* strncasesuffix(const char* haystack, int haystack_size, const char* needle, int needle_size);
 
 // Returns the number of times a character occurs in a string for a null
 // terminated string.
 inline ptrdiff_t strcount(const char* buf, char c) {
-    if (buf == NULL) return 0;
+    if (buf == nullptr) return 0;
     ptrdiff_t num = 0;
     for (const char* bp = buf; *bp != '\0'; bp++) {
         if (*bp == c) num++;
@@ -221,7 +215,7 @@ inline ptrdiff_t strcount(const char* buf, char c) {
 // defined by a pointer to the first character and a pointer just past the last
 // character.
 inline ptrdiff_t strcount(const char* buf_begin, const char* buf_end, char c) {
-    if (buf_begin == NULL) return 0;
+    if (buf_begin == nullptr) return 0;
     if (buf_end <= buf_begin) return 0;
     ptrdiff_t num = 0;
     for (const char* bp = buf_begin; bp != buf_end; bp++) {
@@ -254,18 +248,18 @@ char* AdjustedLastPos(const char* str, char separator, int n);
 // Compares two char* strings for equality. (Works with NULL, which compares
 // equal only to another NULL). Useful in hash tables:
 //    hash_map<const char*, Value, hash<const char*>, streq> ht;
-struct streq {
+struct streq : public binary_function<const char*, const char*, bool> {
     bool operator()(const char* s1, const char* s2) const {
-        return ((s1 == 0 && s2 == 0) || (s1 && s2 && *s1 == *s2 && strcmp(s1, s2) == 0));
+        return ((s1 == nullptr && s2 == nullptr) || (s1 && s2 && *s1 == *s2 && strcmp(s1, s2) == 0));
     }
 };
 
 // Compares two char* strings. (Works with NULL, which compares greater than any
 // non-NULL). Useful in maps:
 //    map<const char*, Value, strlt> m;
-struct strlt {
+struct strlt : public binary_function<const char*, const char*, bool> {
     bool operator()(const char* s1, const char* s2) const {
-        return (s1 != s2) && (s2 == 0 || (s1 != 0 && strcmp(s1, s2) < 0));
+        return (s1 != s2) && (s2 == nullptr || (s1 != nullptr && strcmp(s1, s2) < 0));
     }
 };
 
@@ -344,10 +338,9 @@ size_t strlcpy(char* dst, const char* src, size_t dst_size);
 // Replaces the first occurrence (if replace_all is false) or all occurrences
 // (if replace_all is true) of oldsub in s with newsub. In the second version,
 // *res must be distinct from all the other arguments.
-string StringReplace(const StringPiece& s, const StringPiece& oldsub, const StringPiece& newsub,
-                     bool replace_all);
-void StringReplace(const StringPiece& s, const StringPiece& oldsub, const StringPiece& newsub,
-                   bool replace_all, string* res);
+string StringReplace(const StringPiece& s, const StringPiece& oldsub, const StringPiece& newsub, bool replace_all);
+void StringReplace(const StringPiece& s, const StringPiece& oldsub, const StringPiece& newsub, bool replace_all,
+                   string* res);
 
 // Replaces all occurrences of substring in s with replacement. Returns the
 // number of instances replaced. s must be distinct from the other arguments.
@@ -375,8 +368,7 @@ char* gstrncasestr(char* haystack, const char* needle, size_t len);
 // non_alpha), a token prefix and a token suffix. Returns a pointer into str of
 // the position of prefix, or NULL if not found.
 // WARNING: Removes const-ness of string argument!
-char* gstrncasestr_split(const char* str, const char* prefix, char non_alpha, const char* suffix,
-                         size_t n);
+char* gstrncasestr_split(const char* str, const char* prefix, char non_alpha, const char* suffix, size_t n);
 
 // Finds (case insensitively) needle in haystack, paying attention only to
 // alphanumerics in either string. Returns a pointer into haystack, or NULL if
@@ -419,8 +411,7 @@ const char* ScanForFirstWord(const char* the_string, const char** end_ptr);
 inline char* ScanForFirstWord(char* the_string, char** end_ptr) {
     // implicit_cast<> would be more appropriate for casting to const,
     // but we save the inclusion of "base/casts.h" here by using const_cast<>.
-    return const_cast<char*>(ScanForFirstWord(const_cast<const char*>(the_string),
-                                              const_cast<const char**>(end_ptr)));
+    return const_cast<char*>(ScanForFirstWord(const_cast<const char*>(the_string), const_cast<const char**>(end_ptr)));
 }
 
 // For the following functions, an "identifier" is a letter or underscore,
@@ -447,8 +438,8 @@ bool IsIdentifier(const char* str);
 //
 // Returns true (and populates tag, tag_len, value, and value_len) if a
 // tag/value pair is founds; returns false otherwise.
-bool FindTagValuePair(const char* in_str, char tag_value_separator, char attribute_separator,
-                      char string_terminal, char** tag, int* tag_len, char** value, int* value_len);
+bool FindTagValuePair(const char* in_str, char tag_value_separator, char attribute_separator, char string_terminal,
+                      char** tag, int* tag_len, char** value, int* value_len);
 
 // Inserts separator after every interval characters in *s (but never appends to
 // the end of the original *s).

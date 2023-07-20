@@ -21,13 +21,13 @@
 
 #include <memory>
 
-namespace doris {
+namespace starrocks {
 
 void faststring::GrowToAtLeast(size_t newcapacity) {
     // Not enough space, need to reserve more.
     // Don't reserve exactly enough space for the new string -- that makes it
     // too easy to write perf bugs where you get O(n^2) append.
-    // Instead, always expand by at least 50%.
+    // Instead, alwayhs expand by at least 50%.
 
     if (newcapacity < capacity_ * 3 / 2) {
         newcapacity = capacity_ * 3 / 2;
@@ -37,13 +37,13 @@ void faststring::GrowToAtLeast(size_t newcapacity) {
 
 void faststring::GrowArray(size_t newcapacity) {
     DCHECK_GE(newcapacity, capacity_);
-    std::unique_ptr<uint8_t[]> newdata(reinterpret_cast<uint8_t*>(Allocator::alloc(newcapacity)));
+    std::unique_ptr<uint8_t[]> newdata(new uint8_t[newcapacity]);
     if (len_ > 0) {
         memcpy(&newdata[0], &data_[0], len_);
     }
     capacity_ = newcapacity;
     if (data_ != initial_data_) {
-        Allocator::free(data_);
+        delete[] data_;
     } else {
         ASAN_POISON_MEMORY_REGION(initial_data_, arraysize(initial_data_));
     }
@@ -57,16 +57,16 @@ void faststring::ShrinkToFitInternal() {
     if (len_ <= kInitialCapacity) {
         ASAN_UNPOISON_MEMORY_REGION(initial_data_, len_);
         memcpy(initial_data_, &data_[0], len_);
-        Allocator::free(data_);
+        delete[] data_;
         data_ = initial_data_;
         capacity_ = kInitialCapacity;
     } else {
-        std::unique_ptr<uint8_t[]> newdata(reinterpret_cast<uint8_t*>(Allocator::alloc(len_)));
+        std::unique_ptr<uint8_t[]> newdata(new uint8_t[len_]);
         memcpy(&newdata[0], &data_[0], len_);
-        Allocator::free(data_);
+        delete[] data_;
         data_ = newdata.release();
         capacity_ = len_;
     }
 }
 
-} // namespace doris
+} // namespace starrocks

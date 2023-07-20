@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/exec/es/es_scan_reader.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,19 +34,13 @@
 
 #pragma once
 
-#include <map>
-#include <memory>
 #include <string>
 
 #include "http/http_client.h"
 
-namespace doris {
-class ScrollParser;
-} // namespace doris
-
 using std::string;
 
-namespace doris {
+namespace starrocks {
 
 class Status;
 
@@ -45,16 +56,15 @@ public:
     static constexpr const char* KEY_BATCH_SIZE = "batch_size";
     static constexpr const char* KEY_TERMINATE_AFTER = "limit";
     static constexpr const char* KEY_DOC_VALUES_MODE = "doc_values_mode";
-    static constexpr const char* KEY_HTTP_SSL_ENABLED = "http_ssl_enabled";
-    static constexpr const char* KEY_QUERY_DSL = "query_dsl";
-    ESScanReader(const std::string& target, const std::map<std::string, std::string>& props,
-                 bool doc_value_mode);
+    static constexpr const char* KEY_ES_NET_SSL = "es.net.ssl";
+    ESScanReader(const std::string& target, const std::map<std::string, std::string>& props, bool doc_value_mode);
     ~ESScanReader();
 
     // launch the first scroll request, this method will cache the first scroll response, and return the this cached response when invoke get_next
     Status open();
     // invoke get_next to get next batch documents from elasticsearch
-    Status get_next(bool* eos, std::unique_ptr<ScrollParser>& parser);
+    template <class T>
+    Status get_next(bool* eos, std::unique_ptr<T>& parser);
     // clear scroll context from elasticsearch
     Status close();
 
@@ -68,16 +78,14 @@ private:
     std::string _type;
     // push down filter
     std::string _query;
-    // Elasticsearch shards to fetch document
+    // elaticsearch shards to fetch document
     std::string _shards;
-    // whether use ssl client
-    bool _use_ssl_client = false;
     // distinguish the first scroll phase and the following scroll
-    bool _is_first;
+    bool _is_first = false;
 
     // `_init_scroll_url` and `_next_scroll_url` used for scrolling result from Elasticsearch
     //In order to use scrolling, the initial search request should specify the scroll parameter in the query string,
-    // which tells Elasticsearch how long it should keep the “search context” alive:
+    // which tells Elasticsearch how long it should keep the "search context" alive:
     // {index}/{type}/_search?scroll=5m
     std::string _init_scroll_url;
     // The result from the above request includes a _scroll_id, which should be passed to the scroll API in order to retrieve the next batch of results
@@ -90,7 +98,7 @@ private:
     // Each call to the scroll API returns the next batch of results until there are no more results left to return
     std::string _next_scroll_url;
 
-    // _search_url used to execute just only one search request to Elasticsearch
+    // _search_url used to exeucte just only one search request to Elasticsearch
     // _search_url would go into effect when `limit` specified:
     // select * from es_table limit 10 -> /es_table/doc/_search?terminate_after=10
     std::string _search_url;
@@ -100,11 +108,13 @@ private:
     std::string _cached_response;
     // keep-alive for es scroll
     std::string _scroll_keep_alive;
-    // timeout for es http connection
+    // timeout for es http connetion
     int _http_timeout_ms;
 
     bool _exactly_once;
 
     bool _doc_value_mode;
+
+    bool _ssl_enabled = false;
 };
-} // namespace doris
+} // namespace starrocks

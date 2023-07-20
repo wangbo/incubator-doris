@@ -19,19 +19,16 @@
 
 #include <map>
 #include <string>
-#include <utility>
 
-namespace doris {
+namespace starrocks {
 
 static std::map<std::string, HttpMethod> s_method_by_desc = {
-        {"GET", HttpMethod::GET},       {"PUT", HttpMethod::PUT},
-        {"POST", HttpMethod::POST},     {"HEAD", HttpMethod::HEAD},
-        {"DELETE", HttpMethod::DELETE}, {"OPTIONS", HttpMethod::OPTIONS},
+        {"GET", HttpMethod::GET},   {"PUT", HttpMethod::PUT},       {"POST", HttpMethod::POST},
+        {"HEAD", HttpMethod::HEAD}, {"DELETE", HttpMethod::DELETE}, {"OPTIONS", HttpMethod::OPTIONS},
 };
 static std::map<HttpMethod, std::string> s_desc_by_method = {
-        {HttpMethod::GET, "GET"},       {HttpMethod::PUT, "PUT"},
-        {HttpMethod::POST, "POST"},     {HttpMethod::HEAD, "HEAD"},
-        {HttpMethod::DELETE, "DELETE"}, {HttpMethod::OPTIONS, "OPTIONS"},
+        {HttpMethod::GET, "GET"},   {HttpMethod::PUT, "PUT"},       {HttpMethod::POST, "POST"},
+        {HttpMethod::HEAD, "HEAD"}, {HttpMethod::DELETE, "DELETE"}, {HttpMethod::OPTIONS, "OPTIONS"},
 };
 
 HttpMethod to_http_method(const char* desc) {
@@ -50,4 +47,4 @@ std::string to_method_desc(const HttpMethod& method) {
     return iter->second;
 }
 
-} // namespace doris
+} // namespace starrocks

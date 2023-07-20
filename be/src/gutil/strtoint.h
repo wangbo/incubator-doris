@@ -29,13 +29,12 @@
 
 #pragma once
 
-#include <stdlib.h> // For strtol* functions.
+#include <cstdlib> // For strtol* functions.
 #include <string>
-
 using std::string;
 #include "gutil/integral_types.h"
-// IWYU pragma: no_include <butil/macros.h>
-#include "gutil/macros.h" // IWYU pragma: keep
+#include "gutil/macros.h"
+#include "gutil/port.h"
 
 // Adapter functions for handling overflow and errno.
 int32 strto32_adapter(const char* nptr, char** endptr, int base);
@@ -65,19 +64,18 @@ inline int64 strto64(const char* nptr, char** endptr, int base) {
 }
 
 inline uint64 strtou64(const char* nptr, char** endptr, int base) {
-    COMPILE_ASSERT(sizeof(uint64) == sizeof(unsigned long long),
-                   sizeof_uint64_is_not_sizeof_long_long);
+    COMPILE_ASSERT(sizeof(uint64) == sizeof(unsigned long long), sizeof_uint64_is_not_sizeof_long_long);
     return strtoull(nptr, endptr, base);
 }
 
 // Although it returns an int, atoi() is implemented in terms of strtol, and
 // so has differing overflow and underflow behavior.  atol is the same.
 inline int32 atoi32(const char* nptr) {
-    return strto32(nptr, NULL, 10);
+    return strto32(nptr, nullptr, 10);
 }
 
 inline int64 atoi64(const char* nptr) {
-    return strto64(nptr, NULL, 10);
+    return strto64(nptr, nullptr, 10);
 }
 
 // Convenience versions of the above that take a string argument.

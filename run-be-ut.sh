@@ -16,371 +16,253 @@
 # specific language governing permissions and limitations
 # under the License.
 
-#####################################################################
-# This script is used to run unit test of Doris Backend
-# Usage: $0 <options>
-#  Optional options:
-#     --clean            clean and build ut
-#     --run              build and run all ut
-#     --run --filter=xx  build and run specified ut
-#     -j                 build parallel
-#     -h                 print this help message
-#
-# All BE tests must use "_test" as the file suffix, and add the file
-# to be/test/CMakeLists.txt.
-#
-# GTest result xml files will be in "be/ut_build_ASAN/gtest_output/"
-#####################################################################
-
 set -eo pipefail
-set +o posix
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ROOT=`dirname "$0"`
+ROOT=`cd "$ROOT"; pwd`
 
-export DORIS_HOME="${ROOT}"
+export STARROCKS_HOME=${ROOT}
 
-. "${DORIS_HOME}/env.sh"
+. ${STARROCKS_HOME}/env.sh
+
+PARALLEL=$[$(nproc)/4+1]
 
 # Check args
 usage() {
-    echo "
+  echo "
 Usage: $0 <options>
   Optional options:
-     --benchmark        build benchmark-tool
-     --clean            clean and build ut
-     --run              build and run all ut
-     --run --filter=xx  build and run specified ut
-     --coverage         coverage after run ut
-     -j                 build parallel
-     -h                 print this help message
+     --test  [TEST_NAME]            run specific test
+     --dry-run                      dry-run unit tests
+     --clean                        clean old unit tests before run
+     --with-gcov                    enable to build with gcov
+     --with-aws                     enable to test aws
+     --with-bench                   enable to build with benchmark
+     --module                       module to run uts
+     --use-staros                   enable to build with staros
+     -j                             build parallel
 
   Eg.
-    $0                                                              build tests
-    $0 --run                                                        build and run all tests
-    $0 --run --filter=*                                             also runs everything
-    $0 --run --filter=FooTest.*                                     runs everything in test suite FooTest
-    $0 --run --filter=*Null*:*Constructor*                          runs any test whose full name contains either 'Null' or 'Constructor'
-    $0 --run --filter=-*DeathTest.*                                 runs all non-death tests
-    $0 --run --filter=FooTest.*-FooTest.Bar                         runs everything in test suite FooTest except FooTest.Bar
-    $0 --run --filter=FooTest.*:BarTest.*-FooTest.Bar:BarTest.Foo   runs everything in test suite FooTest except FooTest.Bar and everything in test suite BarTest except BarTest.Foo
-    $0 --clean                                                      clean and build tests
-    $0 --clean --run                                                clean, build and run all tests
-    $0 --clean --run --coverage                                     clean, build, run all tests and coverage
+    $0                              run all unit tests
+    $0 --test CompactionUtilsTest   run compaction test
+    $0 --dry-run                    dry-run unit tests
+    $0 --clean                      clean old unit tests before run
+    $0 --help                       display usage
   "
-    exit 1
+  exit 1
 }
 
-if ! OPTS="$(getopt -n "$0" -o vhj:f: -l coverage,benchmark,run,clean,filter: -- "$@")"; then
+# -l run and -l gtest_filter only used for compatibility
+OPTS=$(getopt \
+  -n $0 \
+  -o '' \
+  -l 'test:' \
+  -l 'dry-run' \
+  -l 'clean' \
+  -l 'with-gcov' \
+  -l 'module:' \
+  -l 'with-aws' \
+  -l 'with-bench' \
+  -l 'use-staros' \
+  -o 'j:' \
+  -l 'help' \
+  -l 'run' \
+  -l 'gtest_filter:' \
+  -- "$@")
+
+if [ $? != 0 ] ; then
     usage
 fi
 
-eval set -- "${OPTS}"
+eval set -- "$OPTS"
 
 CLEAN=0
-RUN=0
-BUILD_BENCHMARK_TOOL='OFF'
-DENABLE_CLANG_COVERAGE='OFF'
-FILTER=""
-if [[ "$#" != 1 ]]; then
-    while true; do
-        case "$1" in
-        --clean)
-            CLEAN=1
-            shift
-            ;;
-        --run)
-            RUN=1
-            shift
-            ;;
-        --benchmark)
-            BUILD_BENCHMARK_TOOL='ON'
-            shift
-            ;;
-        --coverage)
-            DENABLE_CLANG_COVERAGE='ON'
-            shift
-            ;;
-        -f | --filter)
-            FILTER="--gtest_filter=$2"
-            shift 2
-            ;;
-        -j)
-            PARALLEL="$2"
-            shift 2
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            usage
-            ;;
-        esac
-    done
-fi
+DRY_RUN=0
+TEST_NAME=*
+TEST_MODULE=".*"
+HELP=0
+WITH_AWS=OFF
+USE_STAROS=OFF
+WITH_CACHELIB=ON
+WITH_GCOV=OFF
+while true; do
+    case "$1" in
+        --clean) CLEAN=1 ; shift ;;
+        --dry-run) DRY_RUN=1 ; shift ;;
+        --run) shift ;; # Option only for compatibility
+        --test) TEST_NAME=$2 ; shift 2;;
+        --gtest_filter) TEST_NAME=$2 ; shift 2;; # Option only for compatibility
+        --module) TEST_MODULE=$2; shift 2;;
+        --help) HELP=1 ; shift ;;
+        --with-aws) WITH_AWS=ON; shift ;;
+        --with-gcov) WITH_GCOV=ON; shift ;;
+        --use-staros) USE_STAROS=ON; shift ;;
+        -j) PARALLEL=$2; shift 2 ;;
+        --) shift ;  break ;;
+        *) echo "Internal error" ; exit 1 ;;
+    esac
+done
 
-if [[ -z "${PARALLEL}" ]]; then
-    PARALLEL="$(($(nproc) / 5 + 1))"
-fi
-
-CMAKE_BUILD_TYPE="${BUILD_TYPE_UT:-ASAN}"
-CMAKE_BUILD_TYPE="$(echo "${CMAKE_BUILD_TYPE}" | awk '{ print(toupper($0)) }')"
-
-echo "Get params:
-    PARALLEL            -- ${PARALLEL}
-    CLEAN               -- ${CLEAN}
-    ENABLE_PCH          -- ${ENABLE_PCH}
-"
-echo "Build Backend UT"
-
-if [[ "_${DENABLE_CLANG_COVERAGE}" == "_ON" ]]; then
-    echo "export DORIS_TOOLCHAIN=clang" >>custom_env.sh
-fi
-
-CMAKE_BUILD_DIR="${DORIS_HOME}/be/ut_build_${CMAKE_BUILD_TYPE}"
-if [[ "${CLEAN}" -eq 1 ]]; then
-    pushd "${DORIS_HOME}/gensrc"
-    make clean
-    popd
-
-    rm -rf "${CMAKE_BUILD_DIR}"
-    rm -rf "${DORIS_HOME}/be/output"
-fi
-
-if [[ ! -d "${CMAKE_BUILD_DIR}" ]]; then
-    mkdir -p "${CMAKE_BUILD_DIR}"
-fi
-
-if [[ -z "${GLIBC_COMPATIBILITY}" ]]; then
-    if [[ "$(uname -s)" != 'Darwin' ]]; then
-        GLIBC_COMPATIBILITY='ON'
-    else
-        GLIBC_COMPATIBILITY='OFF'
-    fi
-fi
-
-if [[ -z "${USE_LIBCPP}" ]]; then
-    if [[ "$(uname -s)" != 'Darwin' ]]; then
-        USE_LIBCPP='OFF'
-    else
-        USE_LIBCPP='ON'
-    fi
-fi
-
-if [[ -z "${USE_MEM_TRACKER}" ]]; then
-    if [[ "$(uname -s)" != 'Darwin' ]]; then
-        USE_MEM_TRACKER='ON'
-    else
-        USE_MEM_TRACKER='OFF'
-    fi
-fi
-
-if [[ -z "${USE_DWARF}" ]]; then
-    USE_DWARF='OFF'
-fi
-
-MAKE_PROGRAM="$(command -v "${BUILD_SYSTEM}")"
-echo "-- Make program: ${MAKE_PROGRAM}"
-echo "-- Use ccache: ${CMAKE_USE_CCACHE}"
-echo "-- Extra cxx flags: ${EXTRA_CXX_FLAGS:-}"
-
-cd "${CMAKE_BUILD_DIR}"
-"${CMAKE_CMD}" -G "${GENERATOR}" \
-    -DCMAKE_MAKE_PROGRAM="${MAKE_PROGRAM}" \
-    -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
-    -DMAKE_TEST=ON \
-    -DGLIBC_COMPATIBILITY="${GLIBC_COMPATIBILITY}" \
-    -DUSE_LIBCPP="${USE_LIBCPP}" \
-    -DBUILD_META_TOOL=OFF \
-    -DBUILD_BENCHMARK_TOOL="${BUILD_BENCHMARK_TOOL}" \
-    -DWITH_MYSQL=OFF \
-    -DUSE_DWARF="${USE_DWARF}" \
-    -DUSE_MEM_TRACKER="${USE_MEM_TRACKER}" \
-    -DUSE_JEMALLOC=OFF \
-    -DEXTRA_CXX_FLAGS="${EXTRA_CXX_FLAGS}" \
-    -DENABLE_CLANG_COVERAGE="${DENABLE_CLANG_COVERAGE}" \
-    ${CMAKE_USE_CCACHE:+${CMAKE_USE_CCACHE}} \
-    -DENABLE_PCH="${ENABLE_PCH}" \
-    -DDORIS_JAVA_HOME="${JAVA_HOME}" \
-    "${DORIS_HOME}/be"
-"${BUILD_SYSTEM}" -j "${PARALLEL}"
-
-if [[ "${RUN}" -ne 1 ]]; then
-    echo "Finished"
+if [ ${HELP} -eq 1 ]; then
+    usage
     exit 0
 fi
 
-echo "******************************"
-echo "   Running Backend Unit Test  "
-echo "******************************"
-
-# build running dir env
-cd "${DORIS_HOME}"
-export DORIS_TEST_BINARY_DIR="${CMAKE_BUILD_DIR}/test/"
-
-# prepare conf dir
-CONF_DIR="${DORIS_TEST_BINARY_DIR}/conf"
-rm -rf "${CONF_DIR}"
-mkdir "${CONF_DIR}"
-cp "${DORIS_HOME}/conf/be.conf" "${CONF_DIR}"/
-
-export TERM='xterm'
-export UDF_RUNTIME_DIR="${DORIS_TEST_BINARY_DIR}/lib/udf-runtime"
-export LOG_DIR="${DORIS_TEST_BINARY_DIR}/log"
-while read -r variable; do
-    eval "export ${variable}"
-done < <(sed 's/[[:space:]]*\(=\)[[:space:]]*/\1/' "${DORIS_TEST_BINARY_DIR}/conf/be.conf" | grep -E "^[[:upper:]]([[:upper:]]|_|[[:digit:]])*=")
-
-# prepare log dir
-mkdir -p "${LOG_DIR}"
-mkdir -p "${UDF_RUNTIME_DIR}"
-rm -f "${UDF_RUNTIME_DIR}"/*
-
-# clean all gcda file
-while read -r gcda_file; do
-    rm "${gcda_file}"
-done < <(find "${DORIS_TEST_BINARY_DIR}" -name "*gcda")
-
-# prepare gtest output dir
-GTEST_OUTPUT_DIR="${CMAKE_BUILD_DIR}/gtest_output"
-rm -rf "${GTEST_OUTPUT_DIR}"
-mkdir "${GTEST_OUTPUT_DIR}"
-
-# prepare util test_data
-mkdir -p "${DORIS_TEST_BINARY_DIR}/util"
-if [[ -d "${DORIS_TEST_BINARY_DIR}/util/test_data" ]]; then
-    rm -rf "${DORIS_TEST_BINARY_DIR}/util/test_data"
+CMAKE_BUILD_TYPE=${BUILD_TYPE:-ASAN}
+CMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
+if [[ -z ${USE_SSE4_2} ]]; then
+    USE_SSE4_2=ON
 fi
-cp -r "${DORIS_HOME}/be/test/util/test_data" "${DORIS_TEST_BINARY_DIR}/util"/
-
-# prepare ut temp dir
-UT_TMP_DIR="${DORIS_HOME}/ut_dir"
-rm -rf "${UT_TMP_DIR}"
-mkdir "${UT_TMP_DIR}"
-touch "${UT_TMP_DIR}/tmp_file"
-
-# prepare java jars
-LIB_DIR="${DORIS_TEST_BINARY_DIR}/lib/"
-rm -rf "${LIB_DIR}"
-mkdir "${LIB_DIR}"
-if [[ -d "${DORIS_THIRDPARTY}/installed/lib/hadoop_hdfs/" ]]; then
-    cp -r "${DORIS_THIRDPARTY}/installed/lib/hadoop_hdfs/" "${LIB_DIR}"
+if [[ -z ${USE_AVX2} ]]; then
+    USE_AVX2=ON
 fi
-if [[ -f "${DORIS_HOME}/output/be/lib/java-udf-jar-with-dependencies.jar" ]]; then
-    cp "${DORIS_HOME}/output/be/lib/java-udf-jar-with-dependencies.jar" "${LIB_DIR}/"
+if [[ -z ${USE_AVX512} ]]; then
+    # Disable it by default
+    USE_AVX512=OFF
+fi
+echo "Build Backend UT"
+
+CMAKE_BUILD_DIR=${STARROCKS_HOME}/be/ut_build_${CMAKE_BUILD_TYPE}
+if [ ${CLEAN} -eq 1 ]; then
+    rm ${CMAKE_BUILD_DIR} -rf
+    rm ${STARROCKS_HOME}/be/output/ -rf
 fi
 
-# add java libs
-for f in "${LIB_DIR}"/*.jar; do
-    if [[ -z "${DORIS_CLASSPATH}" ]]; then
-        export DORIS_CLASSPATH="${f}"
-    else
-        export DORIS_CLASSPATH="${f}:${DORIS_CLASSPATH}"
-    fi
+if [ ! -d ${CMAKE_BUILD_DIR} ]; then
+    mkdir -p ${CMAKE_BUILD_DIR}
+fi
+
+source ${STARROCKS_HOME}/bin/common.sh
+update_submodules
+
+cd ${CMAKE_BUILD_DIR}
+if [ "${USE_STAROS}" == "ON"  ]; then
+  if [ -z "$STARLET_INSTALL_DIR" ] ; then
+    # assume starlet_thirdparty is installed to ${STARROCKS_THIRDPARTY}/installed/starlet/
+    STARLET_INSTALL_DIR=${STARROCKS_THIRDPARTY}/installed/starlet
+  fi
+  ${CMAKE_CMD}  -G "${CMAKE_GENERATOR}" \
+              -DSTARROCKS_THIRDPARTY=${STARROCKS_THIRDPARTY}\
+              -DSTARROCKS_HOME=${STARROCKS_HOME} \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DMAKE_TEST=ON -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+              -DUSE_AVX2=$USE_AVX2 -DUSE_AVX512=$USE_AVX512 -DUSE_SSE4_2=$USE_SSE4_2 \
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+              -DUSE_STAROS=${USE_STAROS} -DWITH_GCOV=${WITH_GCOV} \
+              -DWITH_CACHELIB=${WITH_CACHELIB} \
+              -DSTARCACHE_THIRDPARTY_DIR=${STARROCKS_THIRDPARTY}/installed \
+              -DSTARCACHE_SKIP_INSTALL=ON \
+              -Dabsl_DIR=${STARLET_INSTALL_DIR}/third_party/lib/cmake/absl \
+              -DgRPC_DIR=${STARLET_INSTALL_DIR}/third_party/lib/cmake/grpc \
+              -Dprometheus-cpp_DIR=${STARLET_INSTALL_DIR}/third_party/lib/cmake/prometheus-cpp \
+              -Dstarlet_DIR=${STARLET_INSTALL_DIR}/starlet_install/lib/cmake ..
+else
+  ${CMAKE_CMD}  -G "${CMAKE_GENERATOR}" \
+              -DSTARROCKS_THIRDPARTY=${STARROCKS_THIRDPARTY}\
+              -DSTARROCKS_HOME=${STARROCKS_HOME} \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DMAKE_TEST=ON -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+              -DUSE_AVX2=$USE_AVX2 -DUSE_AVX512=$USE_AVX512 -DUSE_SSE4_2=$USE_SSE4_2 \
+              -DWITH_GCOV=${WITH_GCOV} \
+              -DWITH_CACHELIB=${WITH_CACHELIB} \
+              -DSTARCACHE_THIRDPARTY_DIR=${STARROCKS_THIRDPARTY}/installed \
+              -DSTARCACHE_SKIP_INSTALL=ON \
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ../
+fi
+${BUILD_SYSTEM} -j${PARALLEL}
+
+echo "*********************************"
+echo "  Starting to Run BE Unit Tests  "
+echo "*********************************"
+
+cd ${STARROCKS_HOME}
+export STARROCKS_TEST_BINARY_DIR=${CMAKE_BUILD_DIR}
+export TERM=xterm
+export UDF_RUNTIME_DIR=${STARROCKS_HOME}/lib/udf-runtime
+export LOG_DIR=${STARROCKS_HOME}/log
+export LSAN_OPTIONS=suppressions=${STARROCKS_HOME}/conf/asan_suppressions.conf
+for i in `sed 's/ //g' $STARROCKS_HOME/conf/be_test.conf | egrep "^[[:upper:]]([[:upper:]]|_|[[:digit:]])*="`; do
+    eval "export $i";
 done
 
-if [[ -d "${LIB_DIR}/hadoop_hdfs/" ]]; then
-    # add hadoop libs
-    for f in "${LIB_DIR}/hadoop_hdfs/common"/*.jar; do
-        DORIS_CLASSPATH="${f}:${DORIS_CLASSPATH}"
-    done
-    for f in "${LIB_DIR}/hadoop_hdfs/common/lib"/*.jar; do
-        DORIS_CLASSPATH="${f}:${DORIS_CLASSPATH}"
-    done
-    for f in "${LIB_DIR}/hadoop_hdfs/hdfs"/*.jar; do
-        DORIS_CLASSPATH="${f}:${DORIS_CLASSPATH}"
-    done
-    for f in "${LIB_DIR}/hadoop_hdfs/hdfs/lib"/*.jar; do
-        DORIS_CLASSPATH="${f}:${DORIS_CLASSPATH}"
-    done
+mkdir -p $LOG_DIR
+mkdir -p ${UDF_RUNTIME_DIR}
+rm -f ${UDF_RUNTIME_DIR}/*
+
+# ====================== configure JAVA/JVM ====================
+# NOTE: JAVA_HOME must be configed if using hdfs scan, like hive external table
+# this is only for starting be
+jvm_arch="amd64"
+if [[ "${MACHINE_TYPE}" == "aarch64" ]]; then
+    jvm_arch="aarch64"
 fi
 
-# the CLASSPATH and LIBHDFS_OPTS is used for hadoop libhdfs
-# and conf/ dir so that hadoop libhdfs can read .xml config file in conf/
-export CLASSPATH="${DORIS_CLASSPATH}"
-# DORIS_CLASSPATH is for self-managed jni
-export DORIS_CLASSPATH="-Djava.class.path=${DORIS_CLASSPATH}"
-
-jdk_version() {
-    local java_cmd="${1}"
-    local result
-    local IFS=$'\n'
-
-    if [[ -z "${java_cmd}" ]]; then
-        result=no_java
-        return 1
+if [ "$JAVA_HOME" = "" ]; then
+    export LD_LIBRARY_PATH=$STARROCKS_HOME/lib/jvm/$jvm_arch/server:$STARROCKS_HOME/lib/jvm/$jvm_arch:$LD_LIBRARY_PATH
+else
+    java_version=$(jdk_version)
+    if [[ $java_version -gt 8 ]]; then
+        export LD_LIBRARY_PATH=$JAVA_HOME/lib/server:$JAVA_HOME/lib:$LD_LIBRARY_PATH
+    # JAVA_HOME is jdk
+    elif [[ -d "$JAVA_HOME/jre"  ]]; then
+        export LD_LIBRARY_PATH=$JAVA_HOME/jre/lib/$jvm_arch/server:$JAVA_HOME/jre/lib/$jvm_arch:$LD_LIBRARY_PATH
+    # JAVA_HOME is jre
     else
-        local version
-        # remove \r for Cygwin
-        version="$("${java_cmd}" -Xms32M -Xmx32M -version 2>&1 | tr '\r' '\n' | grep version | awk '{print $3}')"
-        version="${version//\"/}"
-        if [[ "${version}" =~ ^1\. ]]; then
-            result="$(echo "${version}" | awk -F '.' '{print $2}')"
-        else
-            result="$(echo "${version}" | awk -F '.' '{print $1}')"
+        export LD_LIBRARY_PATH=$JAVA_HOME/lib/$jvm_arch/server:$JAVA_HOME/lib/$jvm_arch:$LD_LIBRARY_PATH
+    fi
+fi
+
+export LD_LIBRARY_PATH=$STARROCKS_HOME/lib/hadoop/native:$LD_LIBRARY_PATH
+if [ "${WITH_CACHELIB}" == "ON"  ]; then
+    CACHELIB_DIR=${STARROCKS_THIRDPARTY}/installed/cachelib
+    export LD_LIBRARY_PATH=$CACHELIB_DIR/lib:$CACHELIB_DIR/lib64:$CACHELIB_DIR/deps/lib:$CACHELIB_DIR/deps/lib64:$LD_LIBRARY_PATH
+fi
+
+# HADOOP_CLASSPATH defined in $STARROCKS_HOME/conf/hadoop_env.sh
+# put $STARROCKS_HOME/conf ahead of $HADOOP_CLASSPATH so that custom config can replace the config in $HADOOP_CLASSPATH
+export CLASSPATH=$STARROCKS_HOME/conf:$HADOOP_CLASSPATH:$CLASSPATH
+
+# ===========================================================
+
+export STARROCKS_TEST_BINARY_DIR=${STARROCKS_TEST_BINARY_DIR}/test
+
+if [ $WITH_AWS = "OFF" ]; then
+    TEST_NAME="$TEST_NAME*:-*S3*"
+fi
+
+# prepare util test_data
+if [ -d ${STARROCKS_TEST_BINARY_DIR}/util/test_data ]; then
+    rm -rf ${STARROCKS_TEST_BINARY_DIR}/util/test_data
+fi
+cp -r ${STARROCKS_HOME}/be/test/util/test_data ${STARROCKS_TEST_BINARY_DIR}/util/
+
+test_files=`find ${STARROCKS_TEST_BINARY_DIR} -type f -perm -111 -name "*test" \
+    | grep -v starrocks_test \
+    | grep -v bench_test \
+    | grep -e "$TEST_MODULE" `
+
+# run cases in starrocks_test in parallel if has gtest-parallel script.
+# reference: https://github.com/google/gtest-parallel
+if [[ $TEST_MODULE == '.*'  || $TEST_MODULE == 'starrocks_test' ]]; then
+  echo "Run test: ${STARROCKS_TEST_BINARY_DIR}/starrocks_test"
+  if [ ${DRY_RUN} -eq 0 ]; then
+    if [ -x ${GTEST_PARALLEL} ]; then
+        ${GTEST_PARALLEL} ${STARROCKS_TEST_BINARY_DIR}/starrocks_test \
+            --gtest_filter=${TEST_NAME} \
+            --serialize_test_cases ${GTEST_PARALLEL_OPTIONS}
+    else
+        ${STARROCKS_TEST_BINARY_DIR}/starrocks_test $GTEST_OPTIONS --gtest_filter=${TEST_NAME}
+    fi
+  fi
+fi
+
+for test in ${test_files[@]}
+do
+    echo "Run test: $test"
+    if [ ${DRY_RUN} -eq 0 ]; then
+        file_name=${test##*/}
+        if [ -z $RUN_FILE ] || [ $file_name == $RUN_FILE ]; then
+            $test $GTEST_OPTIONS --gtest_filter=${TEST_NAME}
         fi
     fi
-    echo "${result}"
-    return 0
-}
-
-# check java version and choose correct JAVA_OPTS
-java_version="$(
-    set -e
-    jdk_version "${JAVA_HOME}/bin/java"
-)"
-
-CUR_DATE=$(date +%Y%m%d-%H%M%S)
-LOG_PATH="-DlogPath=${DORIS_TEST_BINARY_DIR}/log/jni.log"
-COMMON_OPTS="-Dsun.java.command=DorisBETEST -XX:-CriticalJNINatives"
-JDBC_OPTS="-DJDBC_MIN_POOL=1 -DJDBC_MAX_POOL=100 -DJDBC_MAX_IDEL_TIME=300000"
-
-if [[ "${java_version}" -gt 8 ]]; then
-    if [[ -z ${JAVA_OPTS} ]]; then
-        JAVA_OPTS="-Xmx1024m ${LOG_PATH} -Xloggc:${DORIS_TEST_BINARY_DIR}/log/be.gc.log.${CUR_DATE} ${COMMON_OPTS} ${JDBC_OPTS}"
-    fi
-    final_java_opt="${JAVA_OPTS}"
-else
-    if [[ -z ${JAVA_OPTS_FOR_JDK_9} ]]; then
-        JAVA_OPTS_FOR_JDK_9="-Xmx1024m ${LOG_PATH} -Xlog:gc:${DORIS_TEST_BINARY_DIR}/log/be.gc.log.${CUR_DATE} ${COMMON_OPTS} ${JDBC_OPTS}"
-    fi
-    final_java_opt="${JAVA_OPTS_FOR_JDK_9}"
-fi
-
-MACHINE_OS=$(uname -s)
-if [[ "${MACHINE_OS}" == "Darwin" ]]; then
-    max_fd_limit='-XX:-MaxFDLimit'
-
-    if ! echo "${final_java_opt}" | grep "${max_fd_limit/-/\-}" >/dev/null; then
-        final_java_opt="${final_java_opt} ${max_fd_limit}"
-    fi
-
-    if [[ -n "${JAVA_OPTS}" ]] && ! echo "${JAVA_OPTS}" | grep "${max_fd_limit/-/\-}" >/dev/null; then
-        JAVA_OPTS="${JAVA_OPTS} ${max_fd_limit}"
-    fi
-fi
-
-# set LIBHDFS_OPTS for hadoop libhdfs
-export LIBHDFS_OPTS="${final_java_opt}"
-
-# set asan and ubsan env to generate core file
-export DORIS_HOME="${DORIS_TEST_BINARY_DIR}/"
-export ASAN_OPTIONS=symbolize=1:abort_on_error=1:disable_coredump=0:unmap_shadow_on_exit=1:detect_container_overflow=0
-export UBSAN_OPTIONS=print_stacktrace=1
-export JAVA_OPTS="-Xmx1024m -DlogPath=${DORIS_HOME}/log/jni.log -Xloggc:${DORIS_HOME}/log/be.gc.log.${CUR_DATE} -Dsun.java.command=DorisBE -XX:-CriticalJNINatives -DJDBC_MIN_POOL=1 -DJDBC_MAX_POOL=100 -DJDBC_MAX_IDEL_TIME=300000"
-
-# find all executable test files
-test="${DORIS_TEST_BINARY_DIR}/doris_be_test"
-profraw=${DORIS_TEST_BINARY_DIR}/doris_be_test.profraw
-
-file_name="${test##*/}"
-if [[ -f "${test}" ]]; then
-    if [[ "_${DENABLE_CLANG_COVERAGE}" == "_ON" ]]; then
-        LLVM_PROFILE_FILE="${profraw}" "${test}" --gtest_output="xml:${GTEST_OUTPUT_DIR}/${file_name}.xml" --gtest_print_time=true "${FILTER}"
-    else
-        "${test}" --gtest_output="xml:${GTEST_OUTPUT_DIR}/${file_name}.xml" --gtest_print_time=true "${FILTER}"
-    fi
-    echo "=== Finished. Gtest output: ${GTEST_OUTPUT_DIR}"
-else
-    echo "unit test file: ${test} does not exist."
-fi
+done

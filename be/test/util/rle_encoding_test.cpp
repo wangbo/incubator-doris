@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/test/util/rle_encoding_test.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,44 +32,40 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Must come before gtest.h.
-#include "util/rle_encoding.h"
-
-#include <glog/logging.h>
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
-#include <time.h>
-
 #include <algorithm>
-#include <boost/utility/binary.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <ostream>
 #include <string>
 #include <vector>
 
-#include "gtest/gtest_pred_impl.h"
-#include "testutil/test_util.h"
+// Must come before gtest.h.
+#include <glog/logging.h>
+#include <gtest/gtest.h>
+
+#include <boost/utility/binary.hpp>
+
 #include "util/bit_util.h"
 #include "util/debug_util.h"
 #include "util/faststring.h"
+#include "util/rle_encoding.h"
 
 using std::string;
 using std::vector;
 
-namespace doris {
+namespace starrocks {
 
 const int kMaxWidth = 64;
 
 class TestRle : public testing::Test {};
 // Validates encoding of values by encoding and decoding them.  If
-// expected_encoding != nullptr, also validates that the encoded buffer is
+// expected_encoding != NULL, also validates that the encoded buffer is
 // exactly 'expected_encoding'.
 // if expected_len is not -1, it will validate the encoded size is correct.
 template <typename T>
-void ValidateRle(const std::vector<T>& values, int bit_width, uint8_t* expected_encoding,
-                 int expected_len) {
+void ValidateRle(const std::vector<T>& values, int bit_width, uint8_t* expected_encoding, int expected_len) {
     faststring buffer;
     RleEncoder<T> encoder(&buffer, bit_width);
 
@@ -78,6 +91,36 @@ void ValidateRle(const std::vector<T>& values, int bit_width, uint8_t* expected_
         bool result = decoder.Get(&val);
         EXPECT_TRUE(result);
         EXPECT_EQ(value, val);
+    }
+}
+
+template <typename T>
+void ValidateRleBatch(const std::vector<T>& values, int bit_width, uint8_t* expected_encoding, int expected_len) {
+    faststring buffer;
+    RleEncoder<T> encoder(&buffer, bit_width);
+
+    for (const auto& value : values) {
+        encoder.Put(value);
+    }
+    int encoded_len = encoder.Flush();
+
+    if (expected_len != -1) {
+        EXPECT_EQ(encoded_len, expected_len);
+    }
+    if (expected_encoding != nullptr) {
+        EXPECT_EQ(memcmp(buffer.data(), expected_encoding, expected_len), 0)
+                << "\n"
+                << "Expected: " << hexdump((const char*)expected_encoding, expected_len) << "\n"
+                << "Got:      " << hexdump((const char*)buffer.data(), buffer.size());
+    }
+
+    // Verify read
+    RleDecoder<T> decoder(buffer.data(), encoded_len, bit_width);
+    std::vector<T> to_check(values.size());
+    auto n = decoder.GetBatch(to_check.data(), values.size());
+    ASSERT_EQ(values.size(), n);
+    for (int i = 0; i < n; ++i) {
+        EXPECT_EQ(values[i], to_check[i]);
     }
 }
 
@@ -123,7 +166,8 @@ TEST(Rle, SpecificSequences) {
     // num_groups and expected_buffer only valid for bit width = 1
     ValidateRle(values, 1, expected_buffer, 1 + num_groups);
     for (int width = 2; width <= kMaxWidth; ++width) {
-        ValidateRle(values, width, nullptr, 1 + BitUtil::Ceil(width * 100, 8));
+        int num_values = static_cast<int>(BitUtil::Ceil(100, 8)) * 8;
+        ValidateRle(values, width, nullptr, 1 + BitUtil::Ceil(width * num_values, 8));
     }
 }
 
@@ -149,9 +193,9 @@ TEST(Rle, TestValues) {
 
 class BitRle : public testing::Test {
 public:
-    BitRle() {}
+    BitRle() = default;
 
-    virtual ~BitRle() {}
+    ~BitRle() override = default;
 };
 
 // Tests all true/false values
@@ -173,7 +217,7 @@ TEST_F(BitRle, AllSame) {
 // group but flush before finishing.
 TEST_F(BitRle, Flush) {
     std::vector<bool> values;
-    for (int i = 0; i < 16; ++i) values.push_back(1);
+    for (int i = 0; i < 16; ++i) values.push_back(true);
     values.push_back(false);
     ValidateRle(values, 1, nullptr, -1);
     values.push_back(true);
@@ -187,12 +231,12 @@ TEST_F(BitRle, Flush) {
 // Test some random bool sequences.
 TEST_F(BitRle, RandomBools) {
     int iters = 0;
-    const int n_iters = LOOP_LESS_OR_MORE(5, 20);
+    const int n_iters = 1;
     while (iters < n_iters) {
         srand(iters++);
         if (iters % 10000 == 0) LOG(ERROR) << "Seed: " << iters;
         std::vector<uint64_t> values;
-        bool parity = 0;
+        bool parity = false;
         for (int i = 0; i < 1000; ++i) {
             int group_size = rand() % 20 + 1; // NOLINT(*)
             if (group_size > 16) {
@@ -204,21 +248,21 @@ TEST_F(BitRle, RandomBools) {
             parity = !parity;
         }
         ValidateRle(values, (iters % kMaxWidth) + 1, nullptr, -1);
+        ValidateRleBatch(values, (iters % kMaxWidth) + 1, nullptr, -1);
     }
 }
 
 // Test some random 64-bit sequences.
 TEST_F(BitRle, Random64Bit) {
     int iters = 0;
-    const int n_iters = LOOP_LESS_OR_MORE(5, 20);
+    const int n_iters = 20;
     while (iters < n_iters) {
         srand(iters++);
         if (iters % 10000 == 0) LOG(ERROR) << "Seed: " << iters;
         std::vector<uint64_t> values;
-        for (int i = 0; i < LOOP_LESS_OR_MORE(10, 1000); ++i) {
+        for (int i = 0; i < 1000; ++i) {
             int group_size = rand() % 20 + 1; // NOLINT(*)
-            uint64_t cur_value =
-                    (static_cast<uint64_t>(rand()) << 32) + static_cast<uint64_t>(rand());
+            uint64_t cur_value = (static_cast<uint64_t>(rand()) << 32) + static_cast<uint64_t>(rand());
             if (group_size > 16) {
                 group_size = 1;
             }
@@ -227,6 +271,7 @@ TEST_F(BitRle, Random64Bit) {
             }
         }
         ValidateRle(values, 64, nullptr, -1);
+        ValidateRleBatch(values, 64, nullptr, -1);
     }
 }
 
@@ -269,18 +314,18 @@ TEST_F(TestRle, TestBulkPut) {
 
     RleDecoder<bool> decoder(buffer.data(), encoder.len(), 1);
     run_length = decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max());
-    EXPECT_TRUE(val);
-    EXPECT_EQ(10, run_length);
+    ASSERT_TRUE(val);
+    ASSERT_EQ(10, run_length);
 
     run_length = decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max());
-    EXPECT_FALSE(val);
-    EXPECT_EQ(7, run_length);
+    ASSERT_FALSE(val);
+    ASSERT_EQ(7, run_length);
 
     run_length = decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max());
-    EXPECT_TRUE(val);
-    EXPECT_EQ(20, run_length);
+    ASSERT_TRUE(val);
+    ASSERT_EQ(20, run_length);
 
-    EXPECT_EQ(0, decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max()));
+    ASSERT_EQ(0, decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max()));
 }
 
 TEST_F(TestRle, TestGetNextRun) {
@@ -308,8 +353,8 @@ TEST_F(TestRle, TestGetNextRun) {
                 run_length = decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max());
                 run_length = std::min(run_length, count);
 
-                EXPECT_EQ(!!(j & 1), val);
-                EXPECT_EQ(block, run_length);
+                ASSERT_EQ(!!(j & 1), val);
+                ASSERT_EQ(block, run_length);
                 count -= run_length;
             }
             DCHECK_EQ(count, 0);
@@ -351,14 +396,13 @@ TEST_F(TestRle, TestRoundTripRandomSequencesWithRuns) {
         int rem_to_read = num_bits;
         size_t run_len;
         bool val;
-        while (rem_to_read > 0 &&
-               (run_len = decoder.GetNextRun(&val, std::min(kMaxToReadAtOnce, rem_to_read))) != 0) {
-            EXPECT_LE(run_len, kMaxToReadAtOnce);
+        while (rem_to_read > 0 && (run_len = decoder.GetNextRun(&val, std::min(kMaxToReadAtOnce, rem_to_read))) != 0) {
+            ASSERT_LE(run_len, kMaxToReadAtOnce);
             roundtrip_str.append(run_len, val ? '1' : '0');
             rem_to_read -= run_len;
         }
 
-        EXPECT_EQ(string_rep, roundtrip_str);
+        ASSERT_EQ(string_rep, roundtrip_str);
     }
 }
 TEST_F(TestRle, TestSkip) {
@@ -392,30 +436,46 @@ TEST_F(TestRle, TestSkip) {
     RleDecoder<bool> decoder(buffer.data(), encoder.len(), 1);
 
     // position before "A"
-    EXPECT_EQ(3, decoder.Skip(7));
+    ASSERT_EQ(3, decoder.Skip(7));
     run_length = decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max());
-    EXPECT_TRUE(val);
-    EXPECT_EQ(1, run_length);
+    ASSERT_TRUE(val);
+    ASSERT_EQ(1, run_length);
 
     // position before "B"
-    EXPECT_EQ(7, decoder.Skip(14));
+    ASSERT_EQ(7, decoder.Skip(14));
     run_length = decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max());
-    EXPECT_FALSE(val);
-    EXPECT_EQ(2, run_length);
+    ASSERT_FALSE(val);
+    ASSERT_EQ(2, run_length);
 
     // position before "C"
-    EXPECT_EQ(18, decoder.Skip(46));
+    ASSERT_EQ(18, decoder.Skip(46));
     run_length = decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max());
-    EXPECT_TRUE(val);
-    EXPECT_EQ(10, run_length);
+    ASSERT_TRUE(val);
+    ASSERT_EQ(10, run_length);
 
     // position before "D"
-    EXPECT_EQ(24, decoder.Skip(49));
+    ASSERT_EQ(24, decoder.Skip(49));
     run_length = decoder.GetNextRun(&val, std::numeric_limits<std::size_t>::max());
-    EXPECT_FALSE(val);
-    EXPECT_EQ(11, run_length);
+    ASSERT_FALSE(val);
+    ASSERT_EQ(11, run_length);
 
     encoder.Flush();
 }
 
-} // namespace doris
+TEST_F(TestRle, TestBatch) {
+    faststring buffer;
+    RleEncoder<int> encoder(&buffer, 16);
+    std::vector<int> values;
+    for (int i = 0; i < 1024; ++i) {
+        values.push_back(i);
+        encoder.Put(i);
+    }
+    encoder.Flush();
+
+    RleDecoder<int> decoder(buffer.data(), buffer.size(), 16);
+    std::vector<int> to_check(2048);
+    auto n = decoder.GetBatch(&to_check[0], 2048);
+    ASSERT_EQ(1024, n);
+}
+
+} // namespace starrocks

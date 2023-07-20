@@ -14,19 +14,14 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/aligned-new.h
-// and modified by Doris
 
 #pragma once
-
 #include <memory>
 
-// IWYU pragma: no_include <opentelemetry/common/threadlocal.h>
-#include "common/compiler_util.h" // IWYU pragma: keep
+#include "common/compiler_util.h"
 #include "common/logging.h"
 
-namespace doris {
+namespace starrocks {
 
 // Objects that should be allocated, for performance or correctness reasons, at alignment
 // greater than that promised by the global new (16) can inherit publicly from AlignedNew.
@@ -34,8 +29,7 @@ template <size_t ALIGNMENT>
 struct alignas(ALIGNMENT) AlignedNew {
     static_assert(ALIGNMENT > 0, "ALIGNMENT must be positive");
     static_assert((ALIGNMENT & (ALIGNMENT - 1)) == 0, "ALIGNMENT must be a power of 2");
-    static_assert((ALIGNMENT % sizeof(void*)) == 0,
-                  "ALIGNMENT must be a multiple of sizeof(void *)");
+    static_assert((ALIGNMENT % sizeof(void*)) == 0, "ALIGNMENT must be a multiple of sizeof(void *)");
     static void* operator new(std::size_t count) { return Allocate(count); }
     static void* operator new[](std::size_t count) { return Allocate(count); }
     static void operator delete(void* ptr) { free(ptr); }
@@ -55,4 +49,4 @@ private:
 };
 
 using CacheLineAligned = AlignedNew<CACHE_LINE_SIZE>;
-} // namespace doris
+} // namespace starrocks

@@ -22,28 +22,25 @@
 #include <mutex>
 #include <sstream>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include "http/http_handler.h"
+#include "util/easy_json.h"
 
-namespace doris {
+namespace starrocks {
 
 class EvHttpServer;
-class EasyJson;
-class HttpRequest;
 
 // This a handler for webpage request
 // and this handler manage all the page handler
 class WebPageHandler : public HttpHandler {
 public:
     typedef std::map<std::string, std::string> ArgumentMap;
-    typedef std::function<void(const ArgumentMap& args, std::stringstream* output)>
-            PageHandlerCallback;
-    typedef std::function<void(const ArgumentMap& args, EasyJson* output)>
-            TemplatePageHandlerCallback;
+    typedef std::function<void(const ArgumentMap& args, std::stringstream* output)> PageHandlerCallback;
+    typedef std::function<void(const ArgumentMap& args, EasyJson* output)> TemplatePageHandlerCallback;
 
     WebPageHandler(EvHttpServer* http_server);
-    virtual ~WebPageHandler();
+    ~WebPageHandler() override;
 
     void handle(HttpRequest* req) override;
 
@@ -55,8 +52,8 @@ public:
                                 const TemplatePageHandlerCallback& callback, bool is_on_nav_bar);
 
     // Register a route 'path'. See the register_template_page for details.
-    void register_page(const std::string& path, const std::string& alias,
-                       const PageHandlerCallback& callback, bool is_on_nav_bar);
+    void register_page(const std::string& path, const std::string& alias, const PageHandlerCallback& callback,
+                       bool is_on_nav_bar);
 
 private:
     void root_handler(const ArgumentMap& args, EasyJson* output);
@@ -75,16 +72,14 @@ private:
 
     // Renders the template corresponding to 'path' (if available), using
     // fields in 'ej'.
-    void render(const std::string& path, const EasyJson& ej, bool use_style,
-                std::stringstream* output);
+    void render(const std::string& path, const EasyJson& ej, bool use_style, std::stringstream* output);
 
     bool static_pages_available() const;
 
     // Container class for a list of path handler callbacks for a single URL.
     class PathHandler {
     public:
-        PathHandler(bool is_styled, bool is_on_nav_bar, std::string alias,
-                    PageHandlerCallback callback)
+        PathHandler(bool is_styled, bool is_on_nav_bar, std::string alias, PageHandlerCallback callback)
                 : is_styled_(is_styled),
                   is_on_nav_bar_(is_on_nav_bar),
                   alias_(std::move(alias)),
@@ -120,4 +115,4 @@ private:
     PageHandlersMap _page_map;
 };
 
-} // namespace doris
+} // namespace starrocks

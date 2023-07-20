@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/runtime/result_queue_mgr.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,36 +34,26 @@
 
 #include "runtime/result_queue_mgr.h"
 
-#include <gen_cpp/Types_types.h>
-
-#include <utility>
-
 #include "common/config.h"
 #include "common/status.h"
-#include "runtime/record_batch_queue.h"
-#include "util/doris_metrics.h"
-#include "util/hash_util.hpp"
-#include "util/metrics.h"
+#include "gen_cpp/StarrocksExternalService_types.h"
+#include "util/starrocks_metrics.h"
 
-namespace doris {
-
-DEFINE_GAUGE_METRIC_PROTOTYPE_2ARG(result_block_queue_count, MetricUnit::NOUNIT);
+namespace starrocks {
 
 ResultQueueMgr::ResultQueueMgr() {
-    // Each BlockingQueue has a limited size (default 20, by config::max_memory_sink_batch_count),
-    // it's not needed to count the actual size of all BlockingQueue.
-    REGISTER_HOOK_METRIC(result_block_queue_count, [this]() {
-        // std::lock_guard<std::mutex> l(_lock);
+    // Each TimedBlockingQueue has a limited size (default 20, by config::max_memory_sink_batch_count),
+    // it's not needed to count the actual size of all TimedBlockingQueue.
+    REGISTER_GAUGE_STARROCKS_METRIC(result_block_queue_count, [this]() {
+        std::lock_guard<std::mutex> l(_lock);
         return _fragment_queue_map.size();
     });
 }
 
-ResultQueueMgr::~ResultQueueMgr() {
-    DEREGISTER_HOOK_METRIC(result_block_queue_count);
-}
+ResultQueueMgr::~ResultQueueMgr() = default;
 
-Status ResultQueueMgr::fetch_result(const TUniqueId& fragment_instance_id,
-                                    std::shared_ptr<arrow::RecordBatch>* result, bool* eos) {
+Status ResultQueueMgr::fetch_result(const TUniqueId& fragment_instance_id, std::shared_ptr<arrow::RecordBatch>* result,
+                                    bool* eos) {
     BlockQueueSharedPtr queue;
     {
         std::lock_guard<std::mutex> l(_lock);
@@ -59,12 +66,12 @@ Status ResultQueueMgr::fetch_result(const TUniqueId& fragment_instance_id,
     }
     // check queue status before get result
     RETURN_IF_ERROR(queue->status());
-    bool success = queue->blocking_get(result);
-    if (success) {
+    bool sucess = queue->blocking_get(result);
+    if (sucess) {
         // sentinel nullptr indicates scan end
         if (*result == nullptr) {
             *eos = true;
-            // put sentinel for consistency, avoid repeated invoking fetch result when have no rowbatch
+            // put sentinel for consistency, avoid repeated invoking fetch result when hava no rowbatch
             queue->blocking_put(nullptr);
         } else {
             *eos = false;
@@ -75,8 +82,7 @@ Status ResultQueueMgr::fetch_result(const TUniqueId& fragment_instance_id,
     return Status::OK();
 }
 
-void ResultQueueMgr::create_queue(const TUniqueId& fragment_instance_id,
-                                  BlockQueueSharedPtr* queue) {
+void ResultQueueMgr::create_queue(const TUniqueId& fragment_instance_id, BlockQueueSharedPtr* queue) {
     std::lock_guard<std::mutex> l(_lock);
     auto iter = _fragment_queue_map.find(fragment_instance_id);
     if (iter != _fragment_queue_map.end()) {
@@ -102,8 +108,7 @@ Status ResultQueueMgr::cancel(const TUniqueId& fragment_instance_id) {
     return Status::OK();
 }
 
-void ResultQueueMgr::update_queue_status(const TUniqueId& fragment_instance_id,
-                                         const Status& status) {
+void ResultQueueMgr::update_queue_status(const TUniqueId& fragment_instance_id, const Status& status) {
     if (status.ok()) {
         return;
     }
@@ -114,4 +119,4 @@ void ResultQueueMgr::update_queue_status(const TUniqueId& fragment_instance_id,
     }
 }
 
-} // namespace doris
+} // namespace starrocks

@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/test/util/blocking_queue_test.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -21,43 +38,42 @@
 #include <gtest/gtest.h>
 #include <unistd.h>
 
-#include <mutex>
+#include <boost/thread.hpp>
+#include <memory>
 #include <thread>
 
-namespace doris {
+namespace starrocks {
 
+// NOLINTNEXTLINE
 TEST(BlockingQueueTest, TestBasic) {
     int32_t i;
     BlockingQueue<int32_t> test_queue(5);
-    EXPECT_TRUE(test_queue.blocking_put(1));
-    EXPECT_TRUE(test_queue.blocking_put(2));
-    EXPECT_TRUE(test_queue.blocking_put(3));
-    EXPECT_TRUE(test_queue.blocking_get(&i));
-    EXPECT_EQ(1, i);
-    EXPECT_TRUE(test_queue.blocking_get(&i));
-    EXPECT_EQ(2, i);
-    EXPECT_TRUE(test_queue.blocking_get(&i));
-    EXPECT_EQ(3, i);
+    ASSERT_TRUE(test_queue.blocking_put(1));
+    ASSERT_TRUE(test_queue.blocking_put(2));
+    ASSERT_TRUE(test_queue.blocking_put(3));
+    ASSERT_TRUE(test_queue.blocking_get(&i));
+    ASSERT_EQ(1, i);
+    ASSERT_TRUE(test_queue.blocking_get(&i));
+    ASSERT_EQ(2, i);
+    ASSERT_TRUE(test_queue.blocking_get(&i));
+    ASSERT_EQ(3, i);
 }
 
+// NOLINTNEXTLINE
 TEST(BlockingQueueTest, TestGetFromShutdownQueue) {
     int64_t i;
     BlockingQueue<int64_t> test_queue(2);
-    EXPECT_TRUE(test_queue.blocking_put(123));
+    ASSERT_TRUE(test_queue.blocking_put(123));
     test_queue.shutdown();
-    EXPECT_FALSE(test_queue.blocking_put(456));
-    EXPECT_TRUE(test_queue.blocking_get(&i));
-    EXPECT_EQ(123, i);
-    EXPECT_FALSE(test_queue.blocking_get(&i));
+    ASSERT_FALSE(test_queue.blocking_put(456));
+    ASSERT_TRUE(test_queue.blocking_get(&i));
+    ASSERT_EQ(123, i);
+    ASSERT_FALSE(test_queue.blocking_get(&i));
 }
 
 class MultiThreadTest {
 public:
-    MultiThreadTest()
-            : _iterations(10000),
-              _nthreads(5),
-              _queue(_iterations * _nthreads / 10),
-              _num_inserters(_nthreads) {}
+    MultiThreadTest() : _queue(_iterations * _nthreads / 10), _num_inserters(_nthreads) {}
 
     void inserter_thread(int arg) {
         for (int i = 0; i < _iterations; ++i) {
@@ -91,39 +107,36 @@ public:
 
     void Run() {
         for (int i = 0; i < _nthreads; ++i) {
-            _threads.push_back(std::shared_ptr<std::thread>(
-                    new std::thread(std::bind(&MultiThreadTest::inserter_thread, this, i))));
-            _threads.push_back(std::shared_ptr<std::thread>(
-                    new std::thread(std::bind(&MultiThreadTest::RemoverThread, this))));
+            _threads.push_back(std::make_shared<std::thread>([this, i] { inserter_thread(i); }));
+            _threads.push_back(std::make_shared<std::thread>([this] { RemoverThread(); }));
         }
 
         // We add an extra thread to ensure that there aren't enough elements in
         // the queue to go around.  This way, we test removal after shutdown.
-        _threads.push_back(std::shared_ptr<std::thread>(
-                new std::thread(std::bind(&MultiThreadTest::RemoverThread, this))));
+        _threads.push_back(std::make_shared<std::thread>([this] { RemoverThread(); }));
 
-        for (int i = 0; i < _threads.size(); ++i) {
-            _threads[i]->join();
+        for (auto& _thread : _threads) {
+            _thread->join();
         }
 
         // Let's check to make sure we got what we should have.
         std::lock_guard<std::mutex> guard(_lock);
 
         for (int i = 0; i < _nthreads; ++i) {
-            EXPECT_EQ(_iterations, _gotten[i]);
+            ASSERT_EQ(_iterations, _gotten[i]);
         }
 
         // And there were _nthreads * (_iterations + 1)  elements removed, but only
         // _nthreads * _iterations elements added.  So some removers hit the shutdown
         // case.
-        EXPECT_EQ(_iterations, _gotten[-1]);
+        ASSERT_EQ(_iterations, _gotten[-1]);
     }
 
 private:
-    typedef std::vector<std::shared_ptr<std::thread>> ThreadVector;
+    typedef std::vector<std::shared_ptr<std::thread> > ThreadVector;
 
-    int _iterations;
-    int _nthreads;
+    int _iterations{10000};
+    int _nthreads{5};
     BlockingQueue<int32_t> _queue;
     // Lock for _gotten and _num_inserters.
     std::mutex _lock;
@@ -137,9 +150,10 @@ private:
     int _num_inserters;
 };
 
+// NOLINTNEXTLINE
 TEST(BlockingQueueTest, TestMultipleThreads) {
     MultiThreadTest test;
     test.Run();
 }
 
-} // namespace doris
+} // namespace starrocks

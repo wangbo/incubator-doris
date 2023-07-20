@@ -5,26 +5,23 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <time.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <functional>
-
+using std::binary_function;
 using std::less;
 #include <limits>
-
 using std::numeric_limits;
 #include <string>
-
 using std::string;
 #include <vector>
-
 using std::vector;
 
 #include "gutil/int128.h"
 #include "gutil/integral_types.h"
-// IWYU pragma: no_include <butil/macros.h>
-#include "gutil/macros.h" // IWYU pragma: keep
+#include "gutil/macros.h"
 #include "gutil/port.h"
 #include "gutil/stringprintf.h"
 
@@ -33,10 +30,10 @@ using std::vector;
  * @{ */
 
 // Convert a fingerprint to 16 hex digits.
-string Uint64ToString(uint64 fp);
+string FpToString(Fprint fp);
 
 // Formats a uint128 as a 32-digit hex string.
-string Uint128ToHexString(uint128 ui128);
+string Uint128ToHexString(const uint128& ui128);
 
 // Convert strings to numeric values, with strict error checking.
 // Leading and trailing spaces are allowed.
@@ -62,7 +59,7 @@ bool safe_strtod(const string& str, double* value);
 
 // Parses buffer_size many characters from startptr into value.
 bool safe_strto32(const char* startptr, int buffer_size, int32* value);
-bool safe_strto64(const char* startptr, int buffer_size, int64* value);
+bool safe_strto64(const char* startptr, int64 buffer_size, int64* value);
 
 // Parses with a fixed base between 2 and 36. For base 16, leading "0x" is ok.
 // If base is set to 0, its value is inferred from the beginning of str:
@@ -171,6 +168,8 @@ char* FastInt32ToBufferLeft(int32 i, char* buffer);   // at least 12 bytes
 char* FastUInt32ToBufferLeft(uint32 i, char* buffer); // at least 12 bytes
 char* FastInt64ToBufferLeft(int64 i, char* buffer);   // at least 22 bytes
 char* FastUInt64ToBufferLeft(uint64 i, char* buffer); // at least 22 bytes
+char* FastInt128ToBufferLeft(__int128 i, char* buffer);
+char* FastUInt128ToBufferLeft(unsigned __int128 i, char* buffer);
 
 // Just define these in terms of the above.
 inline char* FastUInt32ToBuffer(uint32 i, char* buffer) {
@@ -331,25 +330,25 @@ bool AutoDigitLessThan(const char* a, int alen, const char* b, int blen);
 
 bool StrictAutoDigitLessThan(const char* a, int alen, const char* b, int blen);
 
-struct autodigit_less {
+struct autodigit_less : public binary_function<const string&, const string&, bool> {
     bool operator()(const string& a, const string& b) const {
         return AutoDigitLessThan(a.data(), a.size(), b.data(), b.size());
     }
 };
 
-struct autodigit_greater {
+struct autodigit_greater : public binary_function<const string&, const string&, bool> {
     bool operator()(const string& a, const string& b) const {
         return AutoDigitLessThan(b.data(), b.size(), a.data(), a.size());
     }
 };
 
-struct strict_autodigit_less {
+struct strict_autodigit_less : public binary_function<const string&, const string&, bool> {
     bool operator()(const string& a, const string& b) const {
         return StrictAutoDigitLessThan(a.data(), a.size(), b.data(), b.size());
     }
 };
 
-struct strict_autodigit_greater {
+struct strict_autodigit_greater : public binary_function<const string&, const string&, bool> {
     bool operator()(const string& a, const string& b) const {
         return StrictAutoDigitLessThan(b.data(), b.size(), a.data(), a.size());
     }
@@ -443,8 +442,6 @@ int FloatToBuffer(float i, int width, char* buffer);
 char* DoubleToBuffer(double i, char* buffer);
 char* FloatToBuffer(float i, char* buffer);
 
-int FastDoubleToBuffer(double i, char* buffer);
-int FastFloatToBuffer(float i, char* buffer);
 // In practice, doubles should never need more than 24 bytes and floats
 // should never need more than 14 (including null terminators), but we
 // overestimate to be safe.
@@ -464,9 +461,6 @@ string SimpleItoaWithCommas(uint32 i);
 string SimpleItoaWithCommas(int64 i);
 string SimpleItoaWithCommas(uint64 i);
 
-char* SimpleItoaWithCommas(int64_t i, char* buffer, int32_t buffer_size);
-char* SimpleItoaWithCommas(__int128_t i, char* buffer, int32_t buffer_size);
-
 // ----------------------------------------------------------------------
 // ItoaKMGT()
 //    Description: converts an integer to a string
@@ -475,12 +469,8 @@ char* SimpleItoaWithCommas(__int128_t i, char* buffer, int32_t buffer_size);
 //    e.g. 3000 -> 2K   57185920 -> 45M
 //
 //    Return value: string
-//
-// AccurateItoaKMGT()
-//    Description: preserve accuracy
 // ----------------------------------------------------------------------
 string ItoaKMGT(int64 i);
-string AccurateItoaKMGT(int64 i);
 
 // ----------------------------------------------------------------------
 // ParseDoubleRange()
@@ -532,8 +522,8 @@ struct DoubleRangeOptions {
 // This instruction is needed to expose global functions that are not
 // within a namespace.
 //
-bool ParseDoubleRange(const char* text, int len, const char** end, double* from, double* to,
-                      bool* is_currency, const DoubleRangeOptions& opts);
+bool ParseDoubleRange(const char* text, int len, const char** end, double* from, double* to, bool* is_currency,
+                      const DoubleRangeOptions& opts);
 
 // END DOXYGEN SplitFunctions grouping
 /* @} */

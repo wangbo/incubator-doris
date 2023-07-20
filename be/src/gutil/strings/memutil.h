@@ -52,8 +52,10 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <string.h> // to get the POSIX mem*() routines
+#include <cstddef>
+#include <cstring> // to get the POSIX mem*() routines
+
+#include "gutil/port.h" // disable some warnings on Windows
 
 inline char* memcat(char* dest, size_t destlen, const char* src, size_t srclen) {
     return reinterpret_cast<char*>(memcpy(dest + destlen, src, srclen));
@@ -79,13 +81,11 @@ inline const char* memcasestr(const char* phaystack, size_t haylen, const char* 
     return int_memmatch<false>(phaystack, haylen, pneedle, strlen(pneedle));
 }
 
-inline const char* memmem(const char* phaystack, size_t haylen, const char* pneedle,
-                          size_t needlelen) {
+inline const char* memmem(const char* phaystack, size_t haylen, const char* pneedle, size_t needlelen) {
     return int_memmatch<true>(phaystack, haylen, pneedle, needlelen);
 }
 
-inline const char* memcasemem(const char* phaystack, size_t haylen, const char* pneedle,
-                              size_t needlelen) {
+inline const char* memcasemem(const char* phaystack, size_t haylen, const char* pneedle, size_t needlelen) {
     return int_memmatch<false>(phaystack, haylen, pneedle, needlelen);
 }
 

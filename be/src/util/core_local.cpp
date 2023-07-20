@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/core_local.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -18,17 +35,12 @@
 #include "util/core_local.h"
 
 #include <cstdlib>
-#include <iterator>
-#include <ostream>
 #include <vector>
 
-// IWYU pragma: no_include <opentelemetry/common/threadlocal.h>
-#include "common/compiler_util.h" // IWYU pragma: keep
 #include "common/logging.h"
 #include "util/spinlock.h"
-#include "util/sse_util.hpp"
 
-namespace doris {
+namespace starrocks {
 
 constexpr int BLOCK_SIZE = 4096;
 struct alignas(CACHE_LINE_SIZE) CoreDataBlock {
@@ -49,7 +61,7 @@ struct alignas(CACHE_LINE_SIZE) CoreDataBlock {
 template <size_t ELEMENT_BYTES>
 class CoreDataAllocatorImpl : public CoreDataAllocator {
 public:
-    virtual ~CoreDataAllocatorImpl();
+    ~CoreDataAllocatorImpl() override;
     void* get_or_create(size_t id) override {
         size_t block_id = id / ELEMENTS_PER_BLOCK;
         {
@@ -60,12 +72,8 @@ public:
         }
         CoreDataBlock* block = _blocks[block_id];
         if (block == nullptr) {
-            std::lock_guard<SpinLock> l(_lock);
-            block = _blocks[block_id];
-            if (block == nullptr) {
-                block = new CoreDataBlock();
-                _blocks[block_id] = block;
-            }
+            block = new CoreDataBlock();
+            _blocks[block_id] = block;
         }
         size_t offset = (id % ELEMENTS_PER_BLOCK) * ELEMENT_BYTES;
         return block->at(offset);
@@ -127,4 +135,4 @@ CoreDataAllocatorFactory::~CoreDataAllocatorFactory() {
     }
 }
 
-} // namespace doris
+} // namespace starrocks

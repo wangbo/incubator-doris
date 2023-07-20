@@ -2,12 +2,13 @@
 //
 // A collection of useful (static) bit-twiddling functions.
 
-#pragma once
+#include <common/logging.h>
 
-
+#include "gutil/basictypes.h"
 #include "gutil/integral_types.h"
-// IWYU pragma: no_include <butil/macros.h>
-#include "gutil/macros.h" // IWYU pragma: keep
+#include "gutil/macros.h"
+
+#pragma once
 
 class Bits {
 public:
@@ -19,6 +20,11 @@ public:
         n = ((n >> 2) & 0x33333333) + (n & 0x33333333);
         return (((n + (n >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24;
     }
+
+    static int CountTrailingZeros32(uint32_t n);
+    static int CountTrailingZerosNonZero32(uint32_t n);
+    static int CountTrailingZeros64(uint64_t n);
+    static int CountTrailingZerosNonZero64(uint64_t n);
 
     // Count bits using sideways addition [WWG'57]. See Knuth TAOCP v4 7.1.3(59)
     static inline int CountOnes64(uint64 n) {
@@ -110,7 +116,8 @@ public:
 private:
     static const char num_bits[];
     static const unsigned char bit_reverse_table[];
-    DISALLOW_COPY_AND_ASSIGN(Bits);
+    Bits(const Bits&) = delete;
+    const Bits& operator=(const Bits&) = delete;
 };
 
 // A utility class for some handy bit patterns.  The names l and h
@@ -228,23 +235,22 @@ inline int Bits::FindLSBSetNonZero64_Portable(uint64 n) {
 }
 
 template <class T>
- bool Bits::BytesContainByteLessThan(T bytes, uint8 c) {
+inline bool Bits::BytesContainByteLessThan(T bytes, uint8 c) {
     T l = BitPattern<T>::l;
     T h = BitPattern<T>::h;
     // The c <= 0x80 code is straight out of Knuth Volume 4.
     // Usually c will be manifestly constant.
-    return c <= 0x80 ? ((h & (bytes - l * c) & ~bytes) != 0)
-                     : ((((bytes - l * c) | (bytes ^ h)) & h) != 0);
+    return c <= 0x80 ? ((h & (bytes - l * c) & ~bytes) != 0) : ((((bytes - l * c) | (bytes ^ h)) & h) != 0);
 }
 
 template <class T>
- bool Bits::BytesContainByte(T bytes, uint8 c) {
+inline bool Bits::BytesContainByte(T bytes, uint8 c) {
     // Usually c will be manifestly constant.
     return Bits::BytesContainByteLessThan<T>(bytes ^ (c * BitPattern<T>::l), 1);
 }
 
 template <class T>
- bool Bits::BytesAllInRange(T bytes, uint8 lo, uint8 hi) {
+inline bool Bits::BytesAllInRange(T bytes, uint8 lo, uint8 hi) {
     T l = BitPattern<T>::l;
     T h = BitPattern<T>::h;
     // In the common case, lo and hi are manifest constants.
@@ -257,4 +263,20 @@ template <class T>
         return ((x | y) & h) == 0;
     }
     return !Bits::BytesContainByteLessThan(bytes + (255 - hi) * l, lo + (255 - hi));
+}
+
+inline int Bits::CountTrailingZerosNonZero32(uint32_t n) {
+    return Bits::FindLSBSetNonZero(n);
+}
+
+inline int Bits::CountTrailingZeros32(uint32_t n) {
+    return n == 0 ? 32 : Bits::CountTrailingZerosNonZero32(n);
+}
+
+inline int Bits::CountTrailingZerosNonZero64(uint64_t n) {
+    return Bits::FindLSBSetNonZero64(n);
+}
+
+inline int Bits::CountTrailingZeros64(uint64_t n) {
+    return n == 0 ? 64 : Bits::CountTrailingZerosNonZero64(n);
 }

@@ -16,80 +16,74 @@
 # specific language governing permissions and limitations
 # under the License.
 
-set -eo pipefail
+#############################################################################
+# This script is used to stop BE process
+# Usage:
+#     sh stop_be.sh [option]
+#
+# Options:
+#     -h, --help              display this usage only
+#     -g, --graceful          send SIGTERM to BE process instead of SIGKILL
+#    
+#############################################################################
 
-curdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+curdir=`dirname "$0"`
+curdir=`cd "$curdir"; pwd`
 
-DORIS_HOME="$(
-    cd "${curdir}/.."
-    pwd
-)"
-export DORIS_HOME
+export STARROCKS_HOME=`cd "$curdir/.."; pwd`
+# compatible with DORIS_HOME: DORIS_HOME still be using in config on the user side, so set DORIS_HOME to the meaningful value in case of wrong envs.
+export DORIS_HOME="$STARROCKS_HOME"
+export PID_DIR=`cd "$curdir"; pwd`
 
-PID_DIR="$(
-    cd "${curdir}"
-    pwd
-)"
-export PID_DIR
+source $STARROCKS_HOME/bin/common.sh
 
-while read -r line; do
-    envline="$(echo "${line}" |
-        sed 's/[[:blank:]]*=[[:blank:]]*/=/g' |
-        sed 's/^[[:blank:]]*//g' |
-        grep -E "^[[:upper:]]([[:upper:]]|_|[[:digit:]])*=" ||
-        true)"
-    envline="$(eval "echo ${envline}")"
-    if [[ "${envline}" == *"="* ]]; then
-        eval 'export "${envline}"'
-    fi
-done <"${DORIS_HOME}/conf/be.conf"
+export_env_from_conf $STARROCKS_HOME/conf/be.conf
 
-signum=9
-if [[ "$1" = "--grace" ]]; then
-    signum=15
-fi
+pidfile=$PID_DIR/be.pid
 
-pidfile="${PID_DIR}/be.pid"
+sig=9
 
-if [[ -f "${pidfile}" ]]; then
-    pid="$(cat "${pidfile}")"
+usage() {
+    echo "
+This script is used to stop BE process
+Usage:
+    sh stop_be.sh [option]
 
-    # check if pid valid
-    if test -z "${pid}"; then
-        echo "ERROR: invalid pid."
-        exit 1
-    fi
+Options:
+    -h, --help              display this usage only
+    -g, --graceful          send SIGTERM to BE process instead of SIGKILL
+"
+    exit 0
+}
 
-    # check if pid process exist
-    if ! kill -0 "${pid}" 2>&1; then
-        echo "ERROR: be process ${pid} does not exist."
-        exit 1
-    fi
+for arg in "$@"
+do
+    case $arg in
+        --help|-h)
+            usage
+        ;;
+        --graceful|-g)
+            sig=15
+        ;;
+    esac
+done
 
-    pidcomm="$(basename "$(ps -p "${pid}" -o comm=)")"
-    # check if pid process is backend process
-    if [[ "doris_be" != "${pidcomm}" ]]; then
+if [ -f $pidfile ]; then
+    pid=`cat $pidfile`
+    pidcomm=`ps -p $pid -o comm=`
+    if [ "starrocks_be"x != "$pidcomm"x ]; then
         echo "ERROR: pid process may not be be. "
         exit 1
     fi
 
-    # kill pid process and check it
-    if kill "-${signum}" "${pid}" >/dev/null 2>&1; then
-        while true; do
-            if kill -0 "${pid}" >/dev/null 2>&1; then
-                echo "waiting be to stop, pid: ${pid}"
-                sleep 2
-            else
-                echo "stop ${pidcomm}, and remove pid file. "
-                if [[ -f "${pidfile}" ]]; then rm "${pidfile}"; fi
-                exit 0
-            fi
+    if kill -0 $pid >/dev/null 2>&1; then
+        kill -${sig} $pid > /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
+        while kill -0 $pid >/dev/null 2>&1; do
+            sleep 1
         done
-    else
-        echo "ERROR: failed to stop ${pid}"
-        exit 1
     fi
-else
-    echo "ERROR: ${pidfile} does not exist"
-    exit 1
+    rm $pidfile
 fi

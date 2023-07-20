@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/runtime/routine_load/routine_load_task_executor.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,80 +34,30 @@
 
 #include "runtime/routine_load/routine_load_task_executor.h"
 
-#include <gen_cpp/BackendService_types.h>
-#include <gen_cpp/FrontendService_types.h>
-#include <gen_cpp/PaloInternalService_types.h>
-#include <gen_cpp/Status_types.h>
-#include <gen_cpp/Types_types.h>
-#include <gen_cpp/internal_service.pb.h>
-#include <librdkafka/rdkafkacpp.h>
-#include <stddef.h>
-
-#include <algorithm>
-#include <future>
-#include <map>
-#include <ostream>
+#include <functional>
+#include <memory>
 #include <thread>
-#include <utility>
 
-// IWYU pragma: no_include <opentelemetry/common/threadlocal.h>
-#include "common/compiler_util.h" // IWYU pragma: keep
-#include "common/config.h"
-#include "common/logging.h"
 #include "common/status.h"
-#include "common/utils.h"
-#include "io/fs/kafka_consumer_pipe.h"
-#include "io/fs/multi_table_pipe.h"
-#include "io/fs/stream_load_pipe.h"
-#include "runtime/exec_env.h"
-#include "runtime/message_body_sink.h"
-#include "runtime/routine_load/data_consumer.h"
 #include "runtime/routine_load/data_consumer_group.h"
-#include "runtime/stream_load/new_load_stream_mgr.h"
+#include "runtime/routine_load/kafka_consumer_pipe.h"
 #include "runtime/stream_load/stream_load_context.h"
-#include "runtime/stream_load/stream_load_executor.h"
-#include "service/backend_options.h"
 #include "util/defer_op.h"
-#include "util/doris_metrics.h"
-#include "util/metrics.h"
-#include "util/slice.h"
-#include "util/time.h"
+#include "util/stopwatch.hpp"
 #include "util/uid_util.h"
 
-namespace doris {
-using namespace ErrorCode;
+namespace starrocks {
 
-DEFINE_GAUGE_METRIC_PROTOTYPE_2ARG(routine_load_task_count, MetricUnit::NOUNIT);
+Status RoutineLoadTaskExecutor::get_kafka_partition_meta(const PKafkaMetaProxyRequest& request,
+                                                         std::vector<int32_t>* partition_ids, int timeout_ms,
+                                                         std::string* group_id) {
+    DCHECK(request.has_kafka_info());
 
-RoutineLoadTaskExecutor::RoutineLoadTaskExecutor(ExecEnv* exec_env)
-        : _exec_env(exec_env),
-          _thread_pool(config::routine_load_thread_pool_size, config::routine_load_thread_pool_size,
-                       "routine_load"),
-          _data_consumer_pool(config::routine_load_consumer_pool_size) {
-    REGISTER_HOOK_METRIC(routine_load_task_count, [this]() {
-        // std::lock_guard<std::mutex> l(_lock);
-        return _task_map.size();
-    });
-
-    _data_consumer_pool.start_bg_worker();
-}
-
-RoutineLoadTaskExecutor::~RoutineLoadTaskExecutor() {
-    DEREGISTER_HOOK_METRIC(routine_load_task_count);
-    _thread_pool.shutdown();
-    _thread_pool.join();
-
-    LOG(INFO) << _task_map.size() << " not executed tasks left, cleanup";
-    _task_map.clear();
-}
-
-// Create a temp StreamLoadContext and set some kafka connection info in it.
-// So that we can use this ctx to get kafka data consumer instance.
-Status RoutineLoadTaskExecutor::_prepare_ctx(const PKafkaMetaProxyRequest& request,
-                                             std::shared_ptr<StreamLoadContext> ctx) {
-    ctx->load_type = TLoadType::ROUTINE_LOAD;
-    ctx->load_src_type = TLoadSourceType::KAFKA;
-    ctx->label = "NaN";
+    // This context is meaningless, just for unifing the interface
+    StreamLoadContext ctx(_exec_env);
+    ctx.load_type = TLoadType::ROUTINE_LOAD;
+    ctx.load_src_type = TLoadSourceType::KAFKA;
+    ctx.label = "NaN";
 
     // convert PKafkaInfo to TKafkaLoadInfo
     TKafkaLoadInfo t_info;
@@ -101,73 +68,163 @@ Status RoutineLoadTaskExecutor::_prepare_ctx(const PKafkaMetaProxyRequest& reque
         const PStringPair& pair = request.kafka_info().properties(i);
         properties.emplace(pair.key(), pair.val());
     }
-    t_info.__set_properties(std::move(properties));
+    t_info.__set_properties(properties);
 
-    ctx->kafka_info.reset(new KafkaLoadInfo(t_info));
-    ctx->need_rollback = false;
+    ctx.kafka_info = std::make_unique<KafkaLoadInfo>(t_info);
+    ctx.need_rollback = false;
+
+    std::shared_ptr<DataConsumer> consumer;
+    RETURN_IF_ERROR(_data_consumer_pool.get_consumer(&ctx, &consumer));
+    auto it = ctx.kafka_info->properties.find("group.id");
+    if (it == ctx.kafka_info->properties.end()) {
+        *group_id = "unknown";
+    } else {
+        *group_id = it->second;
+    }
+
+    Status st = std::static_pointer_cast<KafkaDataConsumer>(consumer)->get_partition_meta(partition_ids, timeout_ms);
+    if (st.ok()) {
+        _data_consumer_pool.return_consumer(consumer);
+    }
+    return st;
+}
+
+Status RoutineLoadTaskExecutor::get_kafka_partition_offset(const PKafkaOffsetProxyRequest& request,
+                                                           std::vector<int64_t>* beginning_offsets,
+                                                           std::vector<int64_t>* latest_offsets, int timeout_ms,
+                                                           std::string* group_id) {
+    DCHECK(request.has_kafka_info());
+
+    // This context is meaningless, just for unifing the interface
+    StreamLoadContext ctx(_exec_env);
+    ctx.load_type = TLoadType::ROUTINE_LOAD;
+    ctx.load_src_type = TLoadSourceType::KAFKA;
+    ctx.label = "NaN";
+
+    // convert PKafkaInfo to TKafkaLoadInfo
+    TKafkaLoadInfo t_info;
+    t_info.brokers = request.kafka_info().brokers();
+    t_info.topic = request.kafka_info().topic();
+    std::map<std::string, std::string> properties;
+    for (int i = 0; i < request.kafka_info().properties_size(); ++i) {
+        const PStringPair& pair = request.kafka_info().properties(i);
+        properties.emplace(pair.key(), pair.val());
+    }
+    t_info.__set_properties(properties);
+
+    ctx.kafka_info = std::make_unique<KafkaLoadInfo>(t_info);
+    ctx.need_rollback = false;
+
+    // convert pb repeated value to vector
+    std::vector<int32_t> partition_ids;
+    partition_ids.reserve(request.partition_ids().size());
+    for (auto p_id : request.partition_ids()) {
+        partition_ids.push_back(p_id);
+    }
+
+    std::shared_ptr<DataConsumer> consumer;
+    RETURN_IF_ERROR(_data_consumer_pool.get_consumer(&ctx, &consumer));
+    auto it = ctx.kafka_info->properties.find("group.id");
+    if (it == ctx.kafka_info->properties.end()) {
+        *group_id = "unknown";
+    } else {
+        *group_id = it->second;
+    }
+    MonotonicStopWatch watch;
+    watch.start();
+    Status st = std::static_pointer_cast<KafkaDataConsumer>(consumer)->get_partition_offset(
+            &partition_ids, beginning_offsets, latest_offsets, timeout_ms);
+    if (st.ok()) {
+        _data_consumer_pool.return_consumer(consumer);
+    }
+    return st;
+}
+
+Status RoutineLoadTaskExecutor::get_pulsar_partition_meta(const PPulsarMetaProxyRequest& request,
+                                                          std::vector<std::string>* partitions) {
+    DCHECK(request.has_pulsar_info());
+
+    // This context is meaningless, just for unifing the interface
+    StreamLoadContext ctx(_exec_env);
+    ctx.load_type = TLoadType::ROUTINE_LOAD;
+    ctx.load_src_type = TLoadSourceType::PULSAR;
+    ctx.label = "NaN";
+
+    // convert PPulsarInfo to TPulsarLoadInfo
+    TPulsarLoadInfo t_info;
+    t_info.service_url = request.pulsar_info().service_url();
+    t_info.topic = request.pulsar_info().topic();
+    t_info.subscription = request.pulsar_info().subscription();
+    std::map<std::string, std::string> properties;
+    for (int i = 0; i < request.pulsar_info().properties_size(); ++i) {
+        const PStringPair& pair = request.pulsar_info().properties(i);
+        properties.emplace(pair.key(), pair.val());
+    }
+    t_info.__set_properties(properties);
+
+    ctx.pulsar_info = std::make_unique<PulsarLoadInfo>(t_info);
+    ctx.need_rollback = false;
+
+    std::shared_ptr<DataConsumer> consumer;
+    RETURN_IF_ERROR(_data_consumer_pool.get_consumer(&ctx, &consumer));
+
+    Status st = std::static_pointer_cast<PulsarDataConsumer>(consumer)->get_topic_partition(partitions);
+    if (st.ok()) {
+        _data_consumer_pool.return_consumer(consumer);
+    }
+    return st;
+}
+
+Status RoutineLoadTaskExecutor::get_pulsar_partition_backlog(const PPulsarBacklogProxyRequest& request,
+                                                             std::vector<int64_t>* backlog_num) {
+    DCHECK(request.has_pulsar_info());
+
+    // This context is meaningless, just for unifing the interface
+    StreamLoadContext ctx(_exec_env);
+    ctx.load_type = TLoadType::ROUTINE_LOAD;
+    ctx.load_src_type = TLoadSourceType::PULSAR;
+    ctx.label = "NaN";
+
+    // convert PPulsarInfo to TPulsarLoadInfo
+    TPulsarLoadInfo t_info;
+    t_info.service_url = request.pulsar_info().service_url();
+    t_info.topic = request.pulsar_info().topic();
+    t_info.subscription = request.pulsar_info().subscription();
+    std::map<std::string, std::string> properties;
+    for (int i = 0; i < request.pulsar_info().properties_size(); ++i) {
+        const PStringPair& pair = request.pulsar_info().properties(i);
+        properties.emplace(pair.key(), pair.val());
+    }
+    t_info.__set_properties(properties);
+
+    ctx.pulsar_info = std::make_unique<PulsarLoadInfo>(t_info);
+    ctx.need_rollback = false;
+
+    // convert pb repeated value to vector
+    std::vector<std::string> partitions;
+    partitions.reserve(request.partitions().size());
+    for (const auto& p : request.partitions()) {
+        partitions.push_back(p);
+    }
+
+    backlog_num->reserve(partitions.size());
+
+    Status st;
+    std::shared_ptr<DataConsumer> consumer;
+    RETURN_IF_ERROR(_data_consumer_pool.get_consumer(&ctx, &consumer));
+    for (const auto& p : partitions) {
+        int64_t backlog = 0;
+        RETURN_IF_ERROR(std::static_pointer_cast<PulsarDataConsumer>(consumer)->assign_partition(p, &ctx));
+        st = std::static_pointer_cast<PulsarDataConsumer>(consumer)->get_partition_backlog(&backlog);
+        std::static_pointer_cast<PulsarDataConsumer>(consumer).reset();
+        backlog_num->push_back(backlog);
+    }
+
+    if (st.ok()) {
+        _data_consumer_pool.return_consumer(consumer);
+    }
+
     return Status::OK();
-}
-
-Status RoutineLoadTaskExecutor::get_kafka_partition_meta(const PKafkaMetaProxyRequest& request,
-                                                         std::vector<int32_t>* partition_ids) {
-    CHECK(request.has_kafka_info());
-
-    // This context is meaningless, just for unifing the interface
-    std::shared_ptr<StreamLoadContext> ctx = std::make_shared<StreamLoadContext>(_exec_env);
-    RETURN_IF_ERROR(_prepare_ctx(request, ctx));
-
-    std::shared_ptr<DataConsumer> consumer;
-    RETURN_IF_ERROR(_data_consumer_pool.get_consumer(ctx, &consumer));
-
-    Status st = std::static_pointer_cast<KafkaDataConsumer>(consumer)->get_partition_meta(
-            partition_ids);
-    if (st.ok()) {
-        _data_consumer_pool.return_consumer(consumer);
-    }
-    return st;
-}
-
-Status RoutineLoadTaskExecutor::get_kafka_partition_offsets_for_times(
-        const PKafkaMetaProxyRequest& request, std::vector<PIntegerPair>* partition_offsets) {
-    CHECK(request.has_kafka_info());
-
-    // This context is meaningless, just for unifing the interface
-    std::shared_ptr<StreamLoadContext> ctx = std::make_shared<StreamLoadContext>(_exec_env);
-    RETURN_IF_ERROR(_prepare_ctx(request, ctx));
-
-    std::shared_ptr<DataConsumer> consumer;
-    RETURN_IF_ERROR(_data_consumer_pool.get_consumer(ctx, &consumer));
-
-    Status st = std::static_pointer_cast<KafkaDataConsumer>(consumer)->get_offsets_for_times(
-            std::vector<PIntegerPair>(request.offset_times().begin(), request.offset_times().end()),
-            partition_offsets);
-    if (st.ok()) {
-        _data_consumer_pool.return_consumer(consumer);
-    }
-    return st;
-}
-
-Status RoutineLoadTaskExecutor::get_kafka_latest_offsets_for_partitions(
-        const PKafkaMetaProxyRequest& request, std::vector<PIntegerPair>* partition_offsets) {
-    CHECK(request.has_kafka_info());
-
-    // This context is meaningless, just for unifing the interface
-    std::shared_ptr<StreamLoadContext> ctx = std::make_shared<StreamLoadContext>(_exec_env);
-    RETURN_IF_ERROR(_prepare_ctx(request, ctx));
-
-    std::shared_ptr<DataConsumer> consumer;
-    RETURN_IF_ERROR(_data_consumer_pool.get_consumer(ctx, &consumer));
-
-    Status st =
-            std::static_pointer_cast<KafkaDataConsumer>(consumer)
-                    ->get_latest_offsets_for_partitions(
-                            std::vector<int32_t>(request.partition_id_for_latest_offsets().begin(),
-                                                 request.partition_id_for_latest_offsets().end()),
-                            partition_offsets);
-    if (st.ok()) {
-        _data_consumer_pool.return_consumer(consumer);
-    }
-    return st;
 }
 
 Status RoutineLoadTaskExecutor::submit_task(const TRoutineLoadTask& task) {
@@ -179,16 +236,13 @@ Status RoutineLoadTaskExecutor::submit_task(const TRoutineLoadTask& task) {
     }
 
     if (_task_map.size() >= config::routine_load_thread_pool_size) {
-        LOG(INFO) << "too many tasks in thread pool. reject task: " << UniqueId(task.id)
-                  << ", job id: " << task.job_id
-                  << ", queue size: " << _thread_pool.get_queue_size()
-                  << ", current tasks num: " << _task_map.size();
-        return Status::TooManyTasks("{}_{}", UniqueId(task.id).to_string(),
-                                    BackendOptions::get_localhost());
+        LOG(INFO) << "too many tasks in thread pool. reject task: " << UniqueId(task.id) << ", job id: " << task.job_id
+                  << ", queue size: " << _thread_pool.get_queue_size() << ", current tasks num: " << _task_map.size();
+        return Status::TooManyTasks(UniqueId(task.id).to_string());
     }
 
     // create the context
-    std::shared_ptr<StreamLoadContext> ctx = std::make_shared<StreamLoadContext>(_exec_env);
+    auto* ctx = new StreamLoadContext(_exec_env);
     ctx->load_type = TLoadType::ROUTINE_LOAD;
     ctx->load_src_type = task.type;
     ctx->job_id = task.job_id;
@@ -208,78 +262,79 @@ Status RoutineLoadTaskExecutor::submit_task(const TRoutineLoadTask& task) {
     if (task.__isset.max_batch_size) {
         ctx->max_batch_size = task.max_batch_size;
     }
-    if (task.__isset.is_multi_table && task.is_multi_table) {
-        ctx->is_multi_table = true;
-    }
 
-    // set execute plan params (only for non-single-stream-multi-table load)
+    // set execute plan params
     TStreamLoadPutResult put_result;
     TStatus tstatus;
     tstatus.status_code = TStatusCode::OK;
     put_result.status = tstatus;
-    if (task.__isset.params) {
-        put_result.params = task.params;
-        put_result.__isset.params = true;
-    } else {
-        put_result.pipeline_params = task.pipeline_params;
-        put_result.__isset.pipeline_params = true;
-    }
+    put_result.params = task.params;
+    put_result.__isset.params = true;
     ctx->put_result = put_result;
     if (task.__isset.format) {
         ctx->format = task.format;
     }
-    // the routine load task'txn has already began in FE.
+    // the routine load task'txn has alreay began in FE.
     // so it need to rollback if encounter error.
     ctx->need_rollback = true;
-    ctx->max_filter_ratio = 1.0;
+    if (task.__isset.max_filter_ratio) {
+        ctx->max_filter_ratio = task.max_filter_ratio;
+    } else {
+        ctx->max_filter_ratio = 1.0;
+    }
 
     // set source related params
     switch (task.type) {
     case TLoadSourceType::KAFKA:
-        ctx->kafka_info.reset(new KafkaLoadInfo(task.kafka_load_info));
+        ctx->kafka_info = std::make_unique<KafkaLoadInfo>(task.kafka_load_info);
+        break;
+    case TLoadSourceType::PULSAR:
+        ctx->pulsar_info = std::make_unique<PulsarLoadInfo>(task.pulsar_load_info);
         break;
     default:
         LOG(WARNING) << "unknown load source type: " << task.type;
+        delete ctx;
         return Status::InternalError("unknown load source type");
     }
 
-    VLOG_CRITICAL << "receive a new routine load task: " << ctx->brief();
+    VLOG(1) << "receive a new routine load task: " << ctx->brief();
     // register the task
+    ctx->ref();
     _task_map[ctx->id] = ctx;
 
     // offer the task to thread pool
-    if (!_thread_pool.offer(std::bind<void>(
-                &RoutineLoadTaskExecutor::exec_task, this, ctx, &_data_consumer_pool,
-                [this](std::shared_ptr<StreamLoadContext> ctx) {
-                    std::unique_lock<std::mutex> l(_lock);
-                    ctx->exec_env()->new_load_stream_mgr()->remove(ctx->id);
-                    _task_map.erase(ctx->id);
-                    LOG(INFO) << "finished routine load task " << ctx->brief()
-                              << ", status: " << ctx->status
-                              << ", current tasks num: " << _task_map.size();
-                }))) {
+    if (!_thread_pool.offer([this, ctx, capture0 = &_data_consumer_pool, capture1 = [this](StreamLoadContext* ctx) {
+            std::unique_lock<std::mutex> l(_lock);
+            _task_map.erase(ctx->id);
+            LOG(INFO) << "finished routine load task " << ctx->brief() << ", status: " << ctx->status.get_error_msg()
+                      << ", current tasks num: " << _task_map.size();
+            if (ctx->unref()) {
+                delete ctx;
+            }
+        }] { exec_task(ctx, capture0, capture1); })) {
         // failed to submit task, clear and return
         LOG(WARNING) << "failed to submit routine load task: " << ctx->brief();
-        ctx->exec_env()->new_load_stream_mgr()->remove(ctx->id);
         _task_map.erase(ctx->id);
+        if (ctx->unref()) {
+            delete ctx;
+        }
         return Status::InternalError("failed to submit routine load task");
     } else {
-        LOG(INFO) << "submit a new routine load task: " << ctx->brief()
-                  << ", current tasks num: " << _task_map.size();
+        LOG(INFO) << "submit a new routine load task: " << ctx->brief() << ", current tasks num: " << _task_map.size();
         return Status::OK();
     }
 }
 
-void RoutineLoadTaskExecutor::exec_task(std::shared_ptr<StreamLoadContext> ctx,
-                                        DataConsumerPool* consumer_pool, ExecFinishCallback cb) {
-#define HANDLE_ERROR(stmt, err_msg)                                        \
-    do {                                                                   \
-        Status _status_ = (stmt);                                          \
-        if (UNLIKELY(!_status_.ok() && !_status_.is<PUBLISH_TIMEOUT>())) { \
-            err_handler(ctx, _status_, err_msg);                           \
-            cb(ctx);                                                       \
-            return;                                                        \
-        }                                                                  \
+void RoutineLoadTaskExecutor::exec_task(StreamLoadContext* ctx, DataConsumerPool* consumer_pool,
+                                        const ExecFinishCallback& cb) {
+#define HANDLE_ERROR(stmt, err_msg)                                                        \
+    do {                                                                                   \
+        Status _status_ = (stmt);                                                          \
+        if (UNLIKELY(!_status_.ok() && _status_.code() != TStatusCode::PUBLISH_TIMEOUT)) { \
+            err_handler(ctx, _status_, err_msg);                                           \
+            cb(ctx);                                                                       \
+            return;                                                                        \
+        }                                                                                  \
     } while (false);
 
     LOG(INFO) << "begin to execute routine load task: " << ctx->brief();
@@ -289,19 +344,23 @@ void RoutineLoadTaskExecutor::exec_task(std::shared_ptr<StreamLoadContext> ctx,
     HANDLE_ERROR(consumer_pool->get_consumer_grp(ctx, &consumer_grp), "failed to get consumers");
 
     // create and set pipe
-    std::shared_ptr<io::StreamLoadPipe> pipe;
+    std::shared_ptr<StreamLoadPipe> pipe;
     switch (ctx->load_src_type) {
     case TLoadSourceType::KAFKA: {
-        if (ctx->is_multi_table) {
-            LOG(INFO) << "recv single-stream-multi-table request, ctx=" << ctx->brief();
-            pipe = std::make_shared<io::MultiTablePipe>(ctx);
-        } else {
-            pipe = std::make_shared<io::KafkaConsumerPipe>();
-        }
-        Status st = std::static_pointer_cast<KafkaDataConsumerGroup>(consumer_grp)
-                            ->assign_topic_partitions(ctx);
+        pipe = std::make_shared<KafkaConsumerPipe>();
+        Status st = std::static_pointer_cast<KafkaDataConsumerGroup>(consumer_grp)->assign_topic_partitions(ctx);
         if (!st.ok()) {
-            err_handler(ctx, st, st.to_string());
+            err_handler(ctx, st, st.get_error_msg());
+            cb(ctx);
+            return;
+        }
+        break;
+    }
+    case TLoadSourceType::PULSAR: {
+        pipe = std::make_shared<PulsarConsumerPipe>();
+        Status st = std::static_pointer_cast<PulsarDataConsumerGroup>(consumer_grp)->assign_topic_partitions(ctx);
+        if (!st.ok()) {
+            err_handler(ctx, st, st.get_error_msg());
             cb(ctx);
             return;
         }
@@ -316,46 +375,34 @@ void RoutineLoadTaskExecutor::exec_task(std::shared_ptr<StreamLoadContext> ctx,
     }
     }
     ctx->body_sink = pipe;
-    ctx->pipe = pipe;
 
     // must put pipe before executing plan fragment
-    HANDLE_ERROR(_exec_env->new_load_stream_mgr()->put(ctx->id, ctx), "failed to add pipe");
+    HANDLE_ERROR(_exec_env->load_stream_mgr()->put(ctx->id, pipe), "failed to add pipe");
 
-    if (!ctx->is_multi_table) {
-        // only for normal load, single-stream-multi-table load will be planned during consuming
 #ifndef BE_TEST
-        // execute plan fragment, async
-        HANDLE_ERROR(_exec_env->stream_load_executor()->execute_plan_fragment(ctx),
-                     "failed to execute plan fragment");
+    // execute plan fragment, async
+    HANDLE_ERROR(_exec_env->stream_load_executor()->execute_plan_fragment(ctx), "failed to execute plan fragment");
 #else
-        // only for test
-        HANDLE_ERROR(_execute_plan_for_test(ctx), "test failed");
+    // only for test
+    HANDLE_ERROR(_execute_plan_for_test(ctx), "test failed");
 #endif
-    }
 
     // start to consume, this may block a while
     HANDLE_ERROR(consumer_grp->start_all(ctx), "consuming failed");
 
-    if (ctx->is_multi_table) {
-        // plan the rest of unplanned data
-        auto multi_table_pipe = std::static_pointer_cast<io::MultiTablePipe>(ctx->body_sink);
-        multi_table_pipe->request_and_exec_plans();
-        // need memory order
-        multi_table_pipe->set_consume_finished();
-    }
-
     // wait for all consumers finished
     HANDLE_ERROR(ctx->future.get(), "consume failed");
 
-    ctx->load_cost_millis = UnixMillis() - ctx->start_millis;
+    ctx->load_cost_nanos = MonotonicNanos() - ctx->start_nanos;
 
     // return the consumer back to pool
     // call this before commit txn, in case the next task can come very fast
     consumer_pool->return_consumers(consumer_grp.get());
 
     // commit txn
-    HANDLE_ERROR(_exec_env->stream_load_executor()->commit_txn(ctx.get()), "commit failed");
-    // commit kafka offset
+    HANDLE_ERROR(_exec_env->stream_load_executor()->commit_txn(ctx), "commit failed");
+
+    // commit messages
     switch (ctx->load_src_type) {
     case TLoadSourceType::KAFKA: {
         std::shared_ptr<DataConsumer> consumer;
@@ -363,15 +410,13 @@ void RoutineLoadTaskExecutor::exec_task(std::shared_ptr<StreamLoadContext> ctx,
         if (!st.ok()) {
             // Kafka Offset Commit is idempotent, Failure should not block the normal process
             // So just print a warning
-            LOG(WARNING) << st;
+            LOG(WARNING) << st.get_error_msg();
             break;
         }
 
         std::vector<RdKafka::TopicPartition*> topic_partitions;
         for (auto& kv : ctx->kafka_info->cmt_offset) {
-            // The offsets you commit are the offsets of the messages you want to read next
-            RdKafka::TopicPartition* tp1 = RdKafka::TopicPartition::create(ctx->kafka_info->topic,
-                                                                           kv.first, kv.second + 1);
+            RdKafka::TopicPartition* tp1 = RdKafka::TopicPartition::create(ctx->kafka_info->topic, kv.first, kv.second);
             topic_partitions.push_back(tp1);
         }
 
@@ -379,55 +424,86 @@ void RoutineLoadTaskExecutor::exec_task(std::shared_ptr<StreamLoadContext> ctx,
         if (!st.ok()) {
             // Kafka Offset Commit is idempotent, Failure should not block the normal process
             // So just print a warning
-            LOG(WARNING) << st;
+            LOG(WARNING) << st.get_error_msg();
         }
         _data_consumer_pool.return_consumer(consumer);
 
         // delete TopicPartition finally
-        Defer delete_tp {[&topic_partitions]() {
+        auto tp_deleter = [&topic_partitions]() {
             std::for_each(topic_partitions.begin(), topic_partitions.end(),
                           [](RdKafka::TopicPartition* tp1) { delete tp1; });
-        }};
-        break;
-    }
+        };
+        DeferOp delete_tp([tp_deleter] { return tp_deleter(); });
+    } break;
+    case TLoadSourceType::PULSAR: {
+        for (auto& kv : ctx->pulsar_info->ack_offset) {
+            Status st;
+            // get consumer
+            std::shared_ptr<DataConsumer> consumer;
+            st = _data_consumer_pool.get_consumer(ctx, &consumer);
+            if (!st.ok()) {
+                // Pulsar Offset Acknowledgement is idempotent, Failure should not block the normal process
+                // So just print a warning
+                LOG(WARNING) << st.get_error_msg();
+                break;
+            }
+
+            // assign partition for consumer
+            st = std::static_pointer_cast<PulsarDataConsumer>(consumer)->assign_partition(kv.first, ctx);
+            if (!st.ok()) {
+                // Pulsar Offset Acknowledgement is idempotent, Failure should not block the normal process
+                // So just print a warning
+                LOG(WARNING) << st.get_error_msg();
+            }
+
+            // do ack
+            st = std::static_pointer_cast<PulsarDataConsumer>(consumer)->acknowledge_cumulative(kv.second);
+            if (!st.ok()) {
+                // Pulsar Offset Acknowledgement is idempotent, Failure should not block the normal process
+                // So just print a warning
+                LOG(WARNING) << st.get_error_msg();
+            }
+
+            // return consumer
+            _data_consumer_pool.return_consumer(consumer);
+        }
+    } break;
     default:
-        break;
+        return;
     }
     cb(ctx);
 }
 
-void RoutineLoadTaskExecutor::err_handler(std::shared_ptr<StreamLoadContext> ctx, const Status& st,
-                                          const std::string& err_msg) {
-    LOG(WARNING) << err_msg << ", routine load task: " << ctx->brief(true);
+void RoutineLoadTaskExecutor::err_handler(StreamLoadContext* ctx, const Status& st, const std::string& err_msg) {
+    LOG(WARNING) << err_msg;
     ctx->status = st;
     if (ctx->need_rollback) {
-        _exec_env->stream_load_executor()->rollback_txn(ctx.get());
+        _exec_env->stream_load_executor()->rollback_txn(ctx);
         ctx->need_rollback = false;
     }
     if (ctx->body_sink != nullptr) {
-        ctx->body_sink->cancel(err_msg);
+        ctx->body_sink->cancel(st);
     }
 }
 
 // for test only
-Status RoutineLoadTaskExecutor::_execute_plan_for_test(std::shared_ptr<StreamLoadContext> ctx) {
+Status RoutineLoadTaskExecutor::_execute_plan_for_test(StreamLoadContext* ctx) {
+    ctx->ref();
     auto mock_consumer = [this, ctx]() {
-        std::shared_ptr<io::StreamLoadPipe> pipe = std::static_pointer_cast<io::StreamLoadPipe>(
-                _exec_env->new_load_stream_mgr()->get(ctx->id)->body_sink);
+        std::shared_ptr<StreamLoadPipe> pipe = _exec_env->load_stream_mgr()->get(ctx->id);
+        bool eof = false;
         std::stringstream ss;
         while (true) {
             char one;
-            int64_t len = 1;
-            size_t read_bytes = 0;
-            Slice result((uint8_t*)&one, len);
-            Status st = pipe->read_at(0, result, &read_bytes);
+            size_t len = 1;
+            Status st = pipe->read((uint8_t*)&one, &len, &eof);
             if (!st.ok()) {
                 LOG(WARNING) << "read failed";
                 ctx->promise.set_value(st);
                 break;
             }
 
-            if (read_bytes == 0) {
+            if (eof) {
                 ctx->promise.set_value(Status::OK());
                 break;
             }
@@ -440,6 +516,9 @@ Status RoutineLoadTaskExecutor::_execute_plan_for_test(std::shared_ptr<StreamLoa
                 ss << one;
             }
         }
+        if (ctx->unref()) {
+            delete ctx;
+        }
     };
 
     std::thread t1(mock_consumer);
@@ -447,4 +526,4 @@ Status RoutineLoadTaskExecutor::_execute_plan_for_test(std::shared_ptr<StreamLoa
     return Status::OK();
 }
 
-} // namespace doris
+} // namespace starrocks

@@ -18,11 +18,10 @@
 #pragma once
 
 #include <openssl/md5.h>
-#include <stddef.h>
 
 #include <string>
 
-namespace doris {
+namespace starrocks {
 
 class Md5Digest {
 public:
@@ -38,4 +37,4 @@ private:
     std::string _hex;
 };
 
-} // namespace doris
+} // namespace starrocks

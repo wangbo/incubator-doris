@@ -17,24 +17,25 @@
 
 #pragma once
 
-#include <gen_cpp/Types_types.h>
-
+#include <map>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 
 #include "common/status.h"
-#include "util/hash_util.hpp" // IWYU pragma: keep
+#include "runtime/record_batch_queue.h"
+#include "types/logical_type.h"
+#include "util/hash_util.hpp"
 
 namespace arrow {
 
 class RecordBatch;
 }
 
-namespace doris {
+namespace starrocks {
 
+class TUniqueId;
 class RecordBatchQueue;
-
 using BlockQueueSharedPtr = std::shared_ptr<RecordBatchQueue>;
 
 class ResultQueueMgr {
@@ -42,8 +43,7 @@ public:
     ResultQueueMgr();
     ~ResultQueueMgr();
 
-    Status fetch_result(const TUniqueId& fragment_instance_id,
-                        std::shared_ptr<arrow::RecordBatch>* result, bool* eos);
+    Status fetch_result(const TUniqueId& fragment_instance_id, std::shared_ptr<arrow::RecordBatch>* result, bool* eos);
 
     void create_queue(const TUniqueId& fragment_instance_id, BlockQueueSharedPtr* queue);
 
@@ -56,4 +56,4 @@ private:
     std::unordered_map<TUniqueId, BlockQueueSharedPtr> _fragment_queue_map;
 };
 
-} // namespace doris
+} // namespace starrocks

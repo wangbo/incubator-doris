@@ -17,33 +17,36 @@
 
 #pragma once
 
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <thrift/Thrift.h>
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/transport/TSocket.h>
 
 #include <memory>
+#include <ostream>
 #include <sstream>
 #include <string>
 
 #include "common/logging.h"
 #include "common/status.h"
+#include "gen_cpp/Types_types.h"
 #include "util/thrift_server.h"
 
-namespace apache {
-namespace thrift {
-namespace transport {
-class TTransport;
-} // namespace transport
-} // namespace thrift
-} // namespace apache
+namespace starrocks {
 
-namespace doris {
+template <class InterfaceType>
+class ThriftClient;
+
 // Super class for templatized thrift clients.
 class ThriftClientImpl {
 public:
     virtual ~ThriftClientImpl() { close(); }
     const std::string& ipaddress() { return _ipaddress; }
-    int port() const { return _port; }
+    int port() { return _port; }
 
     // Open the connection to the remote server. May be called
     // repeatedly, is idempotent unless there is a failure to connect.
@@ -67,9 +70,11 @@ public:
 
 protected:
     ThriftClientImpl(const std::string& ipaddress, int port)
-            : _ipaddress(ipaddress),
-              _port(port),
-              _socket(new apache::thrift::transport::TSocket(ipaddress, port)) {}
+            : _ipaddress(ipaddress), _port(port), _socket(new apache::thrift::transport::TSocket(ipaddress, port)) {}
+
+private:
+    template <class InterfaceType>
+    friend class ThriftClient;
 
     std::string _ipaddress;
     int _port;
@@ -97,25 +102,28 @@ private:
 };
 
 template <class InterfaceType>
-ThriftClient<InterfaceType>::ThriftClient(const std::string& ipaddress, int port)
-        : ThriftClientImpl(ipaddress, port) {
+ThriftClient<InterfaceType>::ThriftClient(const std::string& ipaddress, int port) : ThriftClientImpl(ipaddress, port) {
     _transport.reset(new apache::thrift::transport::TBufferedTransport(_socket));
     _protocol.reset(new apache::thrift::protocol::TBinaryProtocol(_transport));
     _iface.reset(new InterfaceType(_protocol));
 }
 
 template <class InterfaceType>
-ThriftClient<InterfaceType>::ThriftClient(const std::string& ipaddress, int port,
-                                          ThriftServer::ServerType server_type)
-        : ThriftClientImpl(ipaddress, port) {
+ThriftClient<InterfaceType>::ThriftClient(const std::string& ipaddress, int port, ThriftServer::ServerType server_type)
+        : ThriftClientImpl(ipaddress, port), _iface(new InterfaceType(_protocol)) {
     switch (server_type) {
     case ThriftServer::NON_BLOCKING:
+        // The Nonblocking server is disabled at this time.  There are
+        // issues with the framed protocol throwing negative frame size errors.
+        LOG(WARNING) << "Nonblocking server usage is experimental";
         _transport.reset(new apache::thrift::transport::TFramedTransport(_socket));
         break;
-    case ThriftServer::THREADED:
+
     case ThriftServer::THREAD_POOL:
+    case ThriftServer::THREADED:
         _transport.reset(new apache::thrift::transport::TBufferedTransport(_socket));
         break;
+
     default:
         std::stringstream error_msg;
         error_msg << "Unsupported server type: " << server_type;
@@ -128,4 +136,4 @@ ThriftClient<InterfaceType>::ThriftClient(const std::string& ipaddress, int port
     _iface.reset(new InterfaceType(_protocol));
 }
 
-} // namespace doris
+} // namespace starrocks

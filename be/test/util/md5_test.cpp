@@ -17,30 +17,27 @@
 
 #include "util/md5.h"
 
-#include <gtest/gtest-message.h>
-#include <gtest/gtest-test-part.h>
+#include <gtest/gtest.h>
 
-#include "gtest/gtest_pred_impl.h"
-
-namespace doris {
+namespace starrocks {
 
 class Md5Test : public testing::Test {
 public:
-    Md5Test() {}
-    virtual ~Md5Test() {}
+    Md5Test() = default;
+    ~Md5Test() override = default;
 };
 
 TEST_F(Md5Test, empty) {
     Md5Digest digest;
     digest.digest();
-    EXPECT_STREQ("d41d8cd98f00b204e9800998ecf8427e", digest.hex().c_str());
+    ASSERT_STREQ("d41d8cd98f00b204e9800998ecf8427e", digest.hex().c_str());
 }
 
 TEST_F(Md5Test, normal) {
     Md5Digest digest;
     digest.update("abcdefg", 7);
     digest.digest();
-    EXPECT_STREQ("7ac66c0f148de9519b8bd264312c4d64", digest.hex().c_str());
+    ASSERT_STREQ("7ac66c0f148de9519b8bd264312c4d64", digest.hex().c_str());
 }
 
-} // namespace doris
+} // namespace starrocks

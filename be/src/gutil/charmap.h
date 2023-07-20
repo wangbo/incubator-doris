@@ -15,14 +15,17 @@
 
 #pragma once
 
-#include <string.h>
+#include <cstring>
+
+#include "gutil/basictypes.h"
+#include "gutil/integral_types.h"
+#include "gutil/type_traits.h"
 
 class Charmap {
 public:
     // Initializes with given uint32 values.  For instance, the first
     // variable contains bits for values 0x1F (US) down to 0x00 (NUL).
-    Charmap(uint32 b0, uint32 b1, uint32 b2, uint32 b3, uint32 b4, uint32 b5, uint32 b6,
-            uint32 b7) {
+    Charmap(uint32 b0, uint32 b1, uint32 b2, uint32 b3, uint32 b4, uint32 b5, uint32 b6, uint32 b7) {
         m_[0] = b0;
         m_[1] = b1;
         m_[2] = b2;
@@ -69,3 +72,4 @@ protected:
         }
     }
 };
+DECLARE_POD(Charmap);

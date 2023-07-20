@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/frame_of_reference_coding.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,23 +34,24 @@
 
 #pragma once
 
-#include <stdint.h>
-
 #include <cstdlib>
-#include <vector>
+#include <iostream>
+#include <limits>
 
-#include "olap/olap_common.h"
-#include "olap/uint24.h"
+#include "storage/olap_common.h"
+#include "storage/uint24.h"
+#include "util/bit_stream_utils.h"
+#include "util/bit_stream_utils.inline.h"
 #include "util/faststring.h"
 
-namespace doris {
+namespace starrocks {
 
-inline uint8_t bits_less_than_64(const uint64_t v) {
+static inline uint8_t bits_less_than_64(const uint64_t v) {
     return v == 0 ? 0 : 64 - __builtin_clzll(v);
 }
 
 // See https://stackoverflow.com/questions/28423405/counting-the-number-of-leading-zeros-in-a-128-bit-integer
-inline uint8_t bits_may_more_than_64(const uint128_t v) {
+static inline uint8_t __attribute__((no_sanitize("undefined"))) bits_may_more_than_64(const uint128_t v) {
     uint64_t hi = v >> 64;
     uint64_t lo = v;
     int z[3] = {__builtin_clzll(hi), __builtin_clzll(lo) + 64, 128};
@@ -42,7 +60,7 @@ inline uint8_t bits_may_more_than_64(const uint128_t v) {
 }
 
 template <typename T>
-uint8_t bits(const T v) {
+static inline uint8_t bits(const T v) {
     if (sizeof(T) <= 8) {
         return bits_less_than_64(v);
     } else {
@@ -125,8 +143,7 @@ private:
 template <typename T>
 class ForDecoder {
 public:
-    explicit ForDecoder(const uint8_t* in_buffer, size_t buffer_len)
-            : _buffer(in_buffer), _buffer_len(buffer_len), _parsed(false) {}
+    explicit ForDecoder(const uint8_t* in_buffer, size_t buffer_len) : _buffer(in_buffer), _buffer_len(buffer_len) {}
 
     // read footer metadata
     bool init();
@@ -185,4 +202,4 @@ private:
     uint32_t _current_decoded_frame = -1;
     std::vector<T> _out_buffer; // store values of decoded frame
 };
-} // namespace doris
+} // namespace starrocks

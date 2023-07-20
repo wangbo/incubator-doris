@@ -1,9 +1,5 @@
-## Geographic
-### description
-### keywords
+# Geographic
 
-## Polygon properties
-### description
-### keywords
-### parent
+# Polygon properties
+## parent
 Geographic Features

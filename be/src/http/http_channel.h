@@ -17,13 +17,14 @@
 
 #pragma once
 
-#include <stddef.h>
-
+#include <cstdint>
 #include <string>
 
 #include "http/http_status.h"
 
-namespace doris {
+struct mg_connection;
+
+namespace starrocks {
 
 class HttpRequest;
 
@@ -35,7 +36,7 @@ public:
     static void send_error(HttpRequest* request, HttpStatus status);
 
     // send 200(OK) reply with content
-    static inline void send_reply(HttpRequest* request, const std::string& content) {
+    static void send_reply(HttpRequest* request, const std::string& content) {
         send_reply(request, HttpStatus::OK, content);
     }
 
@@ -44,9 +45,6 @@ public:
     static void send_reply(HttpRequest* request, HttpStatus status, const std::string& content);
 
     static void send_file(HttpRequest* request, int fd, size_t off, size_t size);
-
-    static bool compress_content(const std::string& accept_encoding, const std::string& input,
-                                 std::string* output);
 };
 
-} // namespace doris
+} // namespace starrocks

@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/util/time.h
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -14,26 +31,24 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-// This file is copied from
-// https://github.com/apache/impala/blob/branch-2.9.0/be/src/util/time.h
-// and modified by Doris
 
 #pragma once
 
-#include <stdint.h>
-#include <time.h>
+#include <sys/time.h> // timeval, gettimeofday
 
+#include <chrono>
+#include <cstdint>
+#include <ctime>
 #include <string>
 
 #define NANOS_PER_SEC 1000000000ll
-#define NANOS_PER_MILLIS 1000000ll
 #define NANOS_PER_MICRO 1000ll
 #define MICROS_PER_SEC 1000000ll
 #define MICROS_PER_MILLI 1000ll
 #define MILLIS_PER_SEC 1000ll
 
 /// Utilities for collecting timings.
-namespace doris {
+namespace starrocks {
 
 /// Returns a value representing a point in time that is unaffected by daylight savings or
 /// manual adjustments to the system clock. This should not be assumed to be a Unix
@@ -67,18 +82,18 @@ inline double GetMonoTimeSecondsAsDouble() {
     return GetMonoTimeMicros() / static_cast<double>(MICROS_PER_SEC);
 }
 
-// Returns the time since the Epoch measured in microseconds.
-inline int64_t GetCurrentTimeMicros() {
-    timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return ts.tv_sec * MICROS_PER_SEC + ts.tv_nsec / NANOS_PER_MICRO;
-}
-
 // Returns the time since the Epoch measured in nanoseconds.
 inline int64_t GetCurrentTimeNanos() {
     timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     return ts.tv_sec * NANOS_PER_SEC + ts.tv_nsec;
+}
+
+// Returns the time since the Epoch measured in microseconds.
+inline int64_t GetCurrentTimeMicros() {
+    timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return ts.tv_sec * MICROS_PER_SEC + ts.tv_nsec / NANOS_PER_MICRO;
 }
 
 /// Returns the number of milliseconds that have passed since the Unix epoch. This is
@@ -134,4 +149,24 @@ std::string ToStringFromUnixMicros(int64_t us, TimePrecision p = TimePrecision::
 /// Converts input microseconds-since-epoch to date-time string in UTC time zone.
 std::string ToUtcStringFromUnixMicros(int64_t us, TimePrecision p = TimePrecision::Microsecond);
 
-} // namespace doris
+template <typename Duration>
+inline ::timespec TimespecFromTimePoint(const std::chrono::time_point<std::chrono::system_clock, Duration>& atime) {
+    auto s = std::chrono::time_point_cast<std::chrono::seconds>(atime);
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(atime - s);
+
+    ::timespec spec = {.tv_sec = static_cast<std::time_t>(s.time_since_epoch().count()),
+                       .tv_nsec = static_cast<long>(ns.count())};
+    return spec;
+}
+
+template <typename Duration>
+inline ::timespec TimespecFromTimePoint(const std::chrono::time_point<std::chrono::steady_clock, Duration>& atime) {
+    auto s = std::chrono::time_point_cast<std::chrono::seconds>(atime);
+    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(atime - s);
+
+    ::timespec spec = {.tv_sec = static_cast<std::time_t>(s.time_since_epoch().count()),
+                       .tv_nsec = static_cast<long>(ns.count())};
+    return spec;
+}
+
+} // namespace starrocks

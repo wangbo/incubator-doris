@@ -1,3 +1,20 @@
+// Copyright 2021-present StarRocks, Inc. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This file is based on code available under the Apache license here:
+//   https://github.com/apache/incubator-doris/blob/master/be/src/runtime/broker_mgr.cpp
+
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -17,48 +34,31 @@
 
 #include "runtime/broker_mgr.h"
 
-#include <gen_cpp/PaloBrokerService_types.h>
-#include <gen_cpp/TPaloBrokerService.h>
-#include <gen_cpp/Types_types.h>
-#include <glog/logging.h>
-#include <thrift/Thrift.h>
-#include <thrift/transport/TTransportException.h>
-// IWYU pragma: no_include <bits/chrono.h>
-#include <chrono> // IWYU pragma: keep
 #include <sstream>
-#include <vector>
 
 #include "common/config.h"
-#include "common/status.h"
+#include "gen_cpp/FileBrokerService_types.h"
+#include "gen_cpp/TFileBrokerService.h"
 #include "runtime/client_cache.h"
 #include "runtime/exec_env.h"
 #include "service/backend_options.h"
-#include "util/doris_metrics.h"
-#include "util/hash_util.hpp"
-#include "util/metrics.h"
+#include "util/starrocks_metrics.h"
 #include "util/thread.h"
 
-namespace doris {
+namespace starrocks {
 
-DEFINE_GAUGE_METRIC_PROTOTYPE_2ARG(broker_count, MetricUnit::NOUNIT);
-
-BrokerMgr::BrokerMgr(ExecEnv* exec_env) : _exec_env(exec_env), _stop_background_threads_latch(1) {
-    CHECK(Thread::create(
-                  "BrokerMgr", "ping_worker", [this]() { this->ping_worker(); }, &_ping_thread)
-                  .ok());
-
-    REGISTER_HOOK_METRIC(broker_count, [this]() {
-        // std::lock_guard<std::mutex> l(_mutex);
+BrokerMgr::BrokerMgr(ExecEnv* exec_env)
+        : _exec_env(exec_env), _thread_stop(false), _ping_thread(&BrokerMgr::ping_worker, this) {
+    Thread::set_thread_name(_ping_thread, "broker_hrtbeat"); // broker heart beat
+    REGISTER_GAUGE_STARROCKS_METRIC(broker_count, [this]() {
+        std::lock_guard<std::mutex> l(_mutex);
         return _broker_set.size();
     });
 }
 
 BrokerMgr::~BrokerMgr() {
-    DEREGISTER_HOOK_METRIC(broker_count);
-    _stop_background_threads_latch.count_down();
-    if (_ping_thread) {
-        _ping_thread->join();
-    }
+    _thread_stop = true;
+    _ping_thread.join();
 }
 
 void BrokerMgr::init() {
@@ -82,10 +82,10 @@ void BrokerMgr::ping(const TNetworkAddress& addr) {
     TBrokerOperationStatus response;
     try {
         Status status;
-        BrokerServiceConnection client(_exec_env->broker_client_cache(), addr,
-                                       config::thrift_rpc_timeout_ms, &status);
+        // 500ms is enough
+        BrokerServiceConnection client(_exec_env->broker_client_cache(), addr, 500, &status);
         if (!status.ok()) {
-            LOG(WARNING) << "Create broker client failed. broker=" << addr << ", status=" << status;
+            LOG(WARNING) << "Create broker client failed. broker=" << addr << ", status=" << status.get_error_msg();
             return;
         }
 
@@ -94,8 +94,7 @@ void BrokerMgr::ping(const TNetworkAddress& addr) {
         } catch (apache::thrift::transport::TTransportException& e) {
             status = client.reopen();
             if (!status.ok()) {
-                LOG(WARNING) << "Create broker client failed. broker=" << addr
-                             << ", status=" << status << ", reason=" << e.what();
+                LOG(WARNING) << "Create broker client failed. broker=" << addr << ", status=" << status.get_error_msg();
                 return;
             }
             client->ping(response, request);
@@ -106,7 +105,7 @@ void BrokerMgr::ping(const TNetworkAddress& addr) {
 }
 
 void BrokerMgr::ping_worker() {
-    do {
+    while (!_thread_stop) {
         std::vector<TNetworkAddress> addresses;
         {
             std::lock_guard<std::mutex> l(_mutex);
@@ -117,7 +116,8 @@ void BrokerMgr::ping_worker() {
         for (auto& addr : addresses) {
             ping(addr);
         }
-    } while (!_stop_background_threads_latch.wait_for(std::chrono::seconds(5)));
+        sleep(5);
+    }
 }
 
-} // namespace doris
+} // namespace starrocks

@@ -19,7 +19,7 @@
 
 #include <string>
 
-namespace doris {
+namespace starrocks {
 
 class HttpHeaders {
 public:
@@ -100,4 +100,4 @@ public:
     static const std::string JsonType;
 };
 
-} // namespace doris
+} // namespace starrocks
