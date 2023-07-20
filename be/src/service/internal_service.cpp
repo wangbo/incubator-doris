@@ -145,9 +145,9 @@ void PInternalServiceImplBase<T>::_transmit_chunk(google::protobuf::RpcControlle
             std::unique_ptr<WrapClosure> self_guard(this);
             const auto response_timestamp = MonotonicNanos();
             _response->set_receiver_post_process_time(response_timestamp - _receive_timestamp);
-            if (_done != nullptr) {
-                _done->Run();
-            }
+            // if (_done != nullptr) {
+            //     _done->Run();
+            // }
         }
 
     private:
