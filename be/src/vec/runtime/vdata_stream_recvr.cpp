@@ -50,9 +50,9 @@ VDataStreamRecvr::SenderQueue::~SenderQueue() {
     // Check pending closures, if it is not empty, should clear it here. but it should not happen.
     // closure will delete itself during run method. If it is not called, brpc will memory leak.
     DCHECK(_pending_closures.empty());
-    for (auto closure_pair : _pending_closures) {
-        closure_pair.first->Run();
-    }
+    // for (auto closure_pair : _pending_closures) {
+        // closure_pair.first->Run();
+    // }
     _pending_closures.clear();
 }
 
@@ -97,7 +97,7 @@ Status VDataStreamRecvr::SenderQueue::_inner_get_batch_without_lock(Block* block
 
     if (!_pending_closures.empty()) {
         auto closure_pair = _pending_closures.front();
-        closure_pair.first->Run();
+        // closure_pair.first->Run();
         _pending_closures.pop_front();
 
         closure_pair.second.stop();
@@ -256,9 +256,9 @@ void VDataStreamRecvr::SenderQueue::cancel() {
 
     {
         std::lock_guard<std::mutex> l(_lock);
-        for (auto closure_pair : _pending_closures) {
-            closure_pair.first->Run();
-        }
+        // for (auto closure_pair : _pending_closures) {
+            // closure_pair.first->Run();
+        // }
         _pending_closures.clear();
     }
 }
@@ -271,9 +271,9 @@ void VDataStreamRecvr::SenderQueue::close() {
         std::lock_guard<std::mutex> l(_lock);
         _is_cancelled = true;
 
-        for (auto closure_pair : _pending_closures) {
-            closure_pair.first->Run();
-        }
+        // for (auto closure_pair : _pending_closures) {
+            // closure_pair.first->Run();
+        // }
         _pending_closures.clear();
     }
 
