@@ -74,6 +74,10 @@ bool ExchangeSinkBuffer::can_write() const {
 
 bool ExchangeSinkBuffer::is_pending_finish() {
     bool need_cancel = false;
+    vectorized::VecDateTimeValue now = vectorized::VecDateTimeValue::local_time();
+    if (now.second_diff(start_time) > 20) {
+        need_cancel = true;
+    }
 
     for (auto& pair : _instance_to_package_queue_mutex) {
         std::unique_lock<std::mutex> lock(*(pair.second));

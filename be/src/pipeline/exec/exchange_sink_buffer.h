@@ -210,6 +210,8 @@ private:
     inline bool _is_receiver_eof(InstanceLoId id);
     void get_max_min_rpc_time(int64_t* max_time, int64_t* min_time);
     int64_t get_sum_rpc_time();
+
+    vectorized::VecDateTimeValue start_time = vectorized::VecDateTimeValue::local_time();
 };
 
 } // namespace pipeline
