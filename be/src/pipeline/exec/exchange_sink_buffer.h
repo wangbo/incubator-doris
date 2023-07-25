@@ -153,6 +153,11 @@ private:
     vectorized::BroadcastPBlockHolder* _data;
 };
 
+struct RpcContext{
+    pipeline::SelfDeleteClosure<PTransmitDataResult>* _closure = nullptr;
+    bool is_cancelled = false;
+};
+
 // Each ExchangeSinkOperator have one ExchangeSinkBuffer
 class ExchangeSinkBuffer {
 public:
@@ -185,6 +190,7 @@ private:
     phmap::flat_hash_map<InstanceLoId, bool> _instance_to_sending_by_pipeline;
     phmap::flat_hash_map<InstanceLoId, bool> _instance_to_receiver_eof;
     phmap::flat_hash_map<InstanceLoId, int64_t> _instance_to_rpc_time;
+    phmap::flat_hash_map<InstanceLoId, RpcContext> _instance_to_rpc_ctx;
 
     std::atomic<bool> _is_finishing;
     PUniqueId _query_id;

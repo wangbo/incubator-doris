@@ -73,10 +73,20 @@ bool ExchangeSinkBuffer::can_write() const {
 }
 
 bool ExchangeSinkBuffer::is_pending_finish() const {
+    bool need_cancel = false;
+
     for (auto& pair : _instance_to_package_queue_mutex) {
         std::unique_lock<std::mutex> lock(*(pair.second));
         auto& id = pair.first;
         if (!_instance_to_sending_by_pipeline.at(id)) {
+            // when pending finish, we need check whether current query is cancelled
+            if (need_cancel && _instance_to_rpc_ctx.find(id) != _instance_to_rpc_ctx.end()) {
+                auto& rpc_ctx = _instance_to_rpc_ctx[id];
+                if (!rpc_ctx.is_cancelled) {
+                    brpc::StartCancel(rpc_ctx._closure->cntl.call_id());
+                    rpc_ctx.is_cancelled = true;
+                }
+            }
             return true;
         }
     }
@@ -177,6 +187,12 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
             brpc_request->set_allocated_block(request.block.get());
         }
         auto* closure = request.channel->get_closure(id, request.eos, nullptr);
+        
+        RpcContext rpc_ctx;
+        rpc_ctx._closure = closure;
+        rpc_ctx.is_cancelled = false;
+        _instance_to_rpc_ctx[id] = rpc_ctx;
+
         closure->cntl.set_timeout_ms(request.channel->_brpc_timeout_ms);
         closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
@@ -221,6 +237,12 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
             brpc_request->set_allocated_block(request.block_holder->get_block());
         }
         auto* closure = request.channel->get_closure(id, request.eos, request.block_holder);
+
+        RpcContext rpc_ctx;
+        rpc_ctx._closure = closure;
+        rpc_ctx.is_cancelled = false;
+        _instance_to_rpc_ctx[id] = rpc_ctx;
+
         closure->cntl.set_timeout_ms(request.channel->_brpc_timeout_ms);
         closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
