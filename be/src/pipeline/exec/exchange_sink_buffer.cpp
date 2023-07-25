@@ -72,7 +72,7 @@ bool ExchangeSinkBuffer::can_write() const {
     return total_package_size <= max_package_size;
 }
 
-bool ExchangeSinkBuffer::is_pending_finish() const {
+bool ExchangeSinkBuffer::is_pending_finish() {
     bool need_cancel = false;
 
     for (auto& pair : _instance_to_package_queue_mutex) {
