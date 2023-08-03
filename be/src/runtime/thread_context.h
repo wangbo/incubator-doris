@@ -370,7 +370,7 @@ private:
 #ifdef USE_MEM_TRACKER
 // For the memory that cannot be counted by mem hook, manually count it into the mem tracker, such as mmap.
 #define CONSUME_THREAD_MEM_TRACKER(size) doris::thread_context()->consume_memory(size)
-#define RELEASE_THREAD_MEM_TRACKER(size) doris::thread_context()->consume_memory(-size)
+#define RELEASE_THREAD_MEM_TRACKER(size) (void)0
 
 // used to fix the tracking accuracy of caches.
 #define THREAD_MEM_TRACKER_TRANSFER_TO(size, tracker)                                        \
@@ -396,10 +396,9 @@ private:
 #define RELEASE_MEM_TRACKER(size)                                                            \
     do {                                                                                     \
         if (doris::thread_context_ptr.init) {                                                \
-            doris::thread_context()->consume_memory(-size);                                  \
+            void(0);                                  \
         } else if (doris::ExecEnv::GetInstance()->initialized()) {                           \
-            doris::ExecEnv::GetInstance()->orphan_mem_tracker_raw()->consume_no_update_peak( \
-                    -size);                                                                  \
+            void(0);                                                                  \
         }                                                                                    \
     } while (0)
 #else
