@@ -518,9 +518,9 @@ static void empty_function(RuntimeState*, Status*) {}
 void FragmentMgr::_exec_actual(std::shared_ptr<FragmentExecState> exec_state,
                                const FinishCallback& cb) {
     std::string func_name {"PlanFragmentExecutor::_exec_actual"};
-#ifndef BE_TEST
-    SCOPED_ATTACH_TASK(exec_state->executor()->runtime_state());
-#endif
+// #ifndef BE_TEST
+//     SCOPED_ATTACH_TASK(exec_state->executor()->runtime_state());
+// #endif
 
     LOG_INFO(func_name)
             .tag("query_id", exec_state->query_id())

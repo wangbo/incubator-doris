@@ -193,7 +193,7 @@ Status PipelineTask::execute(bool* eos) {
     SCOPED_TIMER(_task_profile->total_time_counter());
     SCOPED_CPU_TIMER(_task_cpu_timer);
     SCOPED_TIMER(_exec_timer);
-    SCOPED_ATTACH_TASK(_state);
+    // SCOPED_ATTACH_TASK(_state);
     int64_t time_spent = 0;
     Defer defer {[&]() {
         if (_task_queue) {
