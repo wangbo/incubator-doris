@@ -167,7 +167,8 @@ void ScannerContext::append_blocks_to_queue(std::vector<vectorized::BlockUPtr>& 
     auto old_bytes_in_queue = _cur_bytes_in_queue;
     for (auto& b : blocks) {
         _cur_bytes_in_queue += b->allocated_bytes();
-        _blocks_queue.push_back(std::move(b));
+        // _blocks_queue.push_back(std::move(b));
+        _blocks_queue_test.enqueue(std::move(b));
     }
     blocks.clear();
     _blocks_queue_added_cv.notify_one();
@@ -176,7 +177,7 @@ void ScannerContext::append_blocks_to_queue(std::vector<vectorized::BlockUPtr>& 
 
 bool ScannerContext::empty_in_queue(int id) {
     std::unique_lock l(_transfer_lock);
-    return _blocks_queue.empty();
+    return _blocks_queue_test.size_approx() == 0;
 }
 
 Status ScannerContext::get_block_from_queue(RuntimeState* state, vectorized::BlockUPtr* block,
@@ -199,7 +200,7 @@ Status ScannerContext::get_block_from_queue(RuntimeState* state, vectorized::Blo
     // Wait for block from queue
     if (wait) {
         SCOPED_TIMER(_scanner_wait_batch_timer);
-        while (!(!_blocks_queue.empty() || _is_finished || !status().ok() ||
+        while (!(!(_blocks_queue_test.size_approx() == 0) || _is_finished || !status().ok() ||
                  state->is_cancelled())) {
             _blocks_queue_added_cv.wait(l);
         }
@@ -213,9 +214,9 @@ Status ScannerContext::get_block_from_queue(RuntimeState* state, vectorized::Blo
         return status();
     }
 
-    if (!_blocks_queue.empty()) {
-        *block = std::move(_blocks_queue.front());
-        _blocks_queue.pop_front();
+    if (!(_blocks_queue_test.size_approx() == 0)) {
+        _blocks_queue_test.try_dequeue(*block);
+
         auto block_bytes = (*block)->allocated_bytes();
         _cur_bytes_in_queue -= block_bytes;
         _queued_blocks_memory_usage->add(-block_bytes);
@@ -314,7 +315,7 @@ void ScannerContext::clear_and_join(VScanNode* node, RuntimeState* state) {
     // So that we can make sure to close all scanners.
     _close_and_clear_scanners(node, state);
 
-    _blocks_queue.clear();
+    // _blocks_queue.clear();
 }
 
 bool ScannerContext::no_schedule() {

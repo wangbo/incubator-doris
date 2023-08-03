@@ -187,6 +187,9 @@ protected:
     // And the upper scan node will be as a consumer to fetch blocks from this queue.
     // Should be protected by "_transfer_lock"
     std::list<vectorized::BlockUPtr> _blocks_queue;
+
+    moodycamel::ConcurrentQueue<vectorized::BlockUPtr> _blocks_queue_test;
+
     // Wait in get_block_from_queue(), by ScanNode.
     doris::ConditionVariable _blocks_queue_added_cv;
     // Wait in clear_and_join(), by ScanNode.
