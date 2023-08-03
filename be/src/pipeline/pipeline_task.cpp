@@ -250,6 +250,7 @@ Status PipelineTask::execute(bool* eos) {
 
         // Pull block from operator chain
         {
+            SCOPED_ATTACH_TASK(_state);
             SCOPED_TIMER(_get_block_timer);
             _get_block_counter->update(1);
             RETURN_IF_ERROR(_root->get_block(_state, block, _data_state));
