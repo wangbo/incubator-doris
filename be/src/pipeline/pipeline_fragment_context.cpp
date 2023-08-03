@@ -225,7 +225,7 @@ Status PipelineFragmentContext::prepare(const doris::TPipelineFragmentParams& re
     _runtime_state->set_tracer(std::move(tracer));
 
     // TODO should be combine with plan_fragment_executor.prepare funciton
-    SCOPED_ATTACH_TASK(get_runtime_state());
+    // SCOPED_ATTACH_TASK(get_runtime_state());
     _runtime_state->runtime_filter_mgr()->init();
     _runtime_state->set_be_number(local_params.backend_num);
 
@@ -376,7 +376,7 @@ void PipelineFragmentContext::_stop_report_thread() {
 }
 
 void PipelineFragmentContext::report_profile() {
-    SCOPED_ATTACH_TASK(_runtime_state.get());
+    // SCOPED_ATTACH_TASK(_runtime_state.get());
     VLOG_FILE << "report_profile(): instance_id=" << _runtime_state->fragment_instance_id();
 
     _report_thread_active = true;

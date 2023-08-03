@@ -128,7 +128,7 @@ Status PlanFragmentExecutor::prepare(const TExecPlanFragmentParams& request,
                                                                : query_ctx->query_mem_tracker);
     _runtime_state->set_tracer(std::move(tracer));
 
-    SCOPED_ATTACH_TASK(_runtime_state.get());
+    // SCOPED_ATTACH_TASK(_runtime_state.get());
     _runtime_state->runtime_filter_mgr()->init();
     _runtime_state->set_be_number(request.backend_num);
     if (request.__isset.backend_id) {
@@ -391,7 +391,7 @@ void PlanFragmentExecutor::_collect_node_statistics() {
 }
 
 void PlanFragmentExecutor::report_profile() {
-    SCOPED_ATTACH_TASK(_runtime_state.get());
+    // SCOPED_ATTACH_TASK(_runtime_state.get());
     VLOG_FILE << "report_profile(): instance_id=" << _runtime_state->fragment_instance_id();
 
     _report_thread_active = true;

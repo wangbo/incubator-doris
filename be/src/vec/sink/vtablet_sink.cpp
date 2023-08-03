@@ -379,7 +379,7 @@ Status VNodeChannel::open_wait() {
             // and notice that _index_channel may already be destroyed.
             return;
         }
-        SCOPED_ATTACH_TASK(_state);
+        // SCOPED_ATTACH_TASK(_state);
         // If rpc failed, mark all tablets on this node channel as failed
         _index_channel->mark_as_failed(this->node_id(), this->host(),
                                        fmt::format("rpc failed, error coed:{}, error text:{}",
@@ -404,7 +404,7 @@ Status VNodeChannel::open_wait() {
             // and notice that _index_channel may already be destroyed.
             return;
         }
-        SCOPED_ATTACH_TASK(_state);
+        // SCOPED_ATTACH_TASK(_state);
         Status status(Status::create(result.status()));
         if (status.ok()) {
             // if has error tablet, handle them first
@@ -657,7 +657,7 @@ Status VNodeChannel::none_of(std::initializer_list<bool> vars) {
 }
 
 void VNodeChannel::try_send_block(RuntimeState* state) {
-    SCOPED_ATTACH_TASK(state);
+    // SCOPED_ATTACH_TASK(state);
     SCOPED_CONSUME_MEM_TRACKER(_node_channel_tracker);
     SCOPED_ATOMIC_TIMER(&_actual_consume_ns);
     AddBlockReq send_block;
@@ -1092,7 +1092,7 @@ Status VOlapTableSink::open(RuntimeState* state) {
 
 void VOlapTableSink::_send_batch_process() {
     SCOPED_TIMER(_non_blocking_send_timer);
-    SCOPED_ATTACH_TASK(_state);
+    // SCOPED_ATTACH_TASK(_state);
     SCOPED_CONSUME_MEM_TRACKER(_mem_tracker);
     while (true) {
         int running_channels_num = 0;
