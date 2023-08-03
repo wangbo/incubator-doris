@@ -300,7 +300,7 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
 
 void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext* ctx,
                                      VScannerSPtr scanner) {
-    SCOPED_ATTACH_TASK(scanner->runtime_state());
+    // SCOPED_ATTACH_TASK(scanner->runtime_state());
 #if !defined(USE_BTHREAD_SCANNER)
     Thread::set_self_name("_scanner_scan");
 #else
