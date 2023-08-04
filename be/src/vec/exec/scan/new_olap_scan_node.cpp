@@ -461,46 +461,46 @@ Status NewOlapScanNode::_init_scanners(std::list<VScannerSPtr>* scanners) {
     // Split tablet segment by scanner, only use in pipeline in duplicate key
     // 1. if tablet count lower than scanner thread num, count segment num of all tablet ready for scan
     // TODO: some tablet may do not have segment, may need split segment all case
-    if (_shared_scan_opt && _scan_ranges.size() < config::doris_scanner_thread_pool_thread_num) {
-        for (int i = 0; i < _scan_ranges.size(); ++i) {
-            auto& scan_range = _scan_ranges[i];
-            auto tablet_id = scan_range->tablet_id;
-            auto [tablet, status] =
-                    StorageEngine::instance()->tablet_manager()->get_tablet_and_status(tablet_id,
-                                                                                       true);
-            RETURN_IF_ERROR(status);
+    // if (_shared_scan_opt && _scan_ranges.size() < config::doris_scanner_thread_pool_thread_num) {
+    //     for (int i = 0; i < _scan_ranges.size(); ++i) {
+    //         auto& scan_range = _scan_ranges[i];
+    //         auto tablet_id = scan_range->tablet_id;
+    //         auto [tablet, status] =
+    //                 StorageEngine::instance()->tablet_manager()->get_tablet_and_status(tablet_id,
+    //                                                                                    true);
+    //         RETURN_IF_ERROR(status);
 
-            is_duplicate_key = tablet->keys_type() == DUP_KEYS;
-            if (!is_duplicate_key) {
-                break;
-            }
+    //         is_duplicate_key = tablet->keys_type() == DUP_KEYS;
+    //         if (!is_duplicate_key) {
+    //             break;
+    //         }
 
-            int64_t version = 0;
-            std::from_chars(scan_range->version.c_str(),
-                            scan_range->version.c_str() + scan_range->version.size(), version);
+    //         int64_t version = 0;
+    //         std::from_chars(scan_range->version.c_str(),
+    //                         scan_range->version.c_str() + scan_range->version.size(), version);
 
-            std::shared_lock rdlock(tablet->get_header_lock());
-            // acquire tablet rowset readers at the beginning of the scan node
-            // to prevent this case: when there are lots of olap scanners to run for example 10000
-            // the rowsets maybe compacted when the last olap scanner starts
-            Status acquire_reader_st =
-                    tablet->capture_rs_readers({0, version}, &rowset_splits_vector[i]);
-            if (!acquire_reader_st.ok()) {
-                LOG(WARNING) << "fail to init reader.res=" << acquire_reader_st;
-                std::stringstream ss;
-                ss << "failed to initialize storage reader. tablet=" << tablet->full_name()
-                   << ", res=" << acquire_reader_st
-                   << ", backend=" << BackendOptions::get_localhost();
-                return Status::InternalError(ss.str());
-            }
+    //         std::shared_lock rdlock(tablet->get_header_lock());
+    //         // acquire tablet rowset readers at the beginning of the scan node
+    //         // to prevent this case: when there are lots of olap scanners to run for example 10000
+    //         // the rowsets maybe compacted when the last olap scanner starts
+    //         Status acquire_reader_st =
+    //                 tablet->capture_rs_readers({0, version}, &rowset_splits_vector[i]);
+    //         if (!acquire_reader_st.ok()) {
+    //             LOG(WARNING) << "fail to init reader.res=" << acquire_reader_st;
+    //             std::stringstream ss;
+    //             ss << "failed to initialize storage reader. tablet=" << tablet->full_name()
+    //                << ", res=" << acquire_reader_st
+    //                << ", backend=" << BackendOptions::get_localhost();
+    //             return Status::InternalError(ss.str());
+    //         }
 
-            for (const auto& rowset_splits : rowset_splits_vector[i]) {
-                auto num_segments = rowset_splits.rs_reader->rowset()->num_segments();
-                tablet_rs_seg_count[i].emplace_back(num_segments);
-                segment_count += num_segments;
-            }
-        }
-    }
+    //         for (const auto& rowset_splits : rowset_splits_vector[i]) {
+    //             auto num_segments = rowset_splits.rs_reader->rowset()->num_segments();
+    //             tablet_rs_seg_count[i].emplace_back(num_segments);
+    //             segment_count += num_segments;
+    //         }
+    //     }
+    // }
 
     if (is_duplicate_key) {
         auto build_new_scanner = [&](const TPaloScanRange& scan_range,
