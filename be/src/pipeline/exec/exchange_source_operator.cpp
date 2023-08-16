@@ -20,6 +20,7 @@
 #include <memory>
 
 #include "pipeline/exec/operator.h"
+#include "util/time.h"
 #include "vec/exec/vexchange_node.h"
 #include "vec/runtime/vdata_stream_recvr.h"
 
@@ -28,10 +29,19 @@ namespace doris::pipeline {
 OPERATOR_CODE_GENERATOR(ExchangeSourceOperator, SourceOperator)
 
 bool ExchangeSourceOperator::can_read() {
-    return _node->_stream_recvr->ready_to_read();
+    bool ret = _node->_stream_recvr->ready_to_read();
+    // if (ret) {
+    //     _last_keep_alive_time = MonotonicMillis();
+    // }
+    return ret;
 }
 
 bool ExchangeSourceOperator::is_pending_finish() const {
     return false;
 }
+
+bool ExchangeSourceOperator::need_keep_alive() {
+    return true;
+}
+
 } // namespace doris::pipeline

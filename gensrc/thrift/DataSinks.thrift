@@ -140,6 +140,11 @@ struct TPlanFragmentDestination {
   3: optional Types.TNetworkAddress brpc_server
 }
 
+// an instance's all source host
+struct TPlanFragmentSourceHost {
+    1: required Types.TNetworkAddress brpc_server
+}
+
 // Sink which forwards data to a remote plan fragment,
 // according to the given output partition specification
 // (ie, the m:1 part of an m:n data stream)

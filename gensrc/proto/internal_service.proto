@@ -692,6 +692,15 @@ message PGlobResponse {
     repeated PFileInfo files = 2;
 }
 
+message PPipelineKeepAliveRequest {
+    required PUniqueId query_id = 1;
+}
+
+message PPipelineKeepAliveResponse {
+    required PStatus status = 1;
+    required bool is_alive = 2;
+}
+
 service PBackendService {
     rpc transmit_data(PTransmitDataParams) returns (PTransmitDataResult);
     rpc transmit_data_by_http(PEmptyRequest) returns (PTransmitDataResult);
@@ -731,5 +740,6 @@ service PBackendService {
     rpc get_tablet_rowset_versions(PGetTabletVersionsRequest) returns (PGetTabletVersionsResponse);
     rpc report_stream_load_status(PReportStreamLoadStatusRequest) returns (PReportStreamLoadStatusResponse);
     rpc glob(PGlobRequest) returns (PGlobResponse);
+    rpc pipeline_keep_alive(PPipelineKeepAliveRequest) returns (PPipelineKeepAliveResponse);
 };
 

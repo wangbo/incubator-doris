@@ -1658,4 +1658,25 @@ void PInternalServiceImpl::glob(google::protobuf::RpcController* controller,
     }
 }
 
+void PInternalServiceImpl::pipeline_keep_alive(google::protobuf::RpcController* controller,
+                                               const PPipelineKeepAliveRequest* request,
+                                               PPipelineKeepAliveResponse* response,
+                                               google::protobuf::Closure* done) {
+    bool ret = _light_work_pool.try_offer([this, request, response, done]() {
+        brpc::ClosureGuard closure_guard(done);
+
+        const PUniqueId& p_query_id = request->query_id();
+        TUniqueId t_query_id;
+        t_query_id.__set_hi(p_query_id.hi());
+        t_query_id.__set_lo(p_query_id.lo());
+
+        bool is_query_exists = _exec_env->fragment_mgr()->is_query_exists(t_query_id);
+        response->set_is_alive(is_query_exists);
+        response->mutable_status()->set_status_code(TStatusCode::OK);
+    });
+    if (!ret) {
+        offer_failed(response, done, _light_work_pool);
+    }
+}
+
 } // namespace doris

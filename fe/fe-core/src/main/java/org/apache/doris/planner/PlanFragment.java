@@ -359,6 +359,10 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         dest.addChild(this);
     }
 
+    public ExchangeNode getDestExchangeNode() {
+        return destNode;
+    }
+
     public DataPartition getDataPartition() {
         return dataPartition;
     }

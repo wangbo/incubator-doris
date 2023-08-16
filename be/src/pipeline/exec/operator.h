@@ -244,6 +244,9 @@ public:
 
     [[nodiscard]] virtual RuntimeProfile* get_runtime_profile() const = 0;
 
+    // only exchange node need keep alive with source node
+    virtual bool need_keep_alive() { return false; }
+
 protected:
     OperatorBuilderBase* _operator_builder;
     OperatorPtr _child;

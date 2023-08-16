@@ -148,6 +148,11 @@ void BlockedTaskScheduler::_schedule() {
                 if (task->source_can_read()) {
                     _make_task_run(local_blocked_tasks, iter, ready_tasks);
                 } else {
+                    bool should_cancel_query = task->handle_keep_alive_timeout();
+                    if (should_cancel_query) {
+                        task->fragment_context()->cancel(
+                                PPlanFragmentCancelReason::KEEP_ALIVE_TIMEOUT);
+                    }
                     iter++;
                 }
             } else if (state == PipelineTaskState::BLOCKED_FOR_RF) {

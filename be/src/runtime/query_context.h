@@ -17,8 +17,12 @@
 
 #pragma once
 
+#include <brpc/controller.h>
 #include <gen_cpp/PaloInternalService_types.h>
 #include <gen_cpp/Types_types.h>
+#include <gen_cpp/data.pb.h>
+#include <gen_cpp/internal_service.pb.h>
+#include <gen_cpp/types.pb.h>
 
 #include <atomic>
 #include <memory>
@@ -32,6 +36,7 @@
 #include "runtime/memory/mem_tracker_limiter.h"
 #include "runtime/runtime_filter_mgr.h"
 #include "runtime/runtime_predicate.h"
+#include "service/backend_options.h"
 #include "task_group/task_group.h"
 #include "util/pretty_printer.h"
 #include "util/threadpool.h"
@@ -40,6 +45,161 @@
 #include "vec/runtime/shared_scanner_controller.h"
 
 namespace doris {
+
+class ShuffleKeepAliveHandler;
+
+class KeepAliveClosure : public google::protobuf::Closure {
+public:
+    KeepAliveClosure() = default;
+
+    ~KeepAliveClosure() override = default;
+    KeepAliveClosure(const KeepAliveClosure& other) = delete;
+    KeepAliveClosure& operator=(const KeepAliveClosure& other) = delete;
+
+    void Run() noexcept override {
+        try {
+            if (cntl.Failed()) {
+                std::string err = fmt::format(
+                        "failed to send brpc when pull exchange source keep alive, error={}, "
+                        "error_text={}, client: {}, "
+                        "latency = {}",
+                        berror(cntl.ErrorCode()), cntl.ErrorText(), BackendOptions::get_localhost(),
+                        cntl.latency_us());
+                callback_fn(exchange_node_id, false);
+            } else {
+                // const bool ret = keep_alive_response.is_alive;
+                // callback_fn(exchange_node_id, ret);
+            }
+        } catch (const std::exception& exp) {
+            LOG(FATAL) << "brpc callback error: " << exp.what();
+        } catch (...) {
+            LOG(FATAL) << "brpc callback error.";
+        }
+    }
+
+    brpc::Controller cntl;
+    PPipelineKeepAliveResponse keep_alive_response;
+    std::function<void(const int&, const bool&)> callback_fn;
+    int exchange_node_id;
+};
+
+class ShuffleKeepAliveHandler {
+public:
+    class KeepAliveContext {
+    public:
+        std::vector<std::shared_ptr<PBackendService_Stub>> source_client_list;
+        int last_keep_alive_time = 0;
+        bool is_source_alive = true;
+        bool has_send_request = false;
+        std::unique_ptr<KeepAliveClosure> keep_alive_closure = nullptr;
+        PPipelineKeepAliveRequest keep_alive_request;
+    };
+
+    Status init_keep_alive_ctx(
+            const std::map<int, std::vector<TPlanFragmentSourceHost>> src_hosts, ExecEnv* exec_env) {
+        // rethinking whether should lazy init here?
+        for (auto iter = src_hosts.begin(); iter != src_hosts.end(); iter++) {
+            int exchange_node_id = iter->first;
+            // 1 init keep alive lock
+            keep_alive_lock[exchange_node_id] = std::make_unique<std::mutex>();
+
+            // 2 init keep alive context
+            // keep_alive_ctx_map[exchange_node_id] = {};
+
+            // 3 init rpc client
+            // auto& host_list = iter->second;
+            // auto& client_list = keep_alive_ctx_map[exchange_node_id].source_client_list;
+            // for (int i = 0; i < host_list.size(); i++) {
+                // auto& host = host_list[i];
+                // std::shared_ptr<PBackendService_Stub> brpc_stub = nullptr;
+                // if (host.hostname == BackendOptions::get_localhost()) {
+                //     brpc_stub = exec_env->brpc_internal_client_cache()->get_client(
+                //             "127.0.0.1", 8080); // todo fix it
+                // } else {
+                //     brpc_stub =
+                //             exec_env->brpc_internal_client_cache()->get_client(_brpc_dest_addr);
+                // }
+                // if (!brpc_stub) {
+                //     std::string msg =
+                //             fmt::format("Get exchange source client failed, dest_addr={}:{}",
+                //                         "", 8080); // todo fix it
+                //     LOG(WARNING) << msg;
+                //     return Status::InternalError(msg);
+                // }
+                // client_list.insert(std::move(brpc_stub));
+            // }
+        }
+        return Status::OK();
+    }
+
+    void keep_alive_callback(const int exchange_node_id, const bool is_source_alive) {
+        std::unique_lock<std::mutex> lock(*keep_alive_lock[exchange_node_id]);
+        auto& keep_alive_ctx = keep_alive_ctx_map[exchange_node_id];
+        if (!keep_alive_ctx.is_source_alive) {
+            keep_alive_ctx.is_source_alive = is_source_alive;
+        }
+        keep_alive_ctx_map[exchange_node_id].last_keep_alive_time = MonotonicMillis();
+    }
+
+    void update_keep_alive_time(int exchange_node_id) {
+        std::unique_lock<std::mutex> lock(*keep_alive_lock[exchange_node_id]);
+        keep_alive_ctx_map[exchange_node_id].last_keep_alive_time = MonotonicMillis();
+    }
+
+    void send_keep_alive_rpc(KeepAliveContext* keep_alive_ctx, TUniqueId query_id,
+                             int exchange_node_id) {
+        auto& client_list = keep_alive_ctx->source_client_list;
+
+        // init closure
+        if (!keep_alive_ctx->keep_alive_closure) {
+            keep_alive_ctx->keep_alive_closure.reset(new KeepAliveClosure());
+        } else {
+            keep_alive_ctx->keep_alive_closure->cntl.Reset();
+        }
+
+        keep_alive_ctx->keep_alive_closure->exchange_node_id = exchange_node_id;
+        keep_alive_ctx->keep_alive_closure->callback_fn = [&](const int exchange_node_id,
+                                                              const bool is_source_alive) {
+            keep_alive_callback(exchange_node_id, is_source_alive);
+        };
+
+        // keep_alive_ctx->keep_alive_request.query_id.set_hi(query_id.hi);
+        // keep_alive_ctx->keep_alive_request.query_id.set_lo(query_id.lo);
+        for (int i = 0; i < client_list.size(); i++) {
+            client_list[i]->pipeline_keep_alive(&keep_alive_ctx->keep_alive_closure->cntl,
+                                                &keep_alive_ctx->keep_alive_request,
+                                                &keep_alive_ctx->keep_alive_closure->keep_alive_response,
+                                                keep_alive_ctx->keep_alive_closure.get());
+        }
+    }
+
+    // return true, source client is timeout
+    bool handle_keep_alive_timeout(int exchange_node_id, TUniqueId query_id) {
+        std::unique_lock<std::mutex> lock(*keep_alive_lock[exchange_node_id]);
+        auto& keep_alive_ctx = keep_alive_ctx_map[exchange_node_id];
+
+        if (!keep_alive_ctx.is_source_alive) {
+            return true;
+        }
+
+        if (keep_alive_ctx.last_keep_alive_time == 0) {
+            keep_alive_ctx.last_keep_alive_time = MonotonicMillis();
+            return false;
+        }
+
+        // case 1: timeout and has not send keep alive request
+        if (!keep_alive_ctx.has_send_request &&
+            keep_alive_ctx.last_keep_alive_time - MonotonicMillis() >
+                    config::pipeline_keep_alive_timeout_ms) {
+            send_keep_alive_rpc(&keep_alive_ctx, query_id, exchange_node_id);
+            keep_alive_ctx.has_send_request = true;
+        }
+        return false;
+    }
+
+    std::map<int, std::unique_ptr<std::mutex>> keep_alive_lock;
+    std::map<int, KeepAliveContext> keep_alive_ctx_map;
+};
 
 // Save the common components of fragments in a query.
 // Some components like DescriptorTbl may be very large
@@ -200,6 +360,8 @@ public:
     // plan node id -> TFileScanRangeParams
     // only for file scan node
     std::map<int, TFileScanRangeParams> file_scan_range_params_map;
+
+    ShuffleKeepAliveHandler shuffle_keep_alive_handler;
 
 private:
     ExecEnv* _exec_env;

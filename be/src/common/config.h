@@ -1115,6 +1115,7 @@ DECLARE_mBool(enable_merge_on_write_correctness_check);
 
 // The secure path with user files, used in the `local` table function.
 DECLARE_mString(user_files_secure_path);
+DECLARE_mInt32(pipeline_keep_alive_timeout_ms);
 
 #ifdef BE_TEST
 // test s3

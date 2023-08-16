@@ -94,6 +94,7 @@ import org.apache.doris.thrift.TPipelineInstanceParams;
 import org.apache.doris.thrift.TPipelineWorkloadGroup;
 import org.apache.doris.thrift.TPlanFragmentDestination;
 import org.apache.doris.thrift.TPlanFragmentExecParams;
+import org.apache.doris.thrift.TPlanFragmentSourceHost;
 import org.apache.doris.thrift.TQueryGlobals;
 import org.apache.doris.thrift.TQueryOptions;
 import org.apache.doris.thrift.TQueryType;
@@ -1402,6 +1403,16 @@ public class Coordinator {
                         dest.setBrpcServer(toBrpcHost(destParams.instanceExecParams.get(j).host));
                         params.destinations.add(dest);
                     }
+
+                    // add source host to current fragment
+                    PlanNodeId destExchangeNodeId = params.fragment.getDestExchangeNode().getId();
+                    List<TPlanFragmentSourceHost> hostList = new ArrayList();
+                    for (int j = 0; j < params.instanceExecParams.size(); j++) {
+                        TPlanFragmentSourceHost srcHost = new TPlanFragmentSourceHost();
+                        srcHost.setBrpcServer(toBrpcHost(params.instanceExecParams.get(j).host));
+                        hostList.add(srcHost);
+                    }
+                    destParams.sourceHostMap.put(destExchangeNodeId.asInt(), hostList);
                 }
             }
         }
@@ -3160,6 +3171,7 @@ public class Coordinator {
     protected class FragmentExecParams {
         public PlanFragment fragment;
         public List<TPlanFragmentDestination> destinations = Lists.newArrayList();
+        public Map<Integer, List<TPlanFragmentSourceHost>> sourceHostMap = new HashMap<>();
         public Map<Integer, Integer> perExchNumSenders = Maps.newHashMap();
 
         public List<PlanFragmentId> inputFragments = Lists.newArrayList();
@@ -3279,6 +3291,7 @@ public class Coordinator {
                     params.setQueryId(queryId);
                     params.setPerExchNumSenders(perExchNumSenders);
                     params.setDestinations(destinations);
+                    params.setSrcHosts(sourceHostMap);
                     params.setNumSenders(instanceExecParams.size());
                     params.setCoord(coordAddress);
                     params.setQueryGlobals(queryGlobals);

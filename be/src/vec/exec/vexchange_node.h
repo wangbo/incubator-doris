@@ -74,6 +74,8 @@ private:
     VSortExecExprs _vsort_exec_exprs;
     std::vector<bool> _is_asc_order;
     std::vector<bool> _nulls_first;
+
+    std::atomic<int> _last_get_data_timestamp;
 };
 } // namespace vectorized
 } // namespace doris

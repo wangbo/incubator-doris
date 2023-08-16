@@ -27,6 +27,7 @@
 #include "exec/operator.h"
 #include "pipeline.h"
 #include "runtime/task_group/task_group.h"
+#include "runtime/query_context.h"
 #include "util/runtime_profile.h"
 #include "util/stopwatch.hpp"
 #include "vec/core/block.h"
@@ -344,5 +345,15 @@ private:
     int64_t _close_pipeline_time = 0;
 
     RuntimeProfile::Counter* _pip_task_total_timer;
+
+    // ShuffleKeepAliveHandler* shuffle_keep_alive_handler;
+
+public:
+    bool handle_keep_alive_timeout() {
+        return true;
+        // return _source->need_keep_alive() &&
+        //        shuffle_keep_alive_handler->handle_keep_alive_timeout(
+        //                _source->id(), fragment_context()->get_query_id());
+    }
 };
 } // namespace doris::pipeline

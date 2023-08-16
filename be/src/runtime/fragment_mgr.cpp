@@ -748,6 +748,9 @@ Status FragmentMgr::_get_query_ctx(const Params& params, TUniqueId query_id, boo
             }
         }
 
+        // init ShuffleKeepAliveHandler
+        query_ctx->shuffle_keep_alive_handler.init_keep_alive_ctx(params.src_hosts, _exec_env);
+
         {
             // Find _query_ctx_map again, in case some other request has already
             // create the query fragments context.

@@ -427,6 +427,8 @@ struct TExecPlanFragmentParams {
 
   // scan node id -> scan range params, only for external file scan
   24: optional map<Types.TPlanNodeId, PlanNodes.TFileScanRangeParams> file_scan_params
+
+  25: map<i32, list<DataSinks.TPlanFragmentSourceHost>> src_hosts
 }
 
 struct TExecPlanFragmentParamsList {
@@ -641,6 +643,7 @@ struct TPipelineFragmentParams {
   28: optional string table_name
   // scan node id -> scan range params, only for external file scan
   29: optional map<Types.TPlanNodeId, PlanNodes.TFileScanRangeParams> file_scan_params
+  30: map<i32, list<DataSinks.TPlanFragmentSourceHost>> src_hosts
 }
 
 struct TPipelineFragmentParamsList {

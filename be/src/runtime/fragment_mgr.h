@@ -141,6 +141,11 @@ public:
 
     ThreadPool* get_thread_pool() { return _thread_pool.get(); }
 
+    bool is_query_exists(TUniqueId& query_id) {
+        std::lock_guard<std::mutex> lock(_lock);
+        return _query_ctx_map.find(query_id) != _query_ctx_map.find(query_id);
+    }
+
 private:
     void _exec_actual(std::shared_ptr<FragmentExecState> exec_state, const FinishCallback& cb);
 

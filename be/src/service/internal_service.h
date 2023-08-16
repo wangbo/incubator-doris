@@ -189,6 +189,11 @@ public:
     void glob(google::protobuf::RpcController* controller, const PGlobRequest* request,
               PGlobResponse* response, google::protobuf::Closure* done) override;
 
+    void pipeline_keep_alive(google::protobuf::RpcController* controller,
+                             const PPipelineKeepAliveRequest* request,
+                             PPipelineKeepAliveResponse* response,
+                             google::protobuf::Closure* done) override;
+
 private:
     void _exec_plan_fragment_in_pthread(google::protobuf::RpcController* controller,
                                         const PExecPlanFragmentRequest* request,
