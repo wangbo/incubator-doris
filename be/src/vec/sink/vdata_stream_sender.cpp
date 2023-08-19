@@ -505,6 +505,26 @@ Status VDataStreamSender::send(RuntimeState* state, Block* block, bool eos) {
         return Status::EndOfFile("all data stream channels EOF");
     }
 
+    // keep alive signal
+    if (block->empty()) {
+        bool has_local_channel = false;
+        for (auto channel : _channels) {
+            if (!channel->is_receiver_eof()) {
+                if (!channel->is_local()) {
+                    SCOPED_CONSUME_MEM_TRACKER(_mem_tracker.get());
+                    channel->send_empty_block();
+                } else {
+                    has_local_channel = true;
+                }
+            }
+        }
+        if (has_local_channel) {
+            TUniqueId* query_id_ptr = (TUniqueId*)&(_state->query_id());
+            _state->exec_env()->update_keep_alive_time(query_id_ptr);
+        }
+        return Status::OK();
+    }
+
     if (_part_type == TPartitionType::UNPARTITIONED || _channels.size() == 1) {
         // 1. serialize depends on it is not local exchange
         // 2. send block
