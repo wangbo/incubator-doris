@@ -42,6 +42,7 @@ public:
     ExchangeSourceOperator(OperatorBuilderBase*, ExecNode*);
     bool can_read() override;
     bool is_pending_finish() const override;
+    bool should_source_keep_alive() override { return true; }
 };
 
 } // namespace doris::pipeline

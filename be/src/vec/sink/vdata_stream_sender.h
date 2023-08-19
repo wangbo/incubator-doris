@@ -310,6 +310,8 @@ public:
 
     void set_receiver_eof(Status st) { _receiver_status = st; }
 
+    virtual void send_empty_block() {}
+
 protected:
     bool _recvr_is_valid() {
         if (_local_recvr && !_local_recvr->is_closed()) {
@@ -451,6 +453,11 @@ public:
         //    new memory.
         // Now we use the second way.
         _ch_cur_pb_block = new PBlock();
+    }
+
+    void send_empty_block() override {
+        std::unique_ptr<PBlock> pblock_ptr = std::make_unique<PBlock>();
+        _buffer->add_block({this, std::move(pblock_ptr), false});
     }
 
     // Asynchronously sends a block
