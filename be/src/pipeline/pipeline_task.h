@@ -112,6 +112,7 @@ public:
     PipelineTask(PipelinePtr& pipeline, uint32_t index, RuntimeState* state, Operators& operators,
                  OperatorPtr& sink, PipelineFragmentContext* fragment_context,
                  RuntimeProfile* parent_profile);
+    PipelineTask() {};
 
     PipelineTask(PipelinePtr& pipeline, uint32_t index, RuntimeState* state,
                  PipelineFragmentContext* fragment_context, RuntimeProfile* parent_profile);
@@ -246,7 +247,10 @@ public:
         }
     }
 
-protected:
+    bool _is_hard_limit_task = false;
+    taskgroup::TaskGroupPipelineTaskEntity* empty_group;
+
+public:
     void _finish_p_dependency() {
         for (const auto& p : _pipeline->_parents) {
             p.lock()->finish_one_dependency(_previous_schedule_id);

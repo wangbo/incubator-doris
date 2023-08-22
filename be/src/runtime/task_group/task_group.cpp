@@ -61,8 +61,14 @@ QueueType* TaskGroupEntity<QueueType>::task_queue() {
 
 template <typename QueueType>
 void TaskGroupEntity<QueueType>::incr_runtime_ns(uint64_t runtime_ns) {
-    auto v_time = runtime_ns / _cpu_share;
-    _vruntime_ns += v_time;
+    if (is_empty_group) {
+        uint64_t v_time = runtime_ns / _empty_cpu_share.load();
+        _vruntime_ns += v_time;
+    } else {
+        uint64_t v_time = runtime_ns / _cpu_share;
+        _vruntime_ns += v_time;
+    }
+    _real_runtime_ns += runtime_ns;
 }
 
 template <typename QueueType>
@@ -78,12 +84,16 @@ size_t TaskGroupEntity<QueueType>::task_size() const {
 
 template <typename QueueType>
 uint64_t TaskGroupEntity<QueueType>::cpu_share() const {
-    return _cpu_share;
+    return is_empty_group ? _empty_cpu_share.load() : _cpu_share;
 }
 
 template <typename QueueType>
 uint64_t TaskGroupEntity<QueueType>::task_group_id() const {
-    return _tg->id();
+    if (is_empty_group) {
+        return -1;
+    } else {
+        return _tg->id();
+    }
 }
 
 template <typename QueueType>

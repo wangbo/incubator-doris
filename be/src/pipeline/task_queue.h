@@ -31,6 +31,7 @@
 #include "common/status.h"
 #include "pipeline_task.h"
 #include "runtime/task_group/task_group.h"
+#include "util/threadpool.h"
 
 namespace doris {
 namespace pipeline {
@@ -187,6 +188,11 @@ public:
     void update_tg_cpu_share(const taskgroup::TaskGroupInfo& task_group_info,
                              taskgroup::TGPTEntityPtr entity) override;
 
+    void print_group_info();
+    uint64_t cur_user_take_count = 0;
+    uint64_t cur_empty_take_count = 0;
+    std::unique_ptr<doris::ThreadPool> _thread_pool;
+
 private:
     template <bool from_executor>
     Status _push_back(PipelineTask* task);
@@ -209,6 +215,10 @@ private:
     int _total_cpu_share = 0;
     std::atomic<taskgroup::TGPTEntityPtr> _min_tg_entity = nullptr;
     uint64_t _min_tg_v_runtime_ns = 0;
+
+    // empty group
+    taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _empty_group = new taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>();
+    PipelineTask* empty_pip_task = new PipelineTask();
 };
 
 } // namespace pipeline

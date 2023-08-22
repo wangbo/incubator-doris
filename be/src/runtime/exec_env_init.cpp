@@ -196,6 +196,8 @@ Status ExecEnv::init_pipeline_task_scheduler() {
         executors_size = CpuInfo::num_cores();
     }
 
+    LOG(INFO) << "exec size=" << executors_size << ", num cores=" << CpuInfo::num_cores();
+
     // TODO pipeline task group combie two blocked schedulers.
     auto t_queue = std::make_shared<pipeline::MultiCoreTaskQueue>(executors_size);
     auto b_scheduler = std::make_shared<pipeline::BlockedTaskScheduler>(t_queue);

@@ -209,16 +209,24 @@ void PipelineTask::set_task_queue(TaskQueue* task_queue) {
 }
 
 Status PipelineTask::execute(bool* eos) {
-    SCOPED_TIMER(_task_profile->total_time_counter());
-    SCOPED_CPU_TIMER(_task_cpu_timer);
-    SCOPED_TIMER(_exec_timer);
-    SCOPED_ATTACH_TASK(_state);
     int64_t time_spent = 0;
     Defer defer {[&]() {
         if (_task_queue) {
             _task_queue->update_statistics(this, time_spent);
         }
     }};
+    if (_is_hard_limit_task) {
+        SCOPED_RAW_TIMER(&time_spent);
+        usleep(100000);
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // time_spent = 100000000;
+        return Status::OK();
+    }
+    SCOPED_TIMER(_task_profile->total_time_counter());
+    SCOPED_CPU_TIMER(_task_cpu_timer);
+    SCOPED_TIMER(_exec_timer);
+    SCOPED_ATTACH_TASK(_state);
+
     // The status must be runnable
     *eos = false;
     if (!_opened) {

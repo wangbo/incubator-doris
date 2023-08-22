@@ -433,10 +433,16 @@ void ScannerScheduler::_task_group_scanner_scan(ScannerScheduler* scheduler,
         auto success = scan_queue->take(&scan_task);
         if (success) {
             int64_t time_spent = 0;
-            {
+            if (scan_task.is_empty_task) {
+                SCOPED_RAW_TIMER(&time_spent);
+                usleep(100000);
+            } else {
                 SCOPED_RAW_TIMER(&time_spent);
                 scan_task.scan_func();
             }
+            // if (!scan_task.is_empty_task) {
+            //     LOG(INFO) << "scan task time spend:" << (time_spent / 1000);
+            // }
             scan_queue->update_statistics(scan_task, time_spent);
         }
     }

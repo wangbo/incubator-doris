@@ -227,6 +227,11 @@ void TaskScheduler::_do_work(size_t index) {
         if (!task) {
             continue;
         }
+        if (task->_is_hard_limit_task) {
+            bool args = false;
+            task->execute(&args);
+            continue;
+        }
         task->set_task_queue(_task_queue.get());
         auto* fragment_ctx = task->fragment_context();
         signal::query_id_hi = fragment_ctx->get_query_id().hi;

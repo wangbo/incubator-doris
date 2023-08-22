@@ -50,6 +50,8 @@ public:
     explicit TaskGroupEntity(taskgroup::TaskGroup* tg, std::string type);
     ~TaskGroupEntity();
 
+    TaskGroupEntity() {}
+
     uint64_t vruntime_ns() const { return _vruntime_ns; }
 
     QueueType* task_queue();
@@ -68,11 +70,16 @@ public:
 
     void check_and_update_cpu_share(const TaskGroupInfo& tg_info);
 
-private:
+    bool is_empty_group = false;
+
+    std::atomic<uint64_t> _empty_cpu_share;
+
+public:
     QueueType* _task_queue;
 
     uint64_t _vruntime_ns = 0;
     taskgroup::TaskGroup* _tg;
+    uint64_t _real_runtime_ns = 0;
 
     std::string _type;
 

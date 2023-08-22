@@ -45,6 +45,7 @@ struct ScanTask {
     vectorized::ScannerContext* scanner_context;
     TGSTEntityPtr scan_entity;
     int priority;
+    bool is_empty_task = false;
 };
 
 // Like pipeline::PriorityTaskQueue use BlockingPriorityQueue directly?
@@ -72,6 +73,14 @@ public:
     void update_statistics(ScanTask task, int64_t time_spent);
 
     void update_tg_cpu_share(const taskgroup::TaskGroupInfo&, taskgroup::TGSTEntityPtr);
+
+    TaskGroupEntity<ScanTaskQueue>* _empty_group = new TaskGroupEntity<ScanTaskQueue>();
+    taskgroup::ScanTask* _empty_task = new taskgroup::ScanTask();
+
+    void print_group_info();
+    uint64_t cur_user_take_count = 0;
+    uint64_t cur_empty_take_count = 0;
+    std::unique_ptr<doris::ThreadPool> _thread_pool;
 
 private:
     TGSTEntityPtr _task_entity(ScanTask& scan_task);
