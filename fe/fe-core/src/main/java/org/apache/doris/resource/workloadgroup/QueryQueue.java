@@ -17,6 +17,8 @@
 
 package org.apache.doris.resource.workloadgroup;
 
+import org.apache.doris.common.Config;
+
 import com.google.common.base.Preconditions;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -59,11 +61,15 @@ public class QueryQueue {
         // we should catch the case when it happens
         queueLock.tryLock(5, TimeUnit.SECONDS);
         try {
-            // currentRunningQueryNum may bigger than maxRunningQueryNum
-            // because maxRunningQueryNum can be altered
-            if (currentRunningQueryNum >= maxConcurrency) {
+            if (Config.enable_query_queue_log) {
+                LOG.info(this.debugString());
+            }
+
+            while (true) {
+                if (currentRunningQueryNum < maxConcurrency) {
+                    break;
+                }
                 if (currentWaitingQueryNum >= maxQueueSize) {
-                    LOG.debug(this.debugString());
                     return new QueueOfferToken(false, "query waiting queue is full, queue length=" + maxQueueSize);
                 }
 
@@ -75,13 +81,19 @@ public class QueryQueue {
                     currentWaitingQueryNum--;
                 }
                 if (!ret) {
-                    LOG.debug(this.debugString());
                     return new QueueOfferToken(false, "query wait timeout " + queueTimeout + " ms");
                 }
             }
             currentRunningQueryNum++;
+            // tmp log
+            if (currentRunningQueryNum > maxConcurrency) {
+                LOG.info(this.debugString() + ", log when error");
+            }
             return new QueueOfferToken(true, "offer success");
         } finally {
+            if (Config.enable_query_queue_log) {
+                LOG.info(this.debugString());
+            }
             queueLock.unlock();
         }
     }
@@ -92,8 +104,13 @@ public class QueryQueue {
             currentRunningQueryNum--;
             Preconditions.checkArgument(currentRunningQueryNum >= 0);
             // maybe only when currentWaitingQueryNum != 0 need to signal
-            queueLockCond.signal();
+            if (currentRunningQueryNum < maxConcurrency) {
+                queueLockCond.signal();
+            }
         } finally {
+            if (Config.enable_query_queue_log) {
+                LOG.info(this.debugString());
+            }
             queueLock.unlock();
         }
     }
@@ -106,6 +123,9 @@ public class QueryQueue {
                 this.maxQueueSize = maxQueueSize;
                 this.queueTimeout = queryWaitTimeout;
             } finally {
+                if (Config.enable_query_queue_log) {
+                    LOG.info(this.debugString());
+                }
                 queueLock.unlock();
             }
         } catch (InterruptedException e) {

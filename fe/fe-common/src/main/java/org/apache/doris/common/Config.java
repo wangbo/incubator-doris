@@ -1527,6 +1527,9 @@ public class Config extends ConfigBase {
     public static boolean enable_query_queue = true;
 
     @ConfField(mutable = true)
+    public static boolean enable_query_queue_log = false;
+
+    @ConfField(mutable = true)
     public static boolean disable_shared_scan = false;
 
     @ConfField(mutable = false, masterOnly = true)
