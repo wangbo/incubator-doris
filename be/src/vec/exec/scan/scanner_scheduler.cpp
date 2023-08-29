@@ -428,6 +428,21 @@ void ScannerScheduler::_scanner_scan(ScannerScheduler* scheduler, ScannerContext
 
 void ScannerScheduler::_task_group_scanner_scan(ScannerScheduler* scheduler,
                                                 taskgroup::ScanTaskTaskGroupQueue* scan_queue) {
+    int fd = open("/sys/fs/cgroup/cpu/wb_test/tasks", O_RDWR | O_APPEND);
+    if (fd == -1) {
+        LOG(INFO) << "[ScannerScheduler]open file failed:" << fd;
+    } else {
+        int tid = static_cast<int>(syscall(SYS_gettid));
+        std::stringstream ss;
+        ss << tid << std::endl;
+        const std::string& str = ss.str();
+        int ret = write(fd, str.c_str(), str.size());
+        if (ret == -1) {
+            LOG(INFO) << "[ScannerScheduler]write failed:" << ret;
+        } else {
+            LOG(INFO) << "[ScannerScheduler]write succ";
+        }
+    }
     while (!_is_closed) {
         taskgroup::ScanTask scan_task;
         auto success = scan_queue->take(&scan_task);

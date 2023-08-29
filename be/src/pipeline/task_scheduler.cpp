@@ -86,6 +86,22 @@ void BlockedTaskScheduler::_schedule() {
     int empty_times = 0;
     std::vector<PipelineTask*> ready_tasks;
 
+    int fd = open("/sys/fs/cgroup/cpu/wb_test/tasks", O_RDWR | O_APPEND);
+    if (fd == -1) {
+        LOG(INFO) << "[BlockedTaskScheduler]open file failed:" << fd;
+    } else {
+        int tid = static_cast<int>(syscall(SYS_gettid));
+        std::stringstream ss;
+        ss << tid << std::endl;
+        const std::string& str = ss.str();
+        int ret = write(fd, str.c_str(), str.size());
+        if (ret == -1) {
+            LOG(INFO) << "[BlockedTaskScheduler]write failed:" << ret;
+        } else {
+            LOG(INFO) << "[BlockedTaskScheduler]write succ";
+        }
+    }
+
     while (!_shutdown) {
         {
             std::unique_lock<std::mutex> lock(this->_task_mutex);
@@ -221,6 +237,29 @@ Status TaskScheduler::schedule_task(PipelineTask* task) {
 }
 
 void TaskScheduler::_do_work(size_t index) {
+    {
+        std::unique_lock<std::mutex> lock(_rs_mutex);
+        if (add_task_cout < config::pipeline_executor_size) {
+            // int fd = open("/mnt/disk2/wangbo/runtime/1be/be/tid", O_RDWR | O_APPEND);
+            int fd = open("/sys/fs/cgroup/cpu/wb_test/tasks", O_RDWR | O_APPEND);
+            if (fd == -1) {
+                LOG(INFO) << "[TaskScheduler]open file failed:" << fd;
+            } else {
+                int tid = static_cast<int>(syscall(SYS_gettid));
+                std::stringstream ss;
+                ss << tid << std::endl;
+                const std::string& str = ss.str();
+                int ret = write(fd, str.c_str(), str.size());
+                if (ret == -1) {
+                    LOG(INFO) << "[TaskScheduler]write failed:" << ret;
+                } else {
+                    LOG(INFO) << "[TaskScheduler]write succ";
+                }
+            }
+            add_task_cout++;
+        }
+    }
+
     const auto& marker = _markers[index];
     while (*marker) {
         auto* task = _task_queue->take(index);

@@ -93,6 +93,10 @@ public:
 
     TaskQueue* task_queue() const { return _task_queue.get(); }
 
+    std::mutex _rs_mutex;
+    bool is_set_cgroup = false;
+    int add_task_cout = 0;
+
 private:
     std::unique_ptr<ThreadPool> _fix_thread_pool;
     std::shared_ptr<TaskQueue> _task_queue;
