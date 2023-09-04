@@ -228,17 +228,28 @@ Status ExecEnv::init_pipeline_task_scheduler() {
         executors_size = CpuInfo::num_cores();
     }
 
+    std::string cgroup_cu_path = config::doris_cgroup_cpu_path;
+    if (!cgroup_cu_path.empty()) {
+        _cgroup_cpu_ctl = std::make_unique<CgroupV1CpuCtl>();
+        Status ret = _cgroup_cpu_ctl->init();
+        if (!ret.ok()) {
+            LOG(ERROR) << "init cgroup cpu controller failed";
+        }
+    } else {
+        LOG(INFO) << "cgroup cpu controller is not inited";
+    }
+
     // TODO pipeline task group combie two blocked schedulers.
     auto t_queue = std::make_shared<pipeline::MultiCoreTaskQueue>(executors_size);
     auto b_scheduler = std::make_shared<pipeline::BlockedTaskScheduler>(t_queue);
-    _pipeline_task_scheduler =
-            new pipeline::TaskScheduler(this, b_scheduler, t_queue, "WithoutGroupTaskSchePool");
+    _pipeline_task_scheduler = new pipeline::TaskScheduler(this, b_scheduler, t_queue,
+                                                           "WithoutGroupTaskSchePool", nullptr);
     RETURN_IF_ERROR(_pipeline_task_scheduler->start());
 
     auto tg_queue = std::make_shared<pipeline::TaskGroupTaskQueue>(executors_size);
     auto tg_b_scheduler = std::make_shared<pipeline::BlockedTaskScheduler>(tg_queue);
-    _pipeline_task_group_scheduler =
-            new pipeline::TaskScheduler(this, tg_b_scheduler, tg_queue, "WithGroupTaskSchePool");
+    _pipeline_task_group_scheduler = new pipeline::TaskScheduler(
+            this, tg_b_scheduler, tg_queue, "WithGroupTaskSchePool", _cgroup_cpu_ctl.get());
     RETURN_IF_ERROR(_pipeline_task_group_scheduler->start());
 
     return Status::OK();

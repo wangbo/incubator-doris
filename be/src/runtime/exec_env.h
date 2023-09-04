@@ -207,6 +207,8 @@ public:
     std::map<TNetworkAddress, FrontendInfo> get_frontends();
     std::map<TNetworkAddress, FrontendInfo> get_running_frontends();
 
+    CgroupCpuCtl* get_cgroup_cpu_ctl() { return _cgroup_cpu_ctl.get(); }
+
 private:
     ExecEnv();
 
@@ -289,6 +291,8 @@ private:
     std::mutex _frontends_lock;
     std::map<TNetworkAddress, FrontendInfo> _frontends;
     GroupCommitMgr* _group_commit_mgr = nullptr;
+
+    std::unique_ptr<CgroupCpuCtl> _cgroup_cpu_ctl = nullptr;
 };
 
 template <>
