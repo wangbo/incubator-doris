@@ -64,7 +64,7 @@ void TaskGroupEntity::push_back(pipeline::PipelineTask* task) {
 }
 
 uint64_t TaskGroupEntity::cpu_share() const {
-    return _tg->cpu_share();
+    return _is_empty_group_entity ? _empty_group_cpu_share : _tg->cpu_share();
 }
 
 uint64_t TaskGroupEntity::task_group_id() const {
@@ -74,6 +74,10 @@ uint64_t TaskGroupEntity::task_group_id() const {
 std::string TaskGroupEntity::debug_string() const {
     return fmt::format("TGE[id = {}, cpu_share = {}, task size: {}, v_time:{}ns]", _tg->id(),
                        cpu_share(), _queue.size(), _vruntime_ns);
+}
+
+void TaskGroupEntity::set_empty_group_entity(bool is_empty_group_entity) {
+    _is_empty_group_entity = is_empty_group_entity;
 }
 
 TaskGroup::TaskGroup(const TaskGroupInfo& tg_info)

@@ -192,6 +192,13 @@ void PipelineTask::set_task_queue(TaskQueue* task_queue) {
     _task_queue = task_queue;
 }
 
+void PipelineTask::yield() {
+    int64_t time_spent = 0;
+    Defer defer {[&]() { _task_queue->update_statistics(this, time_spent); }};
+    SCOPED_RAW_TIMER(&time_spent);
+    usleep(THREAD_TIME_SLICE_US);
+}
+
 Status PipelineTask::execute(bool* eos) {
     SCOPED_TIMER(_task_profile->total_time_counter());
     SCOPED_CPU_TIMER(_task_cpu_timer);
@@ -401,6 +408,13 @@ std::string PipelineTask::debug_string() {
 
 taskgroup::TaskGroup* PipelineTask::get_task_group() const {
     return _fragment_context->get_task_group();
+}
+
+taskgroup::TaskGroupEntity* get_task_group_entity() const {
+    if (is_empty_task()) {
+        return _empty_group_entity;
+    }
+    return _fragment_context->get_task_group()->task_entity();
 }
 
 } // namespace doris::pipeline

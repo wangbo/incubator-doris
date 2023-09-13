@@ -189,9 +189,12 @@ public:
 
     taskgroup::TaskGroup* get_task_group() const;
 
+    taskgroup::TaskGroupEntity* get_task_group_entity();
+
     void set_task_queue(TaskQueue* task_queue);
 
     static constexpr auto THREAD_TIME_SLICE = 100'000'000L;
+    static constexpr auto THREAD_TIME_SLICE_US = 100000L; // 100ms
 
     // 1 used for update priority queue
     // note(wb) an ugly implementation, need refactor later
@@ -243,6 +246,17 @@ public:
         }
     }
 
+    void set_empty_task(bool is_empty_task) { _is_empty_task = is_empty_task; }
+
+    bool is_empty_task() { return _is_empty_task; }
+
+    void yield();
+
+    void set_task_group_entity(
+            taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* empty_group_entity) {
+        _empty_group_entity = empty_group_entity;
+    }
+
 private:
     void _finish_p_dependency() {
         for (const auto& p : _pipeline->_parents) {
@@ -285,6 +299,9 @@ private:
     int _core_id = 0;
 
     bool _try_close_flag = false;
+
+    bool _is_empty_task = false;
+    taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _empty_group_entity;
 
     RuntimeProfile* _parent_profile;
     std::unique_ptr<RuntimeProfile> _task_profile;

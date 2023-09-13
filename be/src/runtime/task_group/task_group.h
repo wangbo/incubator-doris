@@ -63,11 +63,17 @@ public:
 
     uint64_t task_group_id() const;
 
+    void set_empty_group_entity(bool is_empty_group_entity);
+
 private:
     // TODO pipeline use MLFQ
     std::queue<pipeline::PipelineTask*> _queue;
     taskgroup::TaskGroup* _tg;
     uint64_t _vruntime_ns = 0;
+
+    // NOTE: empty group entity has no workgroup, so need a variable to store its cpu_share
+    uint64_t _empty_group_cpu_share = 0;
+    bool _is_empty_group_entity = false;
 };
 
 using TGEntityPtr = TaskGroupEntity*;

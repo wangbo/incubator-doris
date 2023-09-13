@@ -217,9 +217,17 @@ bool TaskGroupTaskQueue::TaskGroupSchedEntityComparator::operator()(
     }
 }
 
-TaskGroupTaskQueue::TaskGroupTaskQueue(size_t core_size) : TaskQueue(core_size) {}
+TaskGroupTaskQueue::TaskGroupTaskQueue(size_t core_size) : TaskQueue(core_size) {
+    _empty_pip_task->set_empty_task(true);
+    _empty_pip_task->set_task_queue(this);
+    _empty_pip_task->set_task_group_entity(_empty_group_entity);
+    _empty_group_entity->set_empty_group_entity(true);
+}
 
-TaskGroupTaskQueue::~TaskGroupTaskQueue() = default;
+TaskGroupTaskQueue::~TaskGroupTaskQueue() {
+    delete _empty_group;
+    delete _empty_pip_task;
+}
 
 void TaskGroupTaskQueue::close() {
     std::unique_lock<std::mutex> lock(_rs_mutex);
@@ -332,8 +340,7 @@ taskgroup::TGEntityPtr TaskGroupTaskQueue::_next_tg_entity() {
 
 void TaskGroupTaskQueue::update_statistics(PipelineTask* task, int64_t time_spent) {
     std::unique_lock<std::mutex> lock(_rs_mutex);
-    auto* group = task->get_task_group();
-    auto* entity = group->task_entity();
+    auto* entity = task->get_task_group_entity();
     auto find_entity = _group_entities.find(entity);
     bool is_in_queue = find_entity != _group_entities.end();
     VLOG_DEBUG << "update_statistics " << entity->debug_string() << ", in queue:" << is_in_queue;
