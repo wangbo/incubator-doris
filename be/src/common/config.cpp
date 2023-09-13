@@ -1089,6 +1089,7 @@ DEFINE_Int32(group_commit_insert_threads, "10");
 
 // cgroup
 DEFINE_String(doris_cgroup_cpu_path, "");
+DEFINE_Bool(enable_cpu_hard_limit, "false");
 
 #ifdef BE_TEST
 // test s3

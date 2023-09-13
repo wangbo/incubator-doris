@@ -222,9 +222,72 @@ bool TaskGroupTaskQueue::TaskGroupSchedEntityComparator::operator()(
 }
 
 TaskGroupTaskQueue::TaskGroupTaskQueue(size_t core_size)
-        : TaskQueue(core_size), _min_tg_entity(nullptr) {}
+        : TaskQueue(core_size), _min_tg_entity(nullptr) {
+    _empty_pip_task->set_empty_task(true);
+    _empty_pip_task->set_task_queue(this);
+    _empty_pip_task->set_task_group_entity(_empty_group_entity);
+    _empty_group_entity->set_empty_group_entity(true);
 
-TaskGroupTaskQueue::~TaskGroupTaskQueue() = default;
+    // for test
+    ThreadPoolBuilder("TaskQueuePool")
+            .set_min_threads(1)
+            .set_max_threads(1)
+            .set_max_queue_size(1)
+            .build(&_thread_pool);
+    _thread_pool->submit_func([this]() { this->print_group_info(); });
+}
+
+TaskGroupTaskQueue::~TaskGroupTaskQueue() {
+    delete _empty_group_entity;
+    delete _empty_pip_task;
+}
+
+void TaskGroupTaskQueue::print_group_info() {
+    uint64_t last_user_cpu_time = 0;
+    uint64_t last_user_take_count = 0;
+
+    uint64_t last_empty_cpu_time = 0;
+    uint64_t last_empty_take_count = 0;
+    while (true) {
+        {
+            std::unique_lock<std::mutex> lock(_rs_mutex);
+            uint64_t cur_user_cpu_time = 0;
+            uint64_t cur_empty_cpu_time = 0;
+
+            if (_group_entities.size() > 1) {
+                for (auto* entity : _group_entities) {
+                    if (!entity->is_empty_group_entity()) {
+                        cur_user_cpu_time = entity->_real_runtime_ns;
+                    } else {
+                        cur_empty_cpu_time = entity->_real_runtime_ns;
+                    }
+                }
+            } else {
+                cur_user_cpu_time = _tmp_entity == nullptr ? 0 : _tmp_entity->_real_runtime_ns;
+                cur_empty_cpu_time = _empty_group_entity->_real_runtime_ns;
+            }
+
+            uint64_t last_user_60s_cpu_time = cur_user_cpu_time - last_user_cpu_time;
+            uint64_t last_empty_60s_cpu_time = cur_empty_cpu_time - last_empty_cpu_time;
+
+            uint64_t last_user_60s_take_count = cur_user_take_count - last_user_take_count;
+            uint64_t last_empty_60s_take_count = cur_empty_take_count - last_empty_take_count;
+
+            LOG(INFO) << "group size= " << _group_entities.size()
+                      << ", (exec)task queue last 30s, user_cpu_time=" << last_user_60s_cpu_time
+                      << ", empty_cpu_time=" << last_empty_60s_cpu_time
+                      << ", user_take_count=" << last_user_60s_take_count
+                      << ", empty_take_count=" << last_empty_60s_take_count;
+
+            last_user_cpu_time = cur_user_cpu_time;
+            last_empty_cpu_time = cur_empty_cpu_time;
+
+            last_user_take_count = cur_user_take_count;
+            last_empty_take_count = cur_empty_take_count;
+        }
+        sleep(30);
+    }
+}
 
 void TaskGroupTaskQueue::close() {
     std::unique_lock<std::mutex> lock(_rs_mutex);
@@ -248,6 +311,10 @@ Status TaskGroupTaskQueue::_push_back(PipelineTask* task) {
     entity->task_queue()->emplace(task);
     if (_group_entities.find(entity) == _group_entities.end()) {
         _enqueue_task_group<from_executor>(entity);
+        _tmp_entity = entity;
+        if (_enable_cpu_hard_limit) {
+            reset_empty_group_entity();
+        }
     }
     _wait_task.notify_one();
     return Status::OK();
@@ -270,9 +337,17 @@ PipelineTask* TaskGroupTaskQueue::take(size_t core_id) {
             }
         }
     }
+    if (entity->is_empty_group_entity()) {
+        cur_empty_take_count++;
+        return _empty_pip_task;
+    }
+    cur_user_take_count++;
     DCHECK(entity->task_size() > 0);
     if (entity->task_size() == 1) {
         _dequeue_task_group(entity);
+        if (_enable_cpu_hard_limit) {
+            reset_empty_group_entity();
+        }
     }
     auto task = entity->task_queue()->front();
     if (task) {
@@ -371,6 +446,31 @@ void TaskGroupTaskQueue::update_tg_cpu_share(const taskgroup::TaskGroupInfo& tas
     if (is_in_queue) {
         _group_entities.emplace(entity);
         _total_cpu_share += entity->cpu_share();
+    }
+}
+
+void TaskGroupTaskQueue::reset_empty_group_entity() {
+    int user_g_cpu_hard_limit = 0;
+    bool contains_empty_group = false;
+    for (auto* entity : _group_entities) {
+        if (!entity->is_empty_group_entity()) {
+            user_g_cpu_hard_limit += entity->cpu_share();
+        } else {
+            contains_empty_group = true;
+        }
+    }
+
+    // 0 <= user_g_cpu_hard_limit <= 100, bound by FE
+    // user_g_cpu_hard_limit = 0 means no group exists
+    int empty_group_cpu_share = 100 - user_g_cpu_hard_limit;
+    if (empty_group_cpu_share > 0 && empty_group_cpu_share < 100 && !contains_empty_group) {
+        _empty_group_entity->update_empty_cpu_share(empty_group_cpu_share);
+        _enqueue_task_group<true>(_empty_group_entity);
+    } else if ((empty_group_cpu_share == 0 || empty_group_cpu_share == 100) &&
+               contains_empty_group) {
+        _dequeue_task_group(_empty_group_entity);
+        empty_group_cpu_share = 1; // cpu_share can not be 0
+        _empty_group_entity->update_empty_cpu_share(empty_group_cpu_share);
     }
 }
 

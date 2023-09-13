@@ -471,9 +471,23 @@ void ScannerScheduler::_task_group_scanner_scan(ScannerScheduler* scheduler,
         auto success = scan_queue->take(&scan_task);
         if (success) {
             int64_t time_spent = 0;
+            RuntimeProfile::Counter tmp_counter(TUnit::TIME_NS);
             {
-                SCOPED_RAW_TIMER(&time_spent);
-                scan_task.scan_func();
+                if (!scan_task.is_empty_task) {
+                    {
+                        SCOPED_CPU_TIMER(&tmp_counter);
+                        scan_task.scan_func();
+                    }
+                    time_spent = tmp_counter.value();
+                } else {
+                    {
+                        SCOPED_RAW_TIMER(&time_spent);
+                        usleep(taskgroup::SCAN_THREAD_TIME_SLICE_US);
+                        // usleep(10000); // 10ms
+                        // time_spent = 100000000; // 100ms
+                    }
+                    time_spent = time_spent * cpu_num / total_query_thread_pool;
+                }
             }
             scan_queue->update_statistics(scan_task, time_spent);
         }

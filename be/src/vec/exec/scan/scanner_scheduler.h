@@ -74,6 +74,10 @@ public:
         return _task_group_local_scan_queue.get();
     }
 
+    int total_query_thread_pool =
+            config::doris_scanner_thread_pool_thread_num + config::pipeline_executor_size;
+    int cpu_num = CpuInfo::num_cores();
+
 private:
     // scheduling thread function
     void _schedule_thread(int queue_id);

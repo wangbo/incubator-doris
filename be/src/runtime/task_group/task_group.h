@@ -50,6 +50,8 @@ public:
     explicit TaskGroupEntity(taskgroup::TaskGroup* tg, std::string type);
     ~TaskGroupEntity();
 
+    TaskGroupEntity() {} // used for empty group entity
+
     uint64_t vruntime_ns() const { return _vruntime_ns; }
 
     QueueType* task_queue();
@@ -68,7 +70,16 @@ public:
 
     void check_and_update_cpu_share(const TaskGroupInfo& tg_info);
 
-private:
+    void set_empty_group_entity(bool is_empty_group_entity);
+
+    bool is_empty_group_entity();
+
+    void update_empty_cpu_share(uint64_t empty_cpu_share);
+
+    // for test
+    uint64_t _real_runtime_ns = 0;
+
+public:
     QueueType* _task_queue;
 
     uint64_t _vruntime_ns = 0;
@@ -81,6 +92,8 @@ private:
     // independent updates.
     int64_t _version;
     uint64_t _cpu_share;
+
+    bool _is_empty_group_entity = false;
 };
 
 // TODO llj tg use PriorityTaskQueue to replace std::queue

@@ -29,6 +29,7 @@ namespace taskgroup {
 
 using WorkFunction = std::function<void()>;
 static constexpr auto WAIT_CORE_TASK_TIMEOUT_MS = 100;
+static constexpr auto SCAN_THREAD_TIME_SLICE_US = 100000L; // 100ms
 
 // Like PriorityThreadPool::Task
 struct ScanTask {
@@ -45,6 +46,7 @@ struct ScanTask {
     vectorized::ScannerContext* scanner_context;
     TGSTEntityPtr scan_entity;
     int priority;
+    bool is_empty_task = false;
 };
 
 // Like pipeline::PriorityTaskQueue use BlockingPriorityQueue directly?
@@ -73,6 +75,13 @@ public:
 
     void update_tg_cpu_share(const taskgroup::TaskGroupInfo&, taskgroup::TGSTEntityPtr);
 
+    void reset_empty_group_entity();
+
+    void print_group_info();
+    uint64_t cur_user_take_count = 0;
+    uint64_t cur_empty_take_count = 0;
+    std::unique_ptr<doris::ThreadPool> _thread_pool;
+
 private:
     TGSTEntityPtr _task_entity(ScanTask& scan_task);
     void _enqueue_task_group(TGSTEntityPtr);
@@ -94,6 +103,10 @@ private:
     std::atomic<taskgroup::TGSTEntityPtr> _min_tg_entity = nullptr;
     uint64_t _min_tg_v_runtime_ns = 0;
     size_t _core_size;
+
+    TaskGroupEntity<ScanTaskQueue>* _empty_group_entity = new TaskGroupEntity<ScanTaskQueue>();
+    taskgroup::ScanTask* _empty_scan_task = new taskgroup::ScanTask();
+    bool _enable_cpu_hard_limit = config::enable_cpu_hard_limit; // just for test
 };
 
 } // namespace taskgroup

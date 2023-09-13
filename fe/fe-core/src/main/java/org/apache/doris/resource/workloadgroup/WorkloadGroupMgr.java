@@ -122,8 +122,21 @@ public class WorkloadGroupMgr implements Writable, GsonPostProcessable {
             }
             workloadGroups.add(workloadGroup.toThrift());
             // note(wb) -1 to tell be no need to update cgroup
-            int thriftVal = Config.enable_cpu_hard_limit ? this.queryCPUHardLimit : -1;
+            int thriftVal = -1;
+            if (Config.enable_cpu_hard_limit) {
+                // reset cpu_share according to cpu hard limit
+                // double curGroupPercent =
+                //         (double) workloadGroup.getCpuHardLimit() / (double) this.queryCPUHardLimit;
+                // int cpuHardLimitShare = (int) (curGroupPercent * 100);
+                int cpuHardLimitShare = workloadGroup.getCpuHardLimit();
+                workloadGroups.get(0).getProperties()
+                        .put(WorkloadGroup.CPU_SHARE, String.valueOf(cpuHardLimitShare));
+
+                // reset sum of all groups cpu hard limit
+                thriftVal = this.queryCPUHardLimit;
+            }
             workloadGroups.get(0).getProperties().put(QUERY_CPU_HARD_LIMIT, String.valueOf(thriftVal));
+
             context.setWorkloadGroupName(groupName);
         } finally {
             readUnlock();

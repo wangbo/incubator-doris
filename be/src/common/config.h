@@ -1160,6 +1160,7 @@ DECLARE_mInt32(group_commit_insert_threads);
 
 // cgroup
 DECLARE_String(doris_cgroup_cpu_path);
+DECLARE_Bool(enable_cpu_hard_limit);
 
 #ifdef BE_TEST
 // test s3
