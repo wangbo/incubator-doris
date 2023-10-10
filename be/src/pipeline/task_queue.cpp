@@ -270,9 +270,11 @@ void TaskGroupTaskQueue::print_group_info() {
             uint64_t last_user_60s_take_count = cur_user_take_count - last_user_take_count;
             uint64_t last_empty_60s_take_count = cur_empty_take_count - last_empty_take_count;
 
+            uint64_t fenmu = 1000000000;
+
             LOG(INFO) << "group size= " << _group_entities.size()
-                      << ", (exec)task queue last 30s, user_cpu_time=" << last_user_60s_cpu_time
-                      << ", empty_cpu_time=" << last_empty_60s_cpu_time
+                      << ", (exec)task queue last 30s, user_cpu_time=" << last_user_60s_cpu_time / fenmu
+                      << ", empty_cpu_time=" << last_empty_60s_cpu_time / fenmu
                       << ", user_take_count=" << last_user_60s_take_count
                       << ", empty_take_count=" << last_empty_60s_take_count;
 
