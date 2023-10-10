@@ -83,17 +83,24 @@ void ScanTaskTaskGroupQueue::print_group_info() {
             uint64_t cur_user_cpu_time = 0;
             uint64_t cur_empty_cpu_time = 0;
 
+            int empty_cpu_share = 0;
+            int user_cpu_share = 0;
             if (_group_entities.size() > 1) {
                 for (auto* entity : _group_entities) {
                     if (!entity->is_empty_group_entity()) {
                         cur_user_cpu_time = entity->_real_runtime_ns;
+                        user_cpu_share = entity->_cpu_share;
                     } else {
                         cur_empty_cpu_time = entity->_real_runtime_ns;
+                        empty_cpu_share = entity->_cpu_share;
                     }
                 }
             } else {
                 cur_user_cpu_time = _tmp_entity == nullptr ? 0 : _tmp_entity->_real_runtime_ns;
                 cur_empty_cpu_time = _empty_group_entity->_real_runtime_ns;
+                
+                empty_cpu_share = _empty_group_entity->_cpu_share;
+                user_cpu_share = _tmp_entity == nullptr ? 0 : _tmp_entity->_cpu_share;
             }
 
             uint64_t last_user_60s_cpu_time = cur_user_cpu_time - last_user_cpu_time;
@@ -110,7 +117,9 @@ void ScanTaskTaskGroupQueue::print_group_info() {
                       << ", empty_take_count=" << last_empty_60s_take_count
                       << ", cur_empty_cpu_time=" << cur_empty_cpu_time / fenmu
                       << ", cur_user_cpu_time=" << cur_user_cpu_time / fenmu
-                      << ", index=" << iter;
+                      << ", index=" << iter
+                      << ", user_cpu_share=" << user_cpu_share
+                      << ", empty_cpu_share=" << empty_cpu_share;
 
             last_user_cpu_time = cur_user_cpu_time;
             last_empty_cpu_time = cur_empty_cpu_time;

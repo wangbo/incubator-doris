@@ -79,7 +79,7 @@ public:
     // for test
     uint64_t _real_runtime_ns = 0;
 
-private:
+public:
     QueueType* _task_queue;
 
     uint64_t _vruntime_ns = 0;
