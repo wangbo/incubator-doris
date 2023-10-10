@@ -99,7 +99,9 @@ void ScanTaskTaskGroupQueue::print_group_info() {
                       << ", (scan)task queue last 30s, user_cpu_time=" << last_user_60s_cpu_time
                       << ", empty_cpu_time=" << last_empty_60s_cpu_time
                       << ", user_take_count=" << last_user_60s_take_count
-                      << ", empty_take_count=" << last_empty_60s_take_count;
+                      << ", empty_take_count=" << last_empty_60s_take_count
+                      << ", cur_empty_cpu_time=" << cur_empty_cpu_time
+                      << ", cur_user_cpu_time=" << cur_user_cpu_time;
 
             last_user_cpu_time = cur_user_cpu_time;
             last_empty_cpu_time = cur_empty_cpu_time;
