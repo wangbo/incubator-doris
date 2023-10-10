@@ -246,7 +246,9 @@ void TaskGroupTaskQueue::print_group_info() {
 
     uint64_t last_empty_cpu_time = 0;
     uint64_t last_empty_take_count = 0;
+    uint64_t iter = 0;
     while (true) {
+        iter++;
         {
             std::unique_lock<std::mutex> lock(_rs_mutex);
             uint64_t cur_user_cpu_time = 0;
@@ -276,7 +278,10 @@ void TaskGroupTaskQueue::print_group_info() {
                       << ", (exec)task queue last 30s, user_cpu_time=" << last_user_60s_cpu_time / fenmu
                       << ", empty_cpu_time=" << last_empty_60s_cpu_time / fenmu
                       << ", user_take_count=" << last_user_60s_take_count
-                      << ", empty_take_count=" << last_empty_60s_take_count;
+                      << ", empty_take_count=" << last_empty_60s_take_count
+                      << ", cur_empty_cpu_time=" << cur_empty_cpu_time / fenmu
+                      << ", cur_user_cpu_time=" << cur_user_cpu_time / fenmu
+                      << ", index=" << iter;
 
             last_user_cpu_time = cur_user_cpu_time;
             last_empty_cpu_time = cur_empty_cpu_time;
