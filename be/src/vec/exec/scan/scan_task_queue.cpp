@@ -81,12 +81,17 @@ void ScanTaskTaskGroupQueue::print_group_info() {
             uint64_t cur_user_cpu_time = 0;
             uint64_t cur_empty_cpu_time = 0;
 
-            for (auto* entity : _group_entities) {
-                if (!entity->is_empty_group_entity()) {
-                    cur_user_cpu_time = entity->_real_runtime_ns;
-                } else {
-                    cur_empty_cpu_time = entity->_real_runtime_ns;
+            if (_group_entities.size() > 1) {
+                for (auto* entity : _group_entities) {
+                    if (!entity->is_empty_group_entity()) {
+                        cur_user_cpu_time = entity->_real_runtime_ns;
+                    } else {
+                        cur_empty_cpu_time = entity->_real_runtime_ns;
+                    }
                 }
+            } else {
+                cur_user_cpu_time = _tmp_entity == nullptr ? 0 : _tmp_entity->_real_runtime_ns;
+                cur_empty_cpu_time = _empty_group_entity->_real_runtime_ns;
             }
 
             uint64_t last_user_60s_cpu_time = cur_user_cpu_time - last_user_cpu_time;
@@ -166,6 +171,7 @@ bool ScanTaskTaskGroupQueue::push_back(ScanTask scan_task) {
     }
     if (_group_entities.find(entity) == _group_entities.end()) {
         _enqueue_task_group(entity);
+        _tmp_entity = entity;
         if (_enable_cpu_hard_limit) {
             reset_empty_group_entity();
         }

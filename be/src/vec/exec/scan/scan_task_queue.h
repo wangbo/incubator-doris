@@ -81,6 +81,7 @@ public:
     uint64_t cur_user_take_count = 0;
     uint64_t cur_empty_take_count = 0;
     std::unique_ptr<doris::ThreadPool> _thread_pool;
+    TaskGroupEntity<ScanTaskQueue>* _tmp_entity = nullptr;
 
 private:
     TGSTEntityPtr _task_entity(ScanTask& scan_task);
