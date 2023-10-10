@@ -57,6 +57,58 @@ ScanTaskTaskGroupQueue::ScanTaskTaskGroupQueue(size_t core_size) : _core_size(co
     _empty_scan_task->scan_entity = _empty_group_entity;
     _empty_scan_task->is_empty_task = true;
     _empty_group_entity->set_empty_group_entity(true);
+
+    Status st = ThreadPoolBuilder("ScanQueuePool")
+            .set_min_threads(1)
+            .set_max_threads(1)
+            .set_max_queue_size(1)
+            .build(&_thread_pool);
+   st = _thread_pool->submit_func([this]() { this->print_group_info(); });
+   if (!st.ok()) {
+        std::cout << "init scan log pool failed" << std::endl;
+   }
+}
+
+void ScanTaskTaskGroupQueue::print_group_info() {
+    uint64_t last_user_cpu_time = 0;
+    uint64_t last_user_take_count = 0;
+
+    uint64_t last_empty_cpu_time = 0;
+    uint64_t last_empty_take_count = 0;
+    while (true) {
+        {
+            std::unique_lock<std::mutex> lock(_rs_mutex);
+            uint64_t cur_user_cpu_time = 0;
+            uint64_t cur_empty_cpu_time = 0;
+
+            for (auto* entity : _group_entities) {
+                if (!entity->is_empty_group_entity()) {
+                    cur_user_cpu_time = entity->_real_runtime_ns;
+                } else {
+                    cur_empty_cpu_time = entity->_real_runtime_ns;
+                }
+            }
+
+            uint64_t last_user_60s_cpu_time = cur_user_cpu_time - last_user_cpu_time;
+            uint64_t last_empty_60s_cpu_time = cur_empty_cpu_time - last_empty_cpu_time;
+
+            uint64_t last_user_60s_take_count = cur_user_take_count - last_user_take_count;
+            uint64_t last_empty_60s_take_count = cur_empty_take_count - last_empty_take_count;
+
+            LOG(INFO) << "group size= " << _group_entities.size()
+                      << ", (scan)task queue last 30s, user_cpu_time=" << last_user_60s_cpu_time
+                      << ", empty_cpu_time=" << last_empty_60s_cpu_time
+                      << ", user_take_count=" << last_user_60s_take_count
+                      << ", empty_take_count=" << last_empty_60s_take_count;
+
+            last_user_cpu_time = cur_user_cpu_time;
+            last_empty_cpu_time = cur_empty_cpu_time;
+
+            last_user_take_count = cur_user_take_count;
+            last_empty_take_count = cur_empty_take_count;
+        }
+        sleep(30);
+    }
 }
 
 ScanTaskTaskGroupQueue::~ScanTaskTaskGroupQueue() {
@@ -88,8 +140,10 @@ bool ScanTaskTaskGroupQueue::take(ScanTask* scan_task) {
     }
     if (entity->is_empty_group_entity()) {
         *scan_task = *_empty_scan_task;
+        cur_empty_take_count++;
         return true;
     }
+    cur_user_take_count++;
     DCHECK(entity->task_size() > 0);
     if (entity->task_size() == 1) {
         _dequeue_task_group(entity);

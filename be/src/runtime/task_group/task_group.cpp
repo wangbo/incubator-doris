@@ -66,6 +66,7 @@ template <typename QueueType>
 void TaskGroupEntity<QueueType>::incr_runtime_ns(uint64_t runtime_ns) {
     auto v_time = runtime_ns / _cpu_share;
     _vruntime_ns += v_time;
+    _real_runtime_ns += runtime_ns;
 }
 
 template <typename QueueType>

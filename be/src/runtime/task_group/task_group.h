@@ -76,6 +76,9 @@ public:
 
     void update_empty_cpu_share(uint64_t empty_cpu_share);
 
+    // for test
+    uint64_t _real_runtime_ns = 0;
+
 private:
     QueueType* _task_queue;
 

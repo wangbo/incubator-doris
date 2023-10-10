@@ -31,6 +31,7 @@
 #include "common/status.h"
 #include "pipeline_task.h"
 #include "runtime/task_group/task_group.h"
+#include "util/threadpool.h"
 
 namespace doris {
 namespace pipeline {
@@ -188,6 +189,13 @@ public:
                              taskgroup::TGPTEntityPtr entity) override;
 
     void reset_empty_group_entity();
+
+    /* just test */
+    void print_group_info();
+    uint64_t cur_user_take_count = 0;
+    uint64_t cur_empty_take_count = 0;
+    std::unique_ptr<doris::ThreadPool> _thread_pool;
+    taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _tmp_entity = nullptr;
 
 private:
     template <bool from_executor>
