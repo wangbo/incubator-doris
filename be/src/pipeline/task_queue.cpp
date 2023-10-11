@@ -262,7 +262,7 @@ void TaskGroupTaskQueue::print_user_group_info() {
             LOG(INFO) << "group size= " << _group_entities.size()
                       << ", (exec)task queue last 30s, "
                       << ", g1_cpu_time=" << (last_g1_30s_cpu_time / fenmu)
-                      << ", g2_cput_time=" << (last_g2_30s_cpu_time / fenmu)
+                      << ", g2_cpu_time=" << (last_g2_30s_cpu_time / fenmu)
                       << ", cur_g1_cpu_time=" << (cur_g1_cpu_time / fenmu)
                       << ", cur_g2_cpu_time=" << (cur_g2_cpu_time / fenmu) << ", index=" << iter
                       << ", g1_cpu_share=" << g1_cpu_share << ", g2_cpu_share=" << g2_cpu_share;

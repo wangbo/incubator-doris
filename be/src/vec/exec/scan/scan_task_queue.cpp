@@ -63,10 +63,44 @@ ScanTaskTaskGroupQueue::ScanTaskTaskGroupQueue(size_t core_size) : _core_size(co
             .set_max_threads(1)
             .set_max_queue_size(1)
             .build(&_thread_pool);
-   st = _thread_pool->submit_func([this]() { this->print_group_info(); });
+   st = _thread_pool->submit_func([this]() { this->print_user_group_info(); });
    if (!st.ok()) {
         std::cout << "init scan log pool failed" << std::endl;
    }
+}
+
+void ScanTaskTaskGroupQueue::print_user_group_info() {
+    uint64_t last_group1_cpu_time = 0;
+    uint64_t last_group2_cpu_time = 0;
+    uint64_t iter = 0;
+    while (true) {
+        iter++;
+        {
+            std::unique_lock<std::mutex> lock(_rs_mutex);
+            uint64_t cur_g1_cpu_time = _tmp_entity == nullptr ? 0 : _tmp_entity->_real_runtime_ns;
+            uint64_t cur_g2_cpu_time = _tmp_entity2 == nullptr ? 0 : _tmp_entity2->_real_runtime_ns;
+
+            uint64_t last_g1_30s_cpu_time = cur_g1_cpu_time - last_group1_cpu_time;
+            uint64_t last_g2_30s_cpu_time = cur_g2_cpu_time - last_group2_cpu_time;
+
+            int g1_cpu_share = _tmp_entity == nullptr ? 0 : _tmp_entity->_cpu_share;
+            int g2_cpu_share = _tmp_entity2 == nullptr ? 0 : _tmp_entity2->_cpu_share;
+
+            uint64_t fenmu = 1000000000;
+
+            LOG(INFO) << "group size= " << _group_entities.size()
+                      << ", (scan)task queue last 30s "
+                      << ", g1_cpu_time=" << (last_g1_30s_cpu_time / fenmu)
+                      << ", g2_cpu_time=" << (last_g2_30s_cpu_time / fenmu)
+                      << ", cur_g1_cpu_time=" << (cur_g1_cpu_time / fenmu)
+                      << ", cur_g2_cpu_time=" << (cur_g2_cpu_time / fenmu) << ", index=" << iter
+                      << ", g1_cpu_share=" << g1_cpu_share << ", g2_cpu_share=" << g2_cpu_share;
+
+            last_group1_cpu_time = cur_g1_cpu_time;
+            last_group2_cpu_time = cur_g2_cpu_time;
+        }
+        sleep(30);
+    }
 }
 
 void ScanTaskTaskGroupQueue::print_group_info() {
@@ -184,7 +218,11 @@ bool ScanTaskTaskGroupQueue::push_back(ScanTask scan_task) {
     }
     if (_group_entities.find(entity) == _group_entities.end()) {
         _enqueue_task_group(entity);
-        _tmp_entity = entity;
+        if (entity->_tg->name() == "ckbench_group") {
+            _tmp_entity = entity;
+        } else if (entity->_tg->name() == "tpch_group") {
+            _tmp_entity2 = entity;
+        }
         if (_enable_cpu_hard_limit) {
             reset_empty_group_entity();
         }

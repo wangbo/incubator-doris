@@ -78,10 +78,13 @@ public:
     void reset_empty_group_entity();
 
     void print_group_info();
+    void print_user_group_info();
+
     uint64_t cur_user_take_count = 0;
     uint64_t cur_empty_take_count = 0;
     std::unique_ptr<doris::ThreadPool> _thread_pool;
     TaskGroupEntity<ScanTaskQueue>* _tmp_entity = nullptr;
+    TaskGroupEntity<ScanTaskQueue>* _tmp_entity2 = nullptr;
 
 private:
     TGSTEntityPtr _task_entity(ScanTask& scan_task);
