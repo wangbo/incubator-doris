@@ -368,7 +368,6 @@ Status TaskGroupTaskQueue::_push_back(PipelineTask* task) {
         } else if (entity->_tg->name() == "tpch_group") {
             _tmp_entity2 = entity;
         }
-        _tmp_entity = entity;
         if (_enable_cpu_hard_limit) {
             reset_empty_group_entity();
         }
