@@ -254,6 +254,9 @@ void TaskGroupTaskQueue::print_user_group_info() {
     uint64_t last_error_take_count = 0;
     uint64_t last_total_task_count = 0;
 
+    uint64_t last_g1_real_time = 0;
+    uint64_t last_g2_real_time = 0;
+
     while (true) {
         iter++;
         {
@@ -261,13 +264,16 @@ void TaskGroupTaskQueue::print_user_group_info() {
             uint64_t cur_g1_cpu_time = _ckbench_entity == nullptr ? 0 : _ckbench_entity->_vruntime_ns;
             uint64_t cur_g2_cpu_time = _tpch_entity == nullptr ? 0 : _tpch_entity->_vruntime_ns;
 
+            uint64_t cur_g1_real_time = _ckbench_entity == nullptr ? 0 : _ckbench_entity->_real_runtime_ns;;
+            uint64_t cur_g2_real_time = _tpch_entity == nullptr ? 0 : _tpch_entity->_real_runtime_ns;
+
             uint64_t last_g1_30s_cpu_time = cur_g1_cpu_time - last_group1_cpu_time;
             uint64_t last_g2_30s_cpu_time = cur_g2_cpu_time - last_group2_cpu_time;
 
             int g1_cpu_share = _ckbench_entity == nullptr ? 0 : _ckbench_entity->_cpu_share;
             int g2_cpu_share = _tpch_entity == nullptr ? 0 : _tpch_entity->_cpu_share;
 
-            uint64_t fenmu = 1000000000;
+            // uint64_t fenmu = 1000000000;
 
             uint64_t last_30s_total_take_count = total_take_count - last_total_task_count;
             uint64_t last_30s_error_take_count = error_take_count - last_error_take_count;
@@ -278,9 +284,14 @@ void TaskGroupTaskQueue::print_user_group_info() {
             uint64_t last_30s_g2_take_count = g2_take_count - last_g2_take_count;
             uint64_t last_30s_g2_has_to_take_count = g2_has_to_take_count - last_g2_has_to_take_count;
 
+            uint64_t last_30s_g1_real_time = cur_g1_real_time - last_g1_real_time;
+            uint64_t last_30s_g2_real_time = cur_g2_real_time - last_g2_real_time;
+
             LOG(INFO) << "group size= " << _group_entities.size() << ", (exec)task queue last 30s "
-                      << ", index=" << iter << ", cur_g1_cpu_time=" << (cur_g1_cpu_time / fenmu)
-                      << ", cur_g2_cpu_time=" << (cur_g2_cpu_time / fenmu)
+                      << ", index=" << iter << ", cur_g1_cpu_time=" << (cur_g1_cpu_time)
+                      << ", cur_g2_cpu_time=" << (cur_g2_cpu_time)
+                      << ", cur_g1_real_time=" << cur_g1_real_time
+                      << ", cur_g2_real_time=" << cur_g2_real_time
                       << ", g1_cpu_share=" << g1_cpu_share << ", g2_cpu_share=" << g2_cpu_share
                       << ", total_take_count=" << total_take_count
                       << ", g1_take_count=" << g1_take_count
@@ -288,8 +299,10 @@ void TaskGroupTaskQueue::print_user_group_info() {
                       << ", g2_take_count=" << g2_take_count
                       << ", g2_has_to_take_count=" << g2_has_to_take_count
                       << ", error_take_count=" << error_take_count
-                      << ", last 30s: g1_cpu_time=" << (last_g1_30s_cpu_time / fenmu) 
-                      << ", g2_cpu_time=" << (last_g2_30s_cpu_time / fenmu)
+                      << ", last 30s: g1_cpu_time=" << (last_g1_30s_cpu_time) 
+                      << ", g2_cpu_time=" << (last_g2_30s_cpu_time)
+                      << ", g1 real time=" << last_30s_g1_real_time
+                      << ", g2 real time=" << last_30s_g2_real_time
                       << ", g1 takecout=" << last_30s_g1_take_count
                       << ", g1 hash to take count=" << last_30s_g1_has_to_take_count
                       << ", g2 takecout=" << last_30s_g2_take_count
@@ -308,6 +321,9 @@ void TaskGroupTaskQueue::print_user_group_info() {
 
             last_g2_take_count = g2_take_count;
             last_g2_has_to_take_count = g2_has_to_take_count;
+
+            last_g1_real_time = cur_g1_real_time;
+            last_g2_real_time = cur_g2_real_time;
         }
         sleep(30);
     }
