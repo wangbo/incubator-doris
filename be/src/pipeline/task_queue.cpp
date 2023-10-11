@@ -248,14 +248,14 @@ void TaskGroupTaskQueue::print_user_group_info() {
         iter++;
         {
             std::unique_lock<std::mutex> lock(_rs_mutex);
-            uint64_t cur_g1_cpu_time = _tmp_entity == nullptr ? 0 : _tmp_entity->_real_runtime_ns;
-            uint64_t cur_g2_cpu_time = _tmp_entity2 == nullptr ? 0 : _tmp_entity2->_real_runtime_ns;
+            uint64_t cur_g1_cpu_time = _ckbench_entity == nullptr ? 0 : _ckbench_entity->_real_runtime_ns;
+            uint64_t cur_g2_cpu_time = _tpch_entity == nullptr ? 0 : _tpch_entity->_real_runtime_ns;
 
             uint64_t last_g1_30s_cpu_time = cur_g1_cpu_time - last_group1_cpu_time;
             uint64_t last_g2_30s_cpu_time = cur_g2_cpu_time - last_group2_cpu_time;
 
-            int g1_cpu_share = _tmp_entity == nullptr ? 0 : _tmp_entity->_cpu_share;
-            int g2_cpu_share = _tmp_entity2 == nullptr ? 0 : _tmp_entity2->_cpu_share;
+            int g1_cpu_share = _ckbench_entity == nullptr ? 0 : _ckbench_entity->_cpu_share;
+            int g2_cpu_share = _tpch_entity == nullptr ? 0 : _tpch_entity->_cpu_share;
 
             uint64_t fenmu = 1000000000;
 

@@ -198,6 +198,7 @@ public:
     std::unique_ptr<doris::ThreadPool> _thread_pool;
     taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _ckbench_entity = nullptr;
     taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _tpch_entity = nullptr;
+    taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _tmp_entity = nullptr;
 
     uint64_t total_take_count = 0;
     uint64_t g1_take_count = 0;
