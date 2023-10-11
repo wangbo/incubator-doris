@@ -265,7 +265,13 @@ void TaskGroupTaskQueue::print_user_group_info() {
                       << ", g2_cpu_time=" << (last_g2_30s_cpu_time / fenmu)
                       << ", cur_g1_cpu_time=" << (cur_g1_cpu_time / fenmu)
                       << ", cur_g2_cpu_time=" << (cur_g2_cpu_time / fenmu) << ", index=" << iter
-                      << ", g1_cpu_share=" << g1_cpu_share << ", g2_cpu_share=" << g2_cpu_share;
+                      << ", g1_cpu_share=" << g1_cpu_share << ", g2_cpu_share=" << g2_cpu_share
+                      << ", total_take_count=" << total_take_count
+                      << ", g1_take_count=" << g1_take_count
+                      << ", g1_has_to_take_count" << g1_has_to_take_count
+                      << ", g2_take_count" << g2_take_count
+                      << ", g2_has_to_take_count" << g2_has_to_take_count
+                      << ", error_take_count=" << error_take_count;
 
             last_group1_cpu_time = cur_g1_cpu_time;
             last_group2_cpu_time = cur_g2_cpu_time;
@@ -364,9 +370,9 @@ Status TaskGroupTaskQueue::_push_back(PipelineTask* task) {
     if (_group_entities.find(entity) == _group_entities.end()) {
         _enqueue_task_group<from_executor>(entity);
         if (entity->_tg->name() == "ckbench_group") {
-            _tmp_entity = entity;
+            _ckbench_entity = entity;
         } else if (entity->_tg->name() == "tpch_group") {
-            _tmp_entity2 = entity;
+            _tpch_entity = entity;
         }
         if (_enable_cpu_hard_limit) {
             reset_empty_group_entity();
@@ -393,12 +399,35 @@ PipelineTask* TaskGroupTaskQueue::take(size_t core_id) {
             }
         }
     }
+    total_take_count++;
     if (entity->is_empty_group_entity()) {
-        cur_empty_take_count++;
         return _empty_pip_task;
     }
-    cur_user_take_count++;
     DCHECK(entity->task_size() > 0);
+
+    // fill takecount profile
+    if (entity->_tg->name() == "ckbench_group") {
+        g1_take_count++;
+        if (_group_entities.size() == 2 &&
+            _ckbench_entity->_real_runtime_ns > _tpch_entity->_real_runtime_ns) {
+            error_take_count++;
+        }
+        if (_group_entities.size() == 1 &&
+            _ckbench_entity->_real_runtime_ns > _tpch_entity->_real_runtime_ns) {
+            g1_has_to_take_count++;
+        }
+    } else if (entity->_tg->name() == "tpch_group") {
+        g2_take_count++;
+        if (_group_entities.size() == 2 &&
+            _tpch_entity->_real_runtime_ns > _ckbench_entity->_real_runtime_ns) {
+            error_take_count++;
+        }
+        if (_group_entities.size() == 1 &&
+            _tpch_entity->_real_runtime_ns > _ckbench_entity->_real_runtime_ns) {
+            g2_has_to_take_count++;
+        }
+    }
+
     if (entity->task_size() == 1) {
         _dequeue_task_group(entity);
         if (_enable_cpu_hard_limit) {

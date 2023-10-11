@@ -196,8 +196,15 @@ public:
     uint64_t cur_user_take_count = 0;
     uint64_t cur_empty_take_count = 0;
     std::unique_ptr<doris::ThreadPool> _thread_pool;
-    taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _tmp_entity = nullptr;
-    taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _tmp_entity2 = nullptr;
+    taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _ckbench_entity = nullptr;
+    taskgroup::TaskGroupEntity<std::queue<pipeline::PipelineTask*>>* _tpch_entity = nullptr;
+
+    uint64_t total_take_count = 0;
+    uint64_t g1_take_count = 0;
+    uint64_t g1_has_to_take_count = 0;
+    uint64_t g2_take_count = 0;
+    uint64_t g2_has_to_take_count = 0;
+    uint64_t error_take_count = 0;
 
 private:
     template <bool from_executor>
