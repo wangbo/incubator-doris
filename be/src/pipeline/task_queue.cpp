@@ -413,7 +413,7 @@ PipelineTask* TaskGroupTaskQueue::take(size_t core_id) {
             error_take_count++;
         }
         if (_group_entities.size() == 1 &&
-            _ckbench_entity->_real_runtime_ns > _tpch_entity->_real_runtime_ns) {
+            (_tpch_entity == nullptr || _ckbench_entity->_real_runtime_ns > _tpch_entity->_real_runtime_ns)) {
             g1_has_to_take_count++;
         }
     } else if (entity->_tg->name() == "tpch_group") {
@@ -423,7 +423,7 @@ PipelineTask* TaskGroupTaskQueue::take(size_t core_id) {
             error_take_count++;
         }
         if (_group_entities.size() == 1 &&
-            _tpch_entity->_real_runtime_ns > _ckbench_entity->_real_runtime_ns) {
+            (_ckbench_entity == nullptr || _tpch_entity->_real_runtime_ns > _ckbench_entity->_real_runtime_ns)) {
             g2_has_to_take_count++;
         }
     }
