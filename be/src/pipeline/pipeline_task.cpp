@@ -229,11 +229,11 @@ Status PipelineTask::execute(bool* eos) {
     int64_t time_spent = 0;
 
     // todo(wb) use a more lightweight timer
-    RuntimeProfile::Counter tmp_timer(TUnit::TIME_NS);
+    // RuntimeProfile::Counter tmp_timer(TUnit::TIME_NS);
 
     Defer defer {[&]() {
         if (_task_queue) {
-            time_spent = tmp_timer.value();
+            // time_spent = tmp_timer.value();
             _task_queue->update_statistics(this, time_spent);
         }
     }};
@@ -241,7 +241,8 @@ Status PipelineTask::execute(bool* eos) {
     *eos = false;
     if (!_opened) {
         {
-            SCOPED_CPU_TIMER(&tmp_timer);
+            // SCOPED_CPU_TIMER(&tmp_timer);
+            SCOPED_RAW_TIMER(&time_spent);
             auto st = _open();
             if (st.is<ErrorCode::PIP_WAIT_FOR_RF>()) {
                 set_state(PipelineTaskState::BLOCKED_FOR_RF);
@@ -276,12 +277,13 @@ Status PipelineTask::execute(bool* eos) {
             set_state(PipelineTaskState::BLOCKED_FOR_SINK);
             break;
         }
-        if (tmp_timer.value() > THREAD_TIME_SLICE) {
+        if (time_spent > THREAD_TIME_SLICE) {
             COUNTER_UPDATE(_yield_counts, 1);
             break;
         }
         // TODO llj: Pipeline entity should_yield
-        SCOPED_CPU_TIMER(&tmp_timer);
+        // SCOPED_CPU_TIMER(&tmp_timer);
+        SCOPED_RAW_TIMER(&time_spent);
         _block->clear_column_data(_root->row_desc().num_materialized_slots());
         auto* block = _block.get();
 

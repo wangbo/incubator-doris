@@ -260,7 +260,7 @@ void TaskGroupTaskQueue::print_user_group_info() {
             uint64_t fenmu = 1000000000;
 
             LOG(INFO) << "group size= " << _group_entities.size()
-                      << ", (exec)task queue last 30s, "
+                      << ", (exec)task queue last 30s "
                       << ", g1_cpu_time=" << (last_g1_30s_cpu_time / fenmu)
                       << ", g2_cpu_time=" << (last_g2_30s_cpu_time / fenmu)
                       << ", cur_g1_cpu_time=" << (cur_g1_cpu_time / fenmu)

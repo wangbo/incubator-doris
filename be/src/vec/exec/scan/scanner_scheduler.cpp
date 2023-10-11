@@ -448,12 +448,13 @@ void ScannerScheduler::_task_group_scanner_scan(ScannerScheduler* scheduler,
         if (success) {
             int64_t time_spent = 0;
             if (!scan_task.is_empty_task) {
-                RuntimeProfile::Counter tmp_timer(TUnit::TIME_NS);
+                // RuntimeProfile::Counter tmp_timer(TUnit::TIME_NS);
                 {
-                    SCOPED_CPU_TIMER(&tmp_timer);
+                    SCOPED_RAW_TIMER(&time_spent);
+                    // SCOPED_CPU_TIMER(&tmp_timer);
                     scan_task.scan_func();
                 }
-                time_spent = tmp_timer.value();
+                // time_spent = tmp_timer.value();
             } else {
                 {
                     SCOPED_RAW_TIMER(&time_spent);
