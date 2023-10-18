@@ -2247,4 +2247,6 @@ public class Config extends ConfigBase {
     })
     public static String access_control_allowed_origin_domain = "*";
 
+    @ConfField
+    public static int publish_topic_info_interval_ms = 30000; // 30s
 }
