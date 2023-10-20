@@ -187,6 +187,8 @@ public:
 
     std::string debug_string();
 
+    std::string time_string();
+
     taskgroup::TaskGroup* get_task_group() const;
 
     void set_task_queue(TaskQueue* task_queue);

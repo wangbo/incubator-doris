@@ -256,12 +256,19 @@ Status PipelineTask::execute(bool* eos) {
             RETURN_IF_ERROR(_root->get_block(_state, block, _data_state));
         }
         *eos = _data_state == SourceState::FINISHED;
+        // if (*eos) {
+        //     LOG(INFO) << "src eos,id=" << print_id(_fragment_context->get_fragment_instance_id());
+        // }
         if (_block->rows() != 0 || *eos) {
             SCOPED_TIMER(_sink_timer);
             auto status = _sink->sink(_state, block, _data_state);
             if (!status.is<ErrorCode::END_OF_FILE>()) {
                 RETURN_IF_ERROR(status);
             }
+            //  else {
+            //     LOG(INFO) << "sink eos,id="
+            //               << print_id(_fragment_context->get_fragment_instance_id());
+            // }
             *eos = status.is<ErrorCode::END_OF_FILE>() ? true : *eos;
             if (*eos) { // just return, the scheduler will do finish work
                 break;
@@ -361,6 +368,17 @@ void PipelineTask::set_state(PipelineTaskState state) {
     }
 
     _cur_state = state;
+}
+
+std::string PipelineTask::time_string() {
+    std::stringstream ss;
+    ss << " idx=" << _index 
+        << "," << (_begin_execute_time / 1000000) 
+       << "," << (_eos_time / 1000000) 
+       << "," << (_src_pending_finish_over_time / 1000000) 
+       << "," << (_dst_pending_finish_over_time / 1000000) 
+       << "," << (_close_pipeline_time / 1000000);
+    return ss.str();
 }
 
 std::string PipelineTask::debug_string() {

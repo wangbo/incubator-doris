@@ -142,6 +142,12 @@ PipelineFragmentContext::~PipelineFragmentContext() {
         _call_back(_runtime_state.get(), &_exec_status);
     }
     DCHECK(!_report_thread_active);
+    std::stringstream ss;
+    ss << "deregister pipe frag context, ins_id=" << print_id(_fragment_instance_id);
+    for (auto& task : _tasks) {
+        ss << task->time_string();
+    }
+    LOG(INFO) << ss.str();
 }
 
 void PipelineFragmentContext::cancel(const PPlanFragmentCancelReason& reason,

@@ -1015,7 +1015,7 @@ void PInternalServiceImpl::transmit_block(google::protobuf::RpcController* contr
     // under high concurrency, thread pool will have a lot of lock contention.
     // May offer failed to the thread pool, so that we should avoid using thread
     // pool here.
-    _transmit_block(controller, request, response, done, Status::OK());
+    _transmit_block(controller, request, response, done, Status::OK(), receive_time);
 }
 
 void PInternalServiceImpl::transmit_block_by_http(google::protobuf::RpcController* controller,
@@ -1029,7 +1029,7 @@ void PInternalServiceImpl::transmit_block_by_http(google::protobuf::RpcControlle
         brpc::Controller* cntl = static_cast<brpc::Controller*>(controller);
         Status st =
                 attachment_extract_request_contain_block<PTransmitDataParams>(new_request, cntl);
-        _transmit_block(controller, new_request, response, new_done, st);
+        _transmit_block(controller, new_request, response, new_done, st, 0);
     });
     if (!ret) {
         offer_failed(response, done, _heavy_work_pool);
@@ -1041,7 +1041,7 @@ void PInternalServiceImpl::_transmit_block(google::protobuf::RpcController* cont
                                            const PTransmitDataParams* request,
                                            PTransmitDataResult* response,
                                            google::protobuf::Closure* done,
-                                           const Status& extract_st) {
+                                           const Status& extract_st, int64_t receive_time) {
     std::string query_id;
     TUniqueId finst_id;
     if (request->has_query_id()) {
@@ -1060,7 +1060,7 @@ void PInternalServiceImpl::_transmit_block(google::protobuf::RpcController* cont
         if (!st.ok()) {
             LOG(WARNING) << "transmit_block failed, message=" << st
                          << ", fragment_instance_id=" << print_id(request->finst_id())
-                         << ", node=" << request->node_id();
+                         << ", node=" << request->node_id() << ", time ts=" << receive_time;
         }
     } else {
         st = extract_st;

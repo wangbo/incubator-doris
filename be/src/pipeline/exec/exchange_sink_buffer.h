@@ -115,8 +115,9 @@ public:
             const std::function<void(const InstanceLoId&, const std::string&)>& fail_fn) {
         _fail_fn = fail_fn;
     }
-    void addSuccessHandler(const std::function<void(const InstanceLoId&, const bool&, const T&,
-                                                    const int64_t&)>& suc_fn) {
+    void addSuccessHandler(
+            const std::function<void(const InstanceLoId&, const bool&, const T&, const int64_t&,
+                                     const PUniqueId&, const int&, const TUniqueId&)>& suc_fn) {
         _suc_fn = suc_fn;
     }
 
@@ -133,7 +134,7 @@ public:
                         cntl.latency_us());
                 _fail_fn(_id, err);
             } else {
-                _suc_fn(_id, _eos, result, start_rpc_time);
+                _suc_fn(_id, _eos, result, start_rpc_time, finst_id, node_id, cur_id);
             }
         } catch (const std::exception& exp) {
             LOG(FATAL) << "brpc callback error: " << exp.what();
@@ -146,9 +147,15 @@ public:
     T result;
     int64_t start_rpc_time;
 
+    PUniqueId finst_id;
+    int node_id;
+    TUniqueId cur_id;
+
 private:
     std::function<void(const InstanceLoId&, const std::string&)> _fail_fn;
-    std::function<void(const InstanceLoId&, const bool&, const T&, const int64_t&)> _suc_fn;
+    std::function<void(const InstanceLoId&, const bool&, const T&, const int64_t&, const PUniqueId&,
+                       const int&, const TUniqueId&)>
+            _suc_fn;
     InstanceLoId _id;
     bool _eos;
     vectorized::BroadcastPBlockHolder* _data;
@@ -207,7 +214,7 @@ private:
     void _construct_request(InstanceLoId id, PUniqueId);
     inline void _ended(InstanceLoId id);
     inline void _failed(InstanceLoId id, const std::string& err);
-    inline void _set_receiver_eof(InstanceLoId id);
+    inline void _set_receiver_eof(InstanceLoId id, PUniqueId finst_id, int64_t node_id, int64_t ts, TUniqueId cur_id);
     inline bool _is_receiver_eof(InstanceLoId id);
     void get_max_min_rpc_time(int64_t* max_time, int64_t* min_time);
     int64_t get_sum_rpc_time();

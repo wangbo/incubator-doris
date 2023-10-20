@@ -124,9 +124,15 @@ Status ExchangeSinkBuffer::add_block(TransmitInfo&& request) {
         return Status::OK();
     }
     TUniqueId ins_id = request.channel->_fragment_instance_id;
+    if (_is_receiver_eof(ins_id.lo)) {
+        return Status::EndOfFile("receiver eof");
+    }
     bool send_now = false;
     {
         std::unique_lock<std::mutex> lock(*_instance_to_package_queue_mutex[ins_id.lo]);
+        if (_instance_to_receiver_eof[ins_id.lo]) {
+            return Status::EndOfFile("receiver eof");
+        }
         // Do not have in process rpc, directly send
         if (_instance_to_sending_by_pipeline[ins_id.lo]) {
             send_now = true;
@@ -153,6 +159,9 @@ Status ExchangeSinkBuffer::add_block(BroadcastTransmitInfo&& request) {
     request.block_holder->ref();
     {
         std::unique_lock<std::mutex> lock(*_instance_to_package_queue_mutex[ins_id.lo]);
+        if (_instance_to_receiver_eof[ins_id.lo]) {
+            return Status::EndOfFile("receiver eof");
+        }
         // Do not have in process rpc, directly send
         if (_instance_to_sending_by_pipeline[ins_id.lo]) {
             send_now = true;
@@ -169,6 +178,10 @@ Status ExchangeSinkBuffer::add_block(BroadcastTransmitInfo&& request) {
 
 Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
     std::unique_lock<std::mutex> lock(*_instance_to_package_queue_mutex[id]);
+
+    if (_instance_to_receiver_eof[id]) {
+        return Status::EndOfFile("receiver eof");
+    }
 
     DCHECK(_instance_to_sending_by_pipeline[id] == false);
 
@@ -202,13 +215,22 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         closure->start_rpc_time = GetCurrentTimeNanos();
+        
+        closure->finst_id = brpc_request->finst_id();
+        closure->node_id = brpc_request->node_id();
+        closure->cur_id = _context->get_fragment_instance_id();
+
         closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                        const PTransmitDataResult& result,
-                                       const int64_t& start_rpc_time) {
+                                       const int64_t& start_rpc_time, 
+                                       const PUniqueId& finst_id, 
+                                       const int& node_id, const TUniqueId& cur_id) {
             set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s(Status::create(result.status()));
             if (s.is<ErrorCode::END_OF_FILE>()) {
-                _set_receiver_eof(id);
+                LOG(INFO) << "receive server eof ack, ins id=" << print_id(finst_id)
+                          << ", nodeid=" << node_id << ", rec time=" << result.receive_time();
+                _set_receiver_eof(id, finst_id, node_id, result.receive_time(), cur_id);
             } else if (!s.ok()) {
                 _failed(id,
                         fmt::format("exchange req success but status isn't ok: {}", s.to_string()));
@@ -255,13 +277,21 @@ Status ExchangeSinkBuffer::_send_rpc(InstanceLoId id) {
         closure->addFailedHandler(
                 [&](const InstanceLoId& id, const std::string& err) { _failed(id, err); });
         closure->start_rpc_time = GetCurrentTimeNanos();
+
+        closure->finst_id = brpc_request->finst_id();
+        closure->node_id = brpc_request->node_id();
+        closure->cur_id = _context->get_fragment_instance_id();
+
         closure->addSuccessHandler([&](const InstanceLoId& id, const bool& eos,
                                        const PTransmitDataResult& result,
-                                       const int64_t& start_rpc_time) {
+                                       const int64_t& start_rpc_time, const PUniqueId& finst_id,
+                                       const int& node_id, const TUniqueId& cur_id) {
             set_rpc_time(id, start_rpc_time, result.receive_time());
             Status s(Status::create(result.status()));
             if (s.is<ErrorCode::END_OF_FILE>()) {
-                _set_receiver_eof(id);
+                LOG(INFO) << "receive server2 eof ack, ins id=" << print_id(finst_id)
+                          << ", nodeid=" << node_id << ",loid=" << id << ", rec time=" << result.receive_time();
+                _set_receiver_eof(id, finst_id, node_id, result.receive_time(), cur_id);
             } else if (!s.ok()) {
                 _failed(id,
                         fmt::format("exchange req success but status isn't ok: {}", s.to_string()));
@@ -313,10 +343,12 @@ void ExchangeSinkBuffer::_failed(InstanceLoId id, const std::string& err) {
     _ended(id);
 }
 
-void ExchangeSinkBuffer::_set_receiver_eof(InstanceLoId id) {
+void ExchangeSinkBuffer::_set_receiver_eof(InstanceLoId id, PUniqueId finst_id, int64_t node_id, int64_t ts, TUniqueId cur_id) {
     std::unique_lock<std::mutex> lock(*_instance_to_package_queue_mutex[id]);
+    // bool before = _instance_to_sending_by_pipeline[id];
     _instance_to_receiver_eof[id] = true;
     _instance_to_sending_by_pipeline[id] = true;
+    // bool after = _instance_to_sending_by_pipeline[id];
 }
 
 bool ExchangeSinkBuffer::_is_receiver_eof(InstanceLoId id) {
