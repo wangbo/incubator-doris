@@ -654,17 +654,13 @@ Status FragmentMgr::_get_query_ctx(const Params& params, TUniqueId query_id, boo
                               << " use task group: " << tg->debug_string()
                               << " cpu_hard_limit: " << task_group_info.cpu_hard_limit
                               << " cpu_share:" << task_group_info.cpu_share;
-                    if (task_group_info.cpu_hard_limit > 0) {
-                        Status ret = _exec_env->task_group_manager()->create_and_get_task_scheduler(
-                                tg_id, tg_name, task_group_info.cpu_hard_limit, _exec_env,
-                                query_ctx.get());
-                        if (!ret.ok()) {
-                            LOG(INFO) << "workload group init failed "
-                                      << ", name=" << tg_name << ", id=" << tg_id
-                                      << ", reason=" << ret.to_string();
-                        }
-                    } else {
-                        query_ctx->set_task_group(tg);
+                    Status ret = _exec_env->task_group_manager()->create_and_get_task_scheduler(
+                            tg_id, tg_name, task_group_info.cpu_hard_limit,
+                            task_group_info.cpu_share, _exec_env, query_ctx.get());
+                    if (!ret.ok()) {
+                        LOG(INFO) << "workload group init failed "
+                                  << ", name=" << tg_name << ", id=" << tg_id
+                                  << ", reason=" << ret.to_string();
                     }
                 }
             } else {

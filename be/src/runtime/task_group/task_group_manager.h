@@ -51,8 +51,9 @@ public:
     void get_resource_groups(const std::function<bool(const TaskGroupPtr& ptr)>& pred,
                              std::vector<TaskGroupPtr>* task_groups);
 
-    Status create_and_get_task_scheduler(uint64_t wg_id, std::string wg_name, int cpu_hard_limit,
-                                         ExecEnv* exec_env, QueryContext* query_ctx_ptr);
+    Status create_and_get_task_scheduler(uint64_t tg_id, std::string tg_name, int cpu_hard_limit,
+                                         int cpu_shares, ExecEnv* exec_env,
+                                         QueryContext* query_ctx_ptr);
 
     void stop();
 
