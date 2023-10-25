@@ -147,6 +147,7 @@ PipelineFragmentContext::~PipelineFragmentContext() {
     for (auto& task : _tasks) {
         ss << task->time_string();
     }
+    ss << ";" << (_fragment_watcher.elapsed_time() / 1000000)
     LOG(INFO) << ss.str();
 }
 
