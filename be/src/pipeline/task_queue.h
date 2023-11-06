@@ -186,6 +186,8 @@ public:
 
     void update_tg_cpu_share(const taskgroup::TaskGroupInfo& task_group_info,
                              taskgroup::TGPTEntityPtr entity) override;
+    
+    void log_group_runtime_info();
 
 private:
     template <bool from_executor>

@@ -68,10 +68,13 @@ public:
 
     void check_and_update_cpu_share(const TaskGroupInfo& tg_info);
 
+    uint64_t real_runtime() { return _real_runtime_ns; }
+
 private:
     QueueType* _task_queue;
 
     uint64_t _vruntime_ns = 0;
+    uint64_t _real_runtime_ns = 0;
     taskgroup::TaskGroup* _tg;
 
     std::string _type;
