@@ -212,6 +212,8 @@ private:
     int _total_cpu_share = 0;
     std::atomic<taskgroup::TGPTEntityPtr> _min_tg_entity = nullptr;
     uint64_t _min_tg_v_runtime_ns = 0;
+
+    std::unique_ptr<doris::ThreadPool> _thread_pool;
 };
 
 } // namespace pipeline

@@ -250,7 +250,7 @@ void TaskGroupTaskQueue::log_group_runtime_info() {
                     if (tg_last_cpu_time.find(tg_id) == tg_last_cpu_time.end()) {
                         ss << " real_time=" << cur_real_time << ", vtime=" << cur_v_time;
                     } else {
-                        auto& last_pair = tg_last_cpu_time[tg_id].second;
+                        auto& last_pair = tg_last_cpu_time[tg_id];
                         uint64_t last_real_time = cur_real_time - last_pair.first;
                         uint64_t last_v_time = cur_v_time - last_pair.second;
                         ss << " real_time=" << last_real_time << ", vtime=" << last_v_time;
