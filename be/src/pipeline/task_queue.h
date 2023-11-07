@@ -31,6 +31,7 @@
 #include "common/status.h"
 #include "pipeline_task.h"
 #include "runtime/task_group/task_group.h"
+#include "util/threadpool.h"
 
 namespace doris {
 namespace pipeline {
