@@ -241,7 +241,7 @@ void TaskGroupTaskQueue::log_group_runtime_info() {
             std::unique_lock<std::mutex> lock(_rs_mutex);
             if (_group_entities.size() > 0) {
                 std::stringstream ss;
-                ss << "last 30s exec cpu inc time,";
+                ss << "last 30s exec cpu inc time, size=" << _group_entities.size() << " ";
                 for (auto* entity : _group_entities) {
                     uint64_t tg_id = entity->task_group_id();
                     ss << " id=" << tg_id;
@@ -259,6 +259,8 @@ void TaskGroupTaskQueue::log_group_runtime_info() {
                             std::pair<uint64_t, uint64_t>(cur_real_time, cur_v_time);
                 }
                 LOG(INFO) << ss.str();
+            } else {
+                LOG(INFO) << "last 30s exec cpu inc time, group size=0";
             }
         }
         sleep(30);
