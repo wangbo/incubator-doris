@@ -251,8 +251,8 @@ void TaskGroupTaskQueue::log_group_runtime_info() {
                         ss << " real_time=" << cur_real_time << ", vtime=" << cur_v_time;
                     } else {
                         auto& last_pair = tg_last_cpu_time[tg_id];
-                        uint64_t last_real_time = cur_real_time - last_pair.first;
-                        uint64_t last_v_time = cur_v_time - last_pair.second;
+                        uint64_t last_real_time = (cur_real_time - last_pair.first) / 1000000;
+                        uint64_t last_v_time = (cur_v_time - last_pair.second) / 1000000;
                         ss << " real_time=" << last_real_time << ", vtime=" << last_v_time;
                     }
                     tg_last_cpu_time[tg_id] =
