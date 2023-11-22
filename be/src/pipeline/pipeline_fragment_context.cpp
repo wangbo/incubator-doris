@@ -697,7 +697,7 @@ Status PipelineFragmentContext::submit() {
     auto* scheduler = _exec_env->pipeline_task_scheduler();
     if (_query_ctx->get_task_scheduler()) {
         scheduler = _query_ctx->get_task_scheduler();
-    } else if (_task_group_entity) {
+    } else if (_task_group_entity && !config::enable_cgroup_cpu_soft_limit) {
         scheduler = _exec_env->pipeline_task_group_scheduler();
     }
     for (auto& task : _tasks) {

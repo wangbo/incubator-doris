@@ -557,8 +557,9 @@ int64_t MemTrackerLimiter::free_top_overcommit_query(
                         continue;
                     }
                     if (tracker->is_query_cancelled()) {
-                        canceling_task.push_back(fmt::format("{}:{} Bytes", tracker->label(),
-                                                             tracker->consumption()));
+                        canceling_task.push_back(fmt::format(
+                                "{}:{}", tracker->label(),
+                                PrettyPrinter::print(tracker->consumption(), TUnit::BYTES)));
                         continue;
                     }
                     int64_t overcommit_ratio =
@@ -608,9 +609,9 @@ int64_t MemTrackerLimiter::free_top_overcommit_query(
                     cancelled_queryid, PPlanFragmentCancelReason::MEMORY_LIMIT_EXCEED,
                     cancel_msg(query_mem, max_pq.top().second));
 
-            usage_strings.push_back(fmt::format("{} memory used {} Bytes, overcommit ratio: {}",
-                                                max_pq.top().second, query_mem,
-                                                max_pq.top().first));
+            usage_strings.push_back(fmt::format(
+                    "{} memory used {} Bytes, overcommit ratio: {}", max_pq.top().second,
+                    PrettyPrinter::print(query_mem, TUnit::BYTES), max_pq.top().first));
             COUNTER_UPDATE(freed_memory_counter, query_mem);
             COUNTER_UPDATE(cancel_tasks_counter, 1);
             if (freed_memory_counter->value() > min_free_mem) {
@@ -622,7 +623,8 @@ int64_t MemTrackerLimiter::free_top_overcommit_query(
 
     profile->merge(free_top_memory_task_profile.get());
     LOG(INFO) << log_prefix << "cancel finished, " << cancel_tasks_counter->value()
-              << " tasks canceled, memory size being freed: " << freed_memory_counter->value()
+              << " tasks canceled, memory size being freed: "
+              << PrettyPrinter::print(freed_memory_counter->value(), TUnit::BYTES)
               << ", consist of: " << join(usage_strings, ",");
     return freed_memory_counter->value();
 }
@@ -659,12 +661,17 @@ int64_t MemTrackerLimiter::tg_memory_limit_gc(
     LOG(INFO) << fmt::format(
             "[MemoryGC] work load group start gc, id:{} name:{}, memory limit: {}, used: {}, "
             "need_free_mem: {}.",
-            id, name, memory_limit, used_memory, need_free_mem);
+            id, name, PrettyPrinter::print(memory_limit, TUnit::BYTES),
+            PrettyPrinter::print(used_memory, TUnit::BYTES),
+            PrettyPrinter::print(need_free_mem, TUnit::BYTES));
     Defer defer {[&]() {
         LOG(INFO) << fmt::format(
                 "[MemoryGC] work load group finished gc, id:{} name:{}, memory limit: {}, used: "
                 "{}, need_free_mem: {}, freed memory: {}.",
-                id, name, memory_limit, used_memory, need_free_mem, freed_mem);
+                id, name, PrettyPrinter::print(memory_limit, TUnit::BYTES),
+                PrettyPrinter::print(used_memory, TUnit::BYTES),
+                PrettyPrinter::print(need_free_mem, TUnit::BYTES),
+                PrettyPrinter::print(freed_mem, TUnit::BYTES));
     }};
 
     // 1. free top overcommit query

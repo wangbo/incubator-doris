@@ -228,6 +228,20 @@ void Daemon::memory_gc_thread() {
         auto sys_mem_available = doris::MemInfo::sys_mem_available();
         auto proc_mem_no_allocator_cache = doris::MemInfo::proc_mem_no_allocator_cache();
 
+        // LOG all task group usage for debug
+        if (config::log_task_group_memory_usage) {
+            std::vector<taskgroup::TaskGroupPtr> task_groups;
+            ExecEnv::GetInstance()->task_group_manager()->get_resource_groups(
+                    [](const taskgroup::TaskGroupPtr& task_group) { return true; }, &task_groups);
+            for (const auto& task_group : task_groups) {
+                std::stringstream ss;
+                ss << "[MemoryGC]tg mem usage id=" << task_group->id()
+                   << ", name=" << task_group->name() << ", mem used="
+                   << PrettyPrinter::print(task_group->memory_used(), TUnit::BYTES);
+                LOG(INFO) << ss.str();
+            }
+        }
+
         // GC excess memory for resource groups that not enable overcommit
         auto tg_free_mem = doris::MemInfo::tg_not_enable_overcommit_group_gc();
         sys_mem_available += tg_free_mem;

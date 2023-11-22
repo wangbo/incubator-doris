@@ -1165,6 +1165,7 @@ DECLARE_mBool(exit_on_exception);
 // cgroup
 DECLARE_mString(doris_cgroup_cpu_path);
 DECLARE_mBool(enable_cgroup_cpu_soft_limit);
+DECLARE_mBool(log_task_group_memory_usage);
 
 // This config controls whether the s3 file writer would flush cache asynchronously
 DECLARE_Bool(enable_flush_file_cache_async);
