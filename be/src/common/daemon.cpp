@@ -220,6 +220,7 @@ void Daemon::memory_gc_thread() {
     int32_t memory_minor_gc_sleep_time_ms = 0;
     int32_t memory_full_gc_sleep_time_ms = 0;
     int32_t memory_gc_sleep_time_ms = config::memory_gc_sleep_time_ms;
+    int64_t last_time = MonotonicMillis();
     while (!_stop_background_threads_latch.wait_for(
             std::chrono::milliseconds(interval_milliseconds))) {
         if (config::disable_memory_gc) {
@@ -230,15 +231,22 @@ void Daemon::memory_gc_thread() {
 
         // LOG all task group usage for debug
         if (config::log_task_group_memory_usage) {
-            std::vector<taskgroup::TaskGroupPtr> task_groups;
-            ExecEnv::GetInstance()->task_group_manager()->get_resource_groups(
-                    [](const taskgroup::TaskGroupPtr& task_group) { return true; }, &task_groups);
-            for (const auto& task_group : task_groups) {
-                std::stringstream ss;
-                ss << "[MemoryGC]tg mem usage id=" << task_group->id()
-                   << ", name=" << task_group->name() << ", mem used="
-                   << PrettyPrinter::print(task_group->memory_used(), TUnit::BYTES);
-                LOG(INFO) << ss.str();
+            int64_t current_time = MonotonicMillis();
+            uint64_t interval_ms = 1000;
+            if (current_time - last_time >= interval_ms) {
+                std::vector<taskgroup::TaskGroupPtr> task_groups;
+                ExecEnv::GetInstance()->task_group_manager()->get_resource_groups(
+                        [](const taskgroup::TaskGroupPtr& task_group) { return true; },
+                        &task_groups);
+                for (const auto& task_group : task_groups) {
+                    int64_t mem_used_ = task_group->memory_used();
+                    std::stringstream ss;
+                    ss << "[MemoryGC]tg mem usage id=" << task_group->id()
+                       << ", bytes=" << mem_used_ << ", name=" << task_group->name()
+                       << ", mem used=" << PrettyPrinter::print(mem_used_, TUnit::BYTES);
+                    LOG(INFO) << ss.str();
+                }
+                last_time = current_time;
             }
         }
 
