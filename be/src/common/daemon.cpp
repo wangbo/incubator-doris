@@ -242,7 +242,7 @@ void Daemon::memory_gc_thread() {
                     int64_t mem_used_ = task_group->memory_used();
                     std::stringstream ss;
                     ss << "[MemoryGC]tg mem usage id=" << task_group->id()
-                       << ", bytes=" << mem_used_ << ", name=" << task_group->name()
+                       << ", bytes=" << mem_used_ << "    , name=" << task_group->name()
                        << ", mem used=" << PrettyPrinter::print(mem_used_, TUnit::BYTES);
                     LOG(INFO) << ss.str();
                 }
