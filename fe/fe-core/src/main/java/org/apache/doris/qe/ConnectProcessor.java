@@ -318,7 +318,7 @@ public class ConnectProcessor {
                 break;
             }
         }
-        boolean needQueryQueue = globalSessionVariable.maxConcurrency > 0 && containsQuery;
+        boolean needQueryQueue = globalSessionVariable.maxConcurrency >= 0 && containsQuery;
         QueryQueue queryQueue = null;
         QueueOfferToken queueOfferToken = null;
         if (needQueryQueue) {

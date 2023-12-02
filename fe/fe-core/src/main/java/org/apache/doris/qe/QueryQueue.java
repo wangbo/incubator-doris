@@ -116,7 +116,7 @@ public class QueryQueue {
     }
 
     public void resetQueueProperty(int maxConcurrency, int maxQueueSize, int queryWaitTimeout) {
-        if (maxConcurrency <= 0 || maxQueueSize < 0 || queryWaitTimeout < 0) {
+        if (maxConcurrency < 0 || maxQueueSize < 0 || queryWaitTimeout < 0) {
             return;
         }
         try {
