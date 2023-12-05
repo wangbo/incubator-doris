@@ -245,12 +245,14 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
                 bool ret = false;
                 if (type == TabletStorageType::STORAGE_TYPE_LOCAL) {
                     if (auto* scan_sche = ctx->get_simple_scan_scheduler()) {
+                        LOG(INFO) << "test1205 submit simple scan sche";
                         auto work_func = [this, scanner = *iter, ctx] {
                             this->_scanner_scan(this, ctx, scanner);
                         };
                         SimplifiedScanTask simple_scan_task = {work_func, ctx};
                         ret = scan_sche->get_scan_queue()->try_put(simple_scan_task);
                     } else if (ctx->get_task_group() && config::enable_workload_group_for_scan) {
+                        LOG(INFO) << "test1205 submit doris sche";
                         auto work_func = [this, scanner = *iter, ctx] {
                             this->_scanner_scan(this, ctx, scanner);
                         };
@@ -259,6 +261,7 @@ void ScannerScheduler::_schedule_scanners(ScannerContext* ctx) {
                                 nice};
                         ret = _task_group_local_scan_queue->push_back(scan_task);
                     } else {
+                        LOG(INFO) << "test1205 submit no group";
                         PriorityThreadPool::Task task;
                         task.work_function = [this, scanner = *iter, ctx] {
                             this->_scanner_scan(this, ctx, scanner);

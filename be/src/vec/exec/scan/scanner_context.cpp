@@ -125,11 +125,14 @@ Status ScannerContext::init() {
 #ifndef BE_TEST
     // 3. get thread token
     if (_state->get_query_ctx()) {
+        LOG(INFO) << "test1205 set simple scan sche in scan ctx";
         thread_token = _state->get_query_ctx()->get_token();
         _simple_scan_scheduler = _state->get_query_ctx()->get_scan_scheduler();
         if (_simple_scan_scheduler) {
             _should_reset_thread_name = false;
         }
+    } else {
+        LOG(INFO) << "test1205 no query ctx in state";
     }
 #endif
 
