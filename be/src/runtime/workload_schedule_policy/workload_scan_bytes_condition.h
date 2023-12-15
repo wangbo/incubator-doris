@@ -17,19 +17,21 @@
 
 #include "workload_sched_condition.h"
 
+namespace doris {
+
 class WorkloadScanBytesCondition : public WorkloadSchedCondition {
 public:
     bool eval(std::string str_value) override;
 
 private:
-    long _scan_bytes;
-
+    long _scan_bytes_limit;
 };
 
 bool WorkloadScanBytesCondition::eval(std::string str_value) {
     long input_value = std::stol(str_value);
-    if (input_value > _scan_bytes) {
+    if (input_value > _scan_bytes_limit) {
         return true;
     }
     return false;
 }
+}; // namespace doris

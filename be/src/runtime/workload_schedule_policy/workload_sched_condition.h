@@ -17,7 +17,11 @@
 
 #include <string>
 
+namespace doris {
+
 class WorkloadSchedCondition {
 public:
     virtual bool eval(std::string str_value) = 0;
+};
+
 };
