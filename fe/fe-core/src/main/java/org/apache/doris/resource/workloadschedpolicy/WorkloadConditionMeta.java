@@ -17,35 +17,43 @@
 
 package org.apache.doris.resource.workloadschedpolicy;
 
-import org.apache.doris.common.UserException;
 
-public class QueryTimeCondition implements PolicyCondition {
+import org.apache.doris.common.io.Text;
+import org.apache.doris.common.io.Writable;
+import org.apache.doris.persist.gson.GsonPostProcessable;
+import org.apache.doris.persist.gson.GsonUtils;
 
-    private long value;
-    private PolicyOperator op;
+import cfjd.com.google.gson.annotations.SerializedName;
 
-    public QueryTimeCondition(PolicyOperator op, long value) {
+import java.io.DataOutput;
+import java.io.IOException;
+
+
+public class WorkloadConditionMeta implements Writable, GsonPostProcessable {
+
+    @SerializedName(value = "metricName")
+    public String metricName;
+
+    @SerializedName(value = "op")
+    public String op;
+
+    @SerializedName(value = "value")
+    public String value;
+
+    public WorkloadConditionMeta(String metricName, String op, String value) {
+        this.metricName = metricName;
         this.op = op;
         this.value = value;
     }
 
     @Override
-    public boolean eval(String strValue) {
-        long inputLongValue = Long.parseLong(strValue);
-        return PolicyCompareUtils.compareInteger(op, inputLongValue, value);
-    }
+    public void gsonPostProcess() throws IOException {
 
-    public static QueryTimeCondition createQueryTimeCondition(PolicyOperator op, String value) throws UserException {
-        long longValue = Long.parseLong(value);
-        if (longValue < 0) {
-            throw new UserException("invalid query time value, " + longValue + ", it requires >= 0");
-        }
-        return new QueryTimeCondition(op, longValue);
     }
 
     @Override
-    public PolicyMetricType getMetricType() {
-        return PolicyMetricType.query_time;
+    public void write(DataOutput out) throws IOException {
+        String json = GsonUtils.GSON.toJson(this);
+        Text.writeString(out, json);
     }
-
 }

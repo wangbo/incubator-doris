@@ -17,28 +17,23 @@
 
 package org.apache.doris.resource.workloadschedpolicy;
 
-public class MoveQueryToGroupAction implements PolicyAction {
+import org.apache.doris.common.UserException;
 
-    private long dstWgId;
+public interface WorkloadAction {
 
-    public MoveQueryToGroupAction(long dstWgId) {
-        this.dstWgId = dstWgId;
-    }
+    void exec(WorkloadQueryInfo queryInfo);
 
-    @Override
-    public void exec(PolicyQueryInfo queryInfo) {
-        //todo(wb) implement it
-        System.out.println("notify be to move query " + queryInfo.queryId + " to group " + dstWgId);
-    }
+    WorkloadActionType getWorkloadActionType();
 
-    @Override
-    public PolicyActionType getPolicyActionType() {
-        return PolicyActionType.move_query_to_group;
-    }
-
-    public static MoveQueryToGroupAction createMoveQueryToGroupAction(String groupId) {
-        long wgId = Long.parseLong(groupId);
-        return new MoveQueryToGroupAction(wgId);
+    // NOTE(wb) currently createPolicyAction is also used when replay meta, it better not contains heavy check
+    static WorkloadAction createWorkloadAction(String actionCmd, String actionCmdArgs)
+            throws UserException {
+        if (WorkloadActionType.cancel_query.toString().equals(actionCmd)) {
+            return WorkloadActionCancelQuery.createWorkloadAction();
+        } else if (WorkloadActionType.move_query_to_group.toString().equals(actionCmd)) {
+            return WorkloadActionMoveQueryToGroup.createWorkloadAction(actionCmdArgs);
+        }
+        throw new UserException("invalid action type " + actionCmd);
     }
 
 }

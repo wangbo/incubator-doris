@@ -76,7 +76,7 @@ public class WorkloadSchedPolicyMgr implements Writable, GsonPostProcessable {
                     // 1 get query info map
                     Map<Integer, ConnectContext> connectMap = ExecuteEnv.getInstance().getScheduler()
                             .getConnectionMap();
-                    List<PolicyQueryInfo> queryInfoList = new ArrayList<>();
+                    List<WorkloadQueryInfo> queryInfoList = new ArrayList<>();
 
                     // a snapshot for connect context
                     Set<Integer> keySet = new HashSet<>();
@@ -91,12 +91,12 @@ public class WorkloadSchedPolicyMgr implements Writable, GsonPostProcessable {
                         String username = cctx.getQualifiedUser();
                         long queryTime = System.currentTimeMillis() - cctx.getStartTime();
 
-                        PolicyQueryInfo policyQueryInfo = new PolicyQueryInfo();
+                        WorkloadQueryInfo policyQueryInfo = new WorkloadQueryInfo();
                         policyQueryInfo.queryId = DebugUtil.printId(cctx.queryId());
                         policyQueryInfo.context = cctx;
                         policyQueryInfo.metricMap = new HashMap<>();
-                        policyQueryInfo.metricMap.put(PolicyMetricType.username, username);
-                        policyQueryInfo.metricMap.put(PolicyMetricType.query_time, String.valueOf(queryTime));
+                        policyQueryInfo.metricMap.put(WorkloadMetricType.username, username);
+                        policyQueryInfo.metricMap.put(WorkloadMetricType.query_time, String.valueOf(queryTime));
 
                         queryInfoList.add(policyQueryInfo);
                     }
@@ -128,23 +128,23 @@ public class WorkloadSchedPolicyMgr implements Writable, GsonPostProcessable {
         String policyName = createStmt.getPolicyName();
 
         // 1 create condition
-        List<ConditionMeta> originConditions = createStmt.getConditions();
-        List<PolicyCondition> policyConditionList = new ArrayList<>();
-        for (ConditionMeta cm : originConditions) {
-            PolicyCondition cond = PolicyCondition.createPolicyCondition(cm.metricName, cm.op,
+        List<WorkloadConditionMeta> originConditions = createStmt.getConditions();
+        List<WorkloadCondition> policyConditionList = new ArrayList<>();
+        for (WorkloadConditionMeta cm : originConditions) {
+            WorkloadCondition cond = WorkloadCondition.createWorkloadCondition(cm.metricName, cm.op,
                     cm.value);
             policyConditionList.add(cond);
         }
 
         // 2 create action
         Map<String, String> originActions = createStmt.getActions();
-        List<PolicyAction> policyActionList = new ArrayList<>();
+        List<WorkloadAction> policyActionList = new ArrayList<>();
         for (Map.Entry<String, String> actionEntry : originActions.entrySet()) {
             String actionName = actionEntry.getKey();
             String actionArgs = actionEntry.getValue();
 
             // we need convert wgName to wgId, because wgName may change
-            if (PolicyActionType.move_query_to_group.toString().equals(actionName)) {
+            if (WorkloadActionType.move_query_to_group.toString().equals(actionName)) {
                 Long wgId = Env.getCurrentEnv().getWorkloadGroupMgr().getWorkloadGroupIdByName(actionArgs);
                 if (wgId == null) {
                     throw new UserException(
@@ -153,7 +153,7 @@ public class WorkloadSchedPolicyMgr implements Writable, GsonPostProcessable {
                 actionEntry.setValue(wgId.toString());
             }
 
-            PolicyAction ret = PolicyAction.createPolicyAction(actionEntry.getKey(), actionEntry.getValue());
+            WorkloadAction ret = WorkloadAction.createWorkloadAction(actionEntry.getKey(), actionEntry.getValue());
             policyActionList.add(ret);
         }
         checkPolicyActionConflicts(policyActionList);
@@ -183,21 +183,21 @@ public class WorkloadSchedPolicyMgr implements Writable, GsonPostProcessable {
         }
     }
 
-    private void checkPolicyActionConflicts(List<PolicyAction> actionList) throws UserException {
-        Set<PolicyActionType> actionTypeSet = new HashSet<>();
-        for (PolicyAction action : actionList) {
-            if (!actionTypeSet.add(action.getPolicyActionType())) {
+    private void checkPolicyActionConflicts(List<WorkloadAction> actionList) throws UserException {
+        Set<WorkloadActionType> actionTypeSet = new HashSet<>();
+        for (WorkloadAction action : actionList) {
+            if (!actionTypeSet.add(action.getWorkloadActionType())) {
                 throw new UserException("duplicate action in one policy");
             }
         }
-        if (actionTypeSet.contains(PolicyActionType.cancel_query) && actionTypeSet.contains(
-                PolicyActionType.move_query_to_group)) {
+        if (actionTypeSet.contains(WorkloadActionType.cancel_query) && actionTypeSet.contains(
+                WorkloadActionType.move_query_to_group)) {
             throw new UserException(String.format("%s and %s can not exist in one policy at same time",
-                    PolicyActionType.cancel_query, PolicyActionType.move_query_to_group));
+                    WorkloadActionType.cancel_query, WorkloadActionType.move_query_to_group));
         }
     }
 
-    public void execPolicy(List<PolicyQueryInfo> queryInfoList) {
+    public void execPolicy(List<WorkloadQueryInfo> queryInfoList) {
         // 1 get a snapshot of policy
         Set<Long> policyIdSet = new HashSet<>();
         readLock();
@@ -207,17 +207,17 @@ public class WorkloadSchedPolicyMgr implements Writable, GsonPostProcessable {
             readUnlock();
         }
 
-        for (PolicyQueryInfo queryInfo : queryInfoList) {
+        for (WorkloadQueryInfo queryInfo : queryInfoList) {
             try {
                 // 1 check policy is match
-                Map<PolicyActionType, Queue<WorkloadSchedPolicy>> matchedPolicyMap = Maps.newHashMap();
+                Map<WorkloadActionType, Queue<WorkloadSchedPolicy>> matchedPolicyMap = Maps.newHashMap();
                 for (Long policyId : policyIdSet) {
                     WorkloadSchedPolicy policy = idToPolicy.get(policyId);
                     if (policy == null) {
                         continue;
                     }
                     if (policy.isEnabled() && policy.isMatch(queryInfo)) {
-                        PolicyActionType actionType = policy.getFirstActionType();
+                        WorkloadActionType actionType = policy.getFirstActionType();
                         // add to priority queue
                         Queue<WorkloadSchedPolicy> queue = matchedPolicyMap.get(actionType);
                         if (queue == null) {
@@ -245,7 +245,7 @@ public class WorkloadSchedPolicyMgr implements Writable, GsonPostProcessable {
         }
     }
 
-    List<WorkloadSchedPolicy> pickPolicy(Map<PolicyActionType, Queue<WorkloadSchedPolicy>> policyMap) {
+    List<WorkloadSchedPolicy> pickPolicy(Map<WorkloadActionType, Queue<WorkloadSchedPolicy>> policyMap) {
         // NOTE(wb) currently all action share the same comparator which use priority.
         // But later we may design every action type's own comparator,
         // such as if two move group action has the same priority but move to different group,
@@ -253,14 +253,14 @@ public class WorkloadSchedPolicyMgr implements Writable, GsonPostProcessable {
 
         // 1 only need one policy with move action which has the highest priority
         WorkloadSchedPolicy policyWithMoveAction = null;
-        Queue<WorkloadSchedPolicy> moveActionQueue = policyMap.get(PolicyActionType.move_query_to_group);
+        Queue<WorkloadSchedPolicy> moveActionQueue = policyMap.get(WorkloadActionType.move_query_to_group);
         if (moveActionQueue != null) {
             policyWithMoveAction = moveActionQueue.peek();
         }
 
         // 2 only need one policy with cancel action which has the highest priority
         WorkloadSchedPolicy policyWithCancelQueryAction = null;
-        Queue<WorkloadSchedPolicy> canelQueryActionQueue = policyMap.get(PolicyActionType.cancel_query);
+        Queue<WorkloadSchedPolicy> canelQueryActionQueue = policyMap.get(WorkloadActionType.cancel_query);
         if (canelQueryActionQueue != null) {
             policyWithCancelQueryAction = canelQueryActionQueue.peek();
         }

@@ -19,21 +19,34 @@ package org.apache.doris.resource.workloadschedpolicy;
 
 import org.apache.doris.common.UserException;
 
-public interface PolicyAction {
+public class WorkloadConditionQueryTime implements WorkloadCondition {
 
-    void exec(PolicyQueryInfo queryInfo);
+    private long value;
+    private WorkloadConditionOperator op;
 
-    PolicyActionType getPolicyActionType();
+    public WorkloadConditionQueryTime(WorkloadConditionOperator op, long value) {
+        this.op = op;
+        this.value = value;
+    }
 
-    // NOTE(wb) currently createPolicyAction is also used when replay meta, it better not contains heavy check
-    static PolicyAction createPolicyAction(String actionCmd, String actionCmdArgs)
+    @Override
+    public boolean eval(String strValue) {
+        long inputLongValue = Long.parseLong(strValue);
+        return WorkloadConditionCompareUtils.compareInteger(op, inputLongValue, value);
+    }
+
+    public static WorkloadConditionQueryTime createWorkloadCondition(WorkloadConditionOperator op, String value)
             throws UserException {
-        if (PolicyActionType.cancel_query.toString().equals(actionCmd)) {
-            return CancelQueryAction.createCancelQueryAction();
-        } else if (PolicyActionType.move_query_to_group.toString().equals(actionCmd)) {
-            return MoveQueryToGroupAction.createMoveQueryToGroupAction(actionCmdArgs);
+        long longValue = Long.parseLong(value);
+        if (longValue < 0) {
+            throw new UserException("invalid query time value, " + longValue + ", it requires >= 0");
         }
-        throw new UserException("invalid action type " + actionCmd);
+        return new WorkloadConditionQueryTime(op, longValue);
+    }
+
+    @Override
+    public WorkloadMetricType getMetricType() {
+        return WorkloadMetricType.query_time;
     }
 
 }

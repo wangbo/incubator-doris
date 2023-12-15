@@ -21,25 +21,25 @@ import org.apache.doris.common.UserException;
 
 import org.apache.commons.lang3.StringUtils;
 
-public class PolicyCompareUtils {
+public class WorkloadConditionCompareUtils {
 
-    static PolicyOperator getOperator(String op) throws UserException {
+    static WorkloadConditionOperator getOperator(String op) throws UserException {
         if ("=".equals(op)) {
-            return PolicyOperator.EQUAL;
+            return WorkloadConditionOperator.EQUAL;
         } else if (">".equals(op)) {
-            return PolicyOperator.GREATER;
+            return WorkloadConditionOperator.GREATER;
         } else if (">=".equals(op)) {
-            return PolicyOperator.GREATER_EQUAL;
+            return WorkloadConditionOperator.GREATER_EQUAL;
         } else if ("<".equals(op)) {
-            return PolicyOperator.LESS;
+            return WorkloadConditionOperator.LESS;
         } else if ("<=".equals(op)) {
-            return PolicyOperator.LESS_EQUAl;
+            return WorkloadConditionOperator.LESS_EQUAl;
         } else {
             throw new UserException("unexpected compare operator " + op);
         }
     }
 
-    static boolean compareInteger(PolicyOperator operator, long firstArgs, long secondArgs) {
+    static boolean compareInteger(WorkloadConditionOperator operator, long firstArgs, long secondArgs) {
         switch (operator) {
             case EQUAL:
                 return firstArgs == secondArgs;
@@ -56,7 +56,7 @@ public class PolicyCompareUtils {
         }
     }
 
-    static boolean compareDouble(PolicyOperator operator, double firstArgs, double secondArgs) {
+    static boolean compareDouble(WorkloadConditionOperator operator, double firstArgs, double secondArgs) {
         switch (operator) {
             case EQUAL:
                 return firstArgs == secondArgs;
@@ -73,7 +73,7 @@ public class PolicyCompareUtils {
         }
     }
 
-    static boolean compareString(PolicyOperator operator, String firstArgs, String secondArgs) {
+    static boolean compareString(WorkloadConditionOperator operator, String firstArgs, String secondArgs) {
         switch (operator) {
             case EQUAL:
                 return StringUtils.equals(firstArgs, secondArgs);

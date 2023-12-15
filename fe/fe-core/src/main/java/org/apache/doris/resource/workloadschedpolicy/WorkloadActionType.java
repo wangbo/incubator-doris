@@ -17,20 +17,8 @@
 
 package org.apache.doris.resource.workloadschedpolicy;
 
-public class CancelQueryAction implements PolicyAction {
-    @Override
-    public void exec(PolicyQueryInfo queryInfo) {
-        if (queryInfo.context != null) {
-            queryInfo.context.cancelQuery();
-        }
-    }
-
-    public static CancelQueryAction createCancelQueryAction() {
-        return new CancelQueryAction();
-    }
-
-    @Override
-    public PolicyActionType getPolicyActionType() {
-        return PolicyActionType.cancel_query;
-    }
+public enum WorkloadActionType {
+    log, // record query statistics to an audit table, not support now
+    cancel_query, // cancel query
+    move_query_to_group // move query from one wg group to another
 }

@@ -19,30 +19,30 @@ package org.apache.doris.resource.workloadschedpolicy;
 
 import org.apache.hbase.thirdparty.com.google.gson.annotations.SerializedName;
 
-public class UsernameCondition implements PolicyCondition {
+public class WorkloadConditionUsername implements WorkloadCondition {
 
     @SerializedName(value = "op")
-    private PolicyOperator op;
+    private WorkloadConditionOperator op;
     @SerializedName(value = "value")
     private String value;
 
-    public UsernameCondition(PolicyOperator op, String value) {
+    public WorkloadConditionUsername(WorkloadConditionOperator op, String value) {
         this.op = op;
         this.value = value;
     }
 
     @Override
     public boolean eval(String inputStrValue) {
-        return PolicyCompareUtils.compareString(op, inputStrValue, value);
+        return WorkloadConditionCompareUtils.compareString(op, inputStrValue, value);
     }
 
     @Override
-    public PolicyMetricType getMetricType() {
-        return PolicyMetricType.username;
+    public WorkloadMetricType getMetricType() {
+        return WorkloadMetricType.username;
     }
 
-    public static UsernameCondition createPolicyCondition(PolicyOperator op, String value) {
+    public static WorkloadConditionUsername createWorkloadCondition(WorkloadConditionOperator op, String value) {
         // todo(wb) check whether input username is valid
-        return new UsernameCondition(op, value);
+        return new WorkloadConditionUsername(op, value);
     }
 }

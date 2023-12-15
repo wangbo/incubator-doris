@@ -53,20 +53,20 @@ public class WorkloadSchedPolicy implements Writable, GsonPostProcessable {
     private volatile int priority;
 
     @SerializedName(value = "conditionMetaList")
-    List<ConditionMeta> conditionMetaList;
+    List<WorkloadConditionMeta> conditionMetaList;
     // we regard action as a command, map's key is command, map's value is args, so it's a command list
     @SerializedName(value = "actionMetaList")
     Map<String, String> actionMetaList;
 
-    private List<PolicyCondition> policyConditionList;
-    private List<PolicyAction> policyActionList;
+    private List<WorkloadCondition> workloadConditionList;
+    private List<WorkloadAction> workloadActionList;
 
-    public WorkloadSchedPolicy(long id, String name, List<PolicyCondition> policyConditionList,
-            List<PolicyAction> policyActionList, Map<String, String> properties) throws UserException {
+    public WorkloadSchedPolicy(long id, String name, List<WorkloadCondition> workloadConditionList,
+            List<WorkloadAction> workloadActionList, Map<String, String> properties) throws UserException {
         this.id = id;
         this.name = name;
-        this.policyConditionList = policyConditionList;
-        this.policyActionList = policyActionList;
+        this.workloadConditionList = workloadConditionList;
+        this.workloadActionList = workloadActionList;
         // set enable and priority
         parseAndSetProperties(properties);
         this.version = 0;
@@ -76,10 +76,10 @@ public class WorkloadSchedPolicy implements Writable, GsonPostProcessable {
     // return false,
     //    1 metric not match
     //    2 condition value not match query info's value
-    boolean isMatch(PolicyQueryInfo queryInfo) {
+    boolean isMatch(WorkloadQueryInfo queryInfo) {
         boolean ret = true;
-        for (PolicyCondition condition : policyConditionList) {
-            PolicyMetricType metricType = condition.getMetricType();
+        for (WorkloadCondition condition : workloadConditionList) {
+            WorkloadMetricType metricType = condition.getMetricType();
             String value = queryInfo.metricMap.get(metricType);
             if (value == null) {
                 return false; // query info's metric must match all condition's metric
@@ -100,25 +100,25 @@ public class WorkloadSchedPolicy implements Writable, GsonPostProcessable {
         return priority;
     }
 
-    public void execAction(PolicyQueryInfo queryInfo) {
-        for (PolicyAction action : policyActionList) {
+    public void execAction(WorkloadQueryInfo queryInfo) {
+        for (WorkloadAction action : workloadActionList) {
             action.exec(queryInfo);
         }
     }
 
     // move > log, cancel > log
     // move and cancel can not exist at same time
-    public PolicyActionType getFirstActionType() {
-        PolicyActionType retType = null;
-        for (PolicyAction action : policyActionList) {
-            PolicyActionType currentActionType = action.getPolicyActionType();
+    public WorkloadActionType getFirstActionType() {
+        WorkloadActionType retType = null;
+        for (WorkloadAction action : workloadActionList) {
+            WorkloadActionType currentActionType = action.getWorkloadActionType();
             if (retType == null) {
                 retType = currentActionType;
                 continue;
             }
 
-            if (currentActionType == PolicyActionType.move_query_to_group
-                    || currentActionType == PolicyActionType.cancel_query) {
+            if (currentActionType == WorkloadActionType.move_query_to_group
+                    || currentActionType == WorkloadActionType.cancel_query) {
                 return currentActionType;
             }
         }
@@ -137,7 +137,7 @@ public class WorkloadSchedPolicy implements Writable, GsonPostProcessable {
         this.version++;
     }
 
-    public void setConditionMeta(List<ConditionMeta> conditionMeta) {
+    public void setConditionMeta(List<WorkloadConditionMeta> conditionMeta) {
         this.conditionMetaList = conditionMeta;
     }
 
@@ -161,28 +161,28 @@ public class WorkloadSchedPolicy implements Writable, GsonPostProcessable {
 
     @Override
     public void gsonPostProcess() throws IOException {
-        List<PolicyCondition> policyConditionList = new ArrayList<>();
-        for (ConditionMeta cm : conditionMetaList) {
+        List<WorkloadCondition> policyConditionList = new ArrayList<>();
+        for (WorkloadConditionMeta cm : conditionMetaList) {
             try {
-                PolicyCondition cond = PolicyCondition.createPolicyCondition(cm.metricName, cm.op,
+                WorkloadCondition cond = WorkloadCondition.createWorkloadCondition(cm.metricName, cm.op,
                         cm.value);
                 policyConditionList.add(cond);
             } catch (UserException ue) {
                 Log.error("unexpected condition data error when replay log ", ue);
             }
         }
-        this.policyConditionList = policyConditionList;
+        this.workloadConditionList = policyConditionList;
 
-        List<PolicyAction> actionList = new ArrayList<>();
+        List<WorkloadAction> actionList = new ArrayList<>();
         for (Map.Entry<String, String> entry : actionMetaList.entrySet()) {
             try {
-                PolicyAction ret = PolicyAction.createPolicyAction(entry.getKey(), entry.getValue());
+                WorkloadAction ret = WorkloadAction.createWorkloadAction(entry.getKey(), entry.getValue());
                 actionList.add(ret);
             } catch (UserException ue) {
                 Log.error("unexpected action data error when replay log ", ue);
             }
         }
-        this.policyActionList = actionList;
+        this.workloadActionList = actionList;
 
     }
 }

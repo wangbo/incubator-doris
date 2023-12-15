@@ -17,12 +17,28 @@
 
 package org.apache.doris.resource.workloadschedpolicy;
 
-import org.apache.doris.qe.ConnectContext;
+public class WorkloadActionMoveQueryToGroup implements WorkloadAction {
 
-import java.util.Map;
+    private long dstWgId;
 
-public class PolicyQueryInfo {
-    String queryId = null;
-    ConnectContext context = null;
-    Map<PolicyMetricType, String> metricMap;
+    public WorkloadActionMoveQueryToGroup(long dstWgId) {
+        this.dstWgId = dstWgId;
+    }
+
+    @Override
+    public void exec(WorkloadQueryInfo queryInfo) {
+        //todo(wb) implement it
+        System.out.println("notify be to move query " + queryInfo.queryId + " to group " + dstWgId);
+    }
+
+    @Override
+    public WorkloadActionType getWorkloadActionType() {
+        return WorkloadActionType.move_query_to_group;
+    }
+
+    public static WorkloadActionMoveQueryToGroup createWorkloadAction(String groupId) {
+        long wgId = Long.parseLong(groupId);
+        return new WorkloadActionMoveQueryToGroup(wgId);
+    }
+
 }

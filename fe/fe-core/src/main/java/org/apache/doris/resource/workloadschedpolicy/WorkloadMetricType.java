@@ -17,6 +17,6 @@
 
 package org.apache.doris.resource.workloadschedpolicy;
 
-public enum PolicyOperator {
-    EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAl
+public enum WorkloadMetricType {
+    username, query_time
 }

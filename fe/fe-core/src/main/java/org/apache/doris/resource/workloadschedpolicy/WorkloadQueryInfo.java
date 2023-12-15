@@ -17,6 +17,12 @@
 
 package org.apache.doris.resource.workloadschedpolicy;
 
-public enum PolicyMetricType {
-    username, query_time
+import org.apache.doris.qe.ConnectContext;
+
+import java.util.Map;
+
+public class WorkloadQueryInfo {
+    String queryId = null;
+    ConnectContext context = null;
+    Map<WorkloadMetricType, String> metricMap;
 }

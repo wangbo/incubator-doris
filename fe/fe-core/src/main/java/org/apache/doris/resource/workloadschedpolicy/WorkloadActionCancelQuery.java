@@ -17,23 +17,20 @@
 
 package org.apache.doris.resource.workloadschedpolicy;
 
-import org.apache.doris.common.UserException;
-
-
-public interface PolicyCondition {
-
-    boolean eval(String strValue);
-
-    PolicyMetricType getMetricType();
-
-    // NOTE(wb) currently createPolicyCondition is also used when replay meta, it better not contains heavy check
-    static PolicyCondition createPolicyCondition(String metricName, String op, String value) throws UserException {
-        if (PolicyMetricType.username.toString().equals(metricName)) {
-            return UsernameCondition.createPolicyCondition(PolicyCompareUtils.getOperator(op), value);
-        } else if (PolicyMetricType.query_time.toString().equals(metricName)) {
-            return QueryTimeCondition.createQueryTimeCondition(PolicyCompareUtils.getOperator(op), value);
+public class WorkloadActionCancelQuery implements WorkloadAction {
+    @Override
+    public void exec(WorkloadQueryInfo queryInfo) {
+        if (queryInfo.context != null) {
+            queryInfo.context.cancelQuery();
         }
-        throw new UserException("invalid metric name:" + metricName);
     }
 
+    public static WorkloadActionCancelQuery createWorkloadAction() {
+        return new WorkloadActionCancelQuery();
+    }
+
+    @Override
+    public WorkloadActionType getWorkloadActionType() {
+        return WorkloadActionType.cancel_query;
+    }
 }

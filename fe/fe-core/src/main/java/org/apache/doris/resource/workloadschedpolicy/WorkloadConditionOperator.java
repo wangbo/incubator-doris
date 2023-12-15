@@ -17,8 +17,6 @@
 
 package org.apache.doris.resource.workloadschedpolicy;
 
-public enum PolicyActionType {
-    log, // record query statistics to an audit table, not support now
-    cancel_query, // cancel query
-    move_query_to_group // move query from one wg group to another
+public enum WorkloadConditionOperator {
+    EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAl
 }
