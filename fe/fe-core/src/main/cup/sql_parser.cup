@@ -533,6 +533,7 @@ terminal String
     KW_PROPERTIES,
     KW_CONDITIONS,
     KW_ACTIONS,
+    KW_SET_SESSION_VAR,
     KW_PROPERTY,
     KW_QUANTILE_STATE,
     KW_QUANTILE_UNION,
@@ -3548,7 +3549,17 @@ opt_conditions ::=
     ;
 
 workload_policy_action_map ::=
-    ident:firstArgs
+    KW_SET_SESSION_VAR ident:firstArgs EQUAL ident:secondArgs
+    {:
+    RESULT = Maps.newHashMap();
+    RESULT.put("set_session_variable", firstArgs + "=" + secondArgs);
+    :}
+    | workload_policy_action_map:map COMMA KW_SET_SESSION_VAR ident:firstArgs EQUAL ident:secondArgs
+    {:
+    map.put("set_session_variable", firstArgs + "=" + secondArgs);
+    RESULT = map;
+    :}
+    | ident:firstArgs
     {:
     RESULT = Maps.newHashMap();
     RESULT.put(firstArgs, "");
@@ -7776,6 +7787,8 @@ keyword ::=
     | KW_CONDITIONS:id
     {: RESULT = id; :}
     | KW_ACTIONS:id
+    {: RESULT = id; :}
+    | KW_SET_SESSION_VAR:id
     {: RESULT = id; :}
     | KW_PROPERTY:id
     {: RESULT = id; :}

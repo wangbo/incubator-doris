@@ -382,6 +382,7 @@ import org.apache.doris.qe.SqlModeHelper;
         keywordMap.put("properties", new Integer(SqlParserSymbols.KW_PROPERTIES));
         keywordMap.put("conditions", new Integer(SqlParserSymbols.KW_CONDITIONS));
         keywordMap.put("actions", new Integer(SqlParserSymbols.KW_ACTIONS));
+        keywordMap.put("set_session_variable", new Integer(SqlParserSymbols.KW_SET_SESSION_VAR));
         keywordMap.put("property", new Integer(SqlParserSymbols.KW_PROPERTY));
         keywordMap.put("quantile_state", new Integer(SqlParserSymbols.KW_QUANTILE_STATE));
         keywordMap.put("quantile_union", new Integer(SqlParserSymbols.KW_QUANTILE_UNION));
