@@ -210,6 +210,7 @@ Status PipelineTask::_open() {
 }
 
 void PipelineTask::set_task_queue(TaskQueue* task_queue) {
+    std::lock_guard<std::shared_mutex> write_lock(_task_queue_mutex);
     _task_queue = task_queue;
 }
 

@@ -201,7 +201,10 @@ public:
     taskgroup::TaskGroupPipelineTaskEntity* get_task_group_entity() const;
 
     void set_task_queue(TaskQueue* task_queue);
-    TaskQueue* get_task_queue() { return _task_queue; }
+    TaskQueue* get_task_queue() { 
+        std::shared_lock<std::shared_mutex> read_lock(_task_queue_mutex);
+        return _task_queue; 
+    }
 
     static constexpr auto THREAD_TIME_SLICE = 100'000'000ULL;
 
@@ -288,6 +291,8 @@ protected:
     SourceState _data_state;
     std::unique_ptr<doris::vectorized::Block> _block;
     PipelineFragmentContext* _fragment_context = nullptr;
+    
+    std::shared_mutex _task_queue_mutex;
     TaskQueue* _task_queue = nullptr;
 
     // used for priority queue

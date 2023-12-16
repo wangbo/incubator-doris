@@ -155,6 +155,8 @@ public:
         _query_statistics = query_statistics;
     }
 
+    void reset_pipeline_task_group(TaskQueue* task_queue);
+
 protected:
     Status _create_sink(int sender_id, const TDataSink& t_data_sink, RuntimeState* state);
     Status _build_pipelines(ExecNode*, PipelinePtr);

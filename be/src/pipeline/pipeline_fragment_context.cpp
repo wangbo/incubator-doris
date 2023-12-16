@@ -381,6 +381,12 @@ Status PipelineFragmentContext::_build_pipeline_tasks(
     return Status::OK();
 }
 
+void PipelineFragmentContext::reset_pipeline_task_group(TaskQueue* taskQueue) {
+    for (auto& task : _tasks) {
+        task->set_task_queue(taskQueue);
+    }
+}
+
 void PipelineFragmentContext::_init_next_report_time() {
     auto interval_s = config::pipeline_status_report_interval;
     if (_is_report_success && interval_s > 0 && _query_ctx->timeout_second > interval_s) {
