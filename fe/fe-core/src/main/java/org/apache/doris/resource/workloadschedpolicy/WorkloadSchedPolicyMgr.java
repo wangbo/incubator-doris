@@ -93,6 +93,7 @@ public class WorkloadSchedPolicyMgr implements Writable, GsonPostProcessable {
 
                         WorkloadQueryInfo policyQueryInfo = new WorkloadQueryInfo();
                         policyQueryInfo.queryId = DebugUtil.printId(cctx.queryId());
+                        policyQueryInfo.tUniqueId = cctx.queryId();
                         policyQueryInfo.context = cctx;
                         policyQueryInfo.metricMap = new HashMap<>();
                         policyQueryInfo.metricMap.put(WorkloadMetricType.username, username);

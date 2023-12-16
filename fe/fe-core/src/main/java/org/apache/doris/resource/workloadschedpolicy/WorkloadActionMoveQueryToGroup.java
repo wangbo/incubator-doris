@@ -17,7 +17,15 @@
 
 package org.apache.doris.resource.workloadschedpolicy;
 
+import org.apache.doris.common.publish.WorkloadMoveActionPublisherThread;
+import org.apache.doris.thrift.TWorkloadMoveQueryToGroupAction;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 public class WorkloadActionMoveQueryToGroup implements WorkloadAction {
+
+    private static final Logger LOG = LogManager.getLogger(WorkloadActionMoveQueryToGroup.class);
 
     private long dstWgId;
 
@@ -27,8 +35,11 @@ public class WorkloadActionMoveQueryToGroup implements WorkloadAction {
 
     @Override
     public void exec(WorkloadQueryInfo queryInfo) {
-        //todo(wb) implement it
-        System.out.println("notify be to move query " + queryInfo.queryId + " to group " + dstWgId);
+        LOG.info("try move query {} to group {}", queryInfo.queryId, dstWgId);
+        TWorkloadMoveQueryToGroupAction moveQueryToGroupAction = new TWorkloadMoveQueryToGroupAction();
+        moveQueryToGroupAction.setQueryId(queryInfo.tUniqueId);
+        moveQueryToGroupAction.setWorkloadGroupId(dstWgId);
+        WorkloadMoveActionPublisherThread.putMoveAction(moveQueryToGroupAction);
     }
 
     @Override

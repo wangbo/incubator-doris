@@ -18,11 +18,13 @@
 package org.apache.doris.resource.workloadschedpolicy;
 
 import org.apache.doris.qe.ConnectContext;
+import org.apache.doris.thrift.TUniqueId;
 
 import java.util.Map;
 
 public class WorkloadQueryInfo {
     String queryId = null;
+    TUniqueId tUniqueId = null;
     ConnectContext context = null;
     Map<WorkloadMetricType, String> metricMap;
 }
