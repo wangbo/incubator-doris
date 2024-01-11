@@ -408,7 +408,6 @@ void FragmentMgr::coordinator_callback(const ReportStatusRequest& req) {
 
     if (req.query_statistics) {
         TQueryStatistics queryStatistics;
-        DCHECK(req.query_statistics->collect_dml_statistics());
         req.query_statistics->to_thrift(&queryStatistics);
         params.__set_query_statistics(queryStatistics);
     }

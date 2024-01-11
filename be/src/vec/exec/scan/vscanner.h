@@ -32,6 +32,7 @@
 namespace doris {
 class RuntimeProfile;
 class TupleDescriptor;
+class QueryStatistics;
 
 namespace vectorized {
 class VExprContext;
@@ -149,6 +150,10 @@ public:
         return true;
     }
 
+    void set_query_statistics(QueryStatistics* query_statistics) {
+        _query_statistics = query_statistics;
+    }
+
 protected:
     void _discard_conjuncts() {
         for (auto& conjunct : _conjuncts) {
@@ -159,6 +164,7 @@ protected:
 
     RuntimeState* _state;
     VScanNode* _parent;
+    QueryStatistics* _query_statistics = nullptr;
     // Set if scan node has sort limit info
     int64_t _limit = -1;
 
