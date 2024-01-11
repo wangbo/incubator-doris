@@ -1126,6 +1126,8 @@ DEFINE_mBool(enable_column_type_check, "true");
 DEFINE_Int32(ignore_invalid_partition_id_rowset_num, "0");
 
 DEFINE_mInt32(report_query_statistics_interval_ms, "3000");
+// 30s
+DEFINE_mInt32(query_statistics_reserve_timeout_ms, "30000");
 
 // clang-format off
 #ifdef BE_TEST

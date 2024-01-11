@@ -60,7 +60,11 @@ private:
 class QueryStatistics {
 public:
     QueryStatistics()
-            : scan_rows(0), scan_bytes(0), cpu_nanos(0), returned_rows(0), max_peak_memory_bytes(0) {}
+            : scan_rows(0),
+              scan_bytes(0),
+              cpu_nanos(0),
+              returned_rows(0),
+              max_peak_memory_bytes(0) {}
     virtual ~QueryStatistics();
 
     void merge(const QueryStatistics& other);
