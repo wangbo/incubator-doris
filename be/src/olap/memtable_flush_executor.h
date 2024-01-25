@@ -121,6 +121,9 @@ public:
     Status create_flush_token(std::unique_ptr<FlushToken>& flush_token, RowsetWriter* rowset_writer,
                               bool should_serial, bool is_high_priority);
 
+    Status create_flush_token(std::unique_ptr<FlushToken>& flush_token, RowsetWriter* rowset_writer,
+                              ThreadPool* wg_flush_pool_ptr);
+
 private:
     void _register_metrics();
     static void _deregister_metrics();
