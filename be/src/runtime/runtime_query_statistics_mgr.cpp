@@ -17,6 +17,8 @@
 
 #include "runtime/runtime_query_statistics_mgr.h"
 
+#include <gen_cpp/HeartbeatService_types.h>
+
 #include "runtime/client_cache.h"
 #include "runtime/exec_env.h"
 #include "util/debug_util.h"
@@ -65,7 +67,10 @@ void RuntimeQueryStatiticsMgr::report_runtime_query_statistics() {
         Status coord_status;
         FrontendServiceConnection coord(ExecEnv::GetInstance()->frontend_client_cache(), addr,
                                         &coord_status);
-        std::string add_str = PrintThriftNetworkAddress(addr);
+        std::stringstream ss;
+        addr.printTo(ss);
+        std::string add_str = ss.str();
+
         if (!coord_status.ok()) {
             std::stringstream ss;
             LOG(WARNING) << "could not get client " << add_str

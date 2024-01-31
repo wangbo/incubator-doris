@@ -356,7 +356,7 @@ public class ConnectProcessor {
                 ctx.getAuditEventBuilder().setState(ctx.executor.getProxyStatus());
             }
         }
-        Env.getCurrentAuditEventProcessor().handleAuditEvent(ctx.getAuditEventBuilder().build());
+        AuditLogHelper.logAuditLog(ctx, origStmt, parsedStmt, null, true);
     }
 
     // Process COM_QUERY statement,

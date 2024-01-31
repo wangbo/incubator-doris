@@ -33,6 +33,7 @@
 #include "runtime/query_statistics.h"
 #include "runtime/runtime_filter_mgr.h"
 #include "runtime/runtime_predicate.h"
+#include "runtime/runtime_query_statistics_mgr.h"
 #include "task_group/task_group.h"
 #include "util/pretty_printer.h"
 #include "util/threadpool.h"
@@ -77,7 +78,7 @@ public:
         if (_task_group) {
             _task_group->remove_mem_tracker_limiter(query_mem_tracker);
         }
-        _exec_env->runtime_query_statistics_mgr()->set_query_finished(print_id(_query_id));
+        _exec_env->runtime_query_statistics_mgr()->set_query_finished(print_id(query_id));
     }
 
     // Notice. For load fragments, the fragment_num sent by FE has a small probability of 0.
@@ -175,14 +176,14 @@ public:
 
     RuntimeFilterMgr* runtime_filter_mgr() { return _runtime_filter_mgr.get(); }
 
-    void QueryContext::register_query_statistics(std::shared_ptr<QueryStatistics> qs) {
-        _exec_env->runtime_query_statistics_mgr()->register_query_statistics(print_id(_query_id),
-                                                                             qs, coord_addr);
+    void register_query_statistics(std::shared_ptr<QueryStatistics> qs) {
+        _exec_env->runtime_query_statistics_mgr()->register_query_statistics(print_id(query_id), qs,
+                                                                             coord_addr);
     }
 
-    std::shared_ptr<QueryStatistics> QueryContext::get_query_statistics() {
+    std::shared_ptr<QueryStatistics> get_query_statistics() {
         return _exec_env->runtime_query_statistics_mgr()->get_runtime_query_statistics(
-                print_id(_query_id));
+                print_id(query_id));
     }
 
 public:

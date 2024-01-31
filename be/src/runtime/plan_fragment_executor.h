@@ -80,8 +80,7 @@ public:
     // functions like PrettyPrint() or to_thrift(), neither of which is const
     // because they take locks.
     using report_status_callback =
-            std::function<void(const Status&, RuntimeProfile*, RuntimeProfile*, bool,
-                               std::shared_ptr<QueryStatistics>)>;
+            std::function<void(const Status&, RuntimeProfile*, RuntimeProfile*, bool)>;
 
     // report_status_cb, if !empty(), is used to report the accumulated profile
     // information periodically during execution (open() or get_next()).

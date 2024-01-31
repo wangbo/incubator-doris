@@ -50,7 +50,7 @@ private:
     void load_channel_tracker_refresh_thread();
     void calculate_metrics_thread();
     void block_spill_gc_thread();
-    void report_runtime_query_statistics_thread();
+    void query_runtime_statistics_thread();
 
     CountDownLatch _stop_background_threads_latch;
     scoped_refptr<Thread> _tcmalloc_gc_thread;

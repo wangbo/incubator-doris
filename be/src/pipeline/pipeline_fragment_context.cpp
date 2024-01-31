@@ -874,8 +874,7 @@ void PipelineFragmentContext::send_report(bool done) {
              _fragment_instance_id, _backend_num, _runtime_state.get(),
              std::bind(&PipelineFragmentContext::update_status, this, std::placeholders::_1),
              std::bind(&PipelineFragmentContext::cancel, this, std::placeholders::_1,
-                       std::placeholders::_2),
-             _query_ctx->get_query_statistics()});
+                       std::placeholders::_2)});
 }
 
 } // namespace doris::pipeline

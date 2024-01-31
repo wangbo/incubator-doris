@@ -85,7 +85,6 @@ PlanFragmentExecutor::PlanFragmentExecutor(ExecEnv* exec_env,
           _cancel_reason(PPlanFragmentCancelReason::INTERNAL_ERROR) {
     _report_thread_future = _report_thread_promise.get_future();
     _query_statistics = std::make_shared<QueryStatistics>();
-    _query_ctx->register_query_statistics(_query_statistics);
 }
 
 PlanFragmentExecutor::~PlanFragmentExecutor() {
@@ -128,6 +127,7 @@ Status PlanFragmentExecutor::prepare(const TExecPlanFragmentParams& request,
     _runtime_state->set_query_mem_tracker(query_ctx == nullptr ? _exec_env->orphan_mem_tracker()
                                                                : query_ctx->query_mem_tracker);
     _runtime_state->set_tracer(std::move(tracer));
+    query_ctx->register_query_statistics(_query_statistics);
 
     SCOPED_ATTACH_TASK(_runtime_state.get());
     _runtime_state->runtime_filter_mgr()->init();
@@ -436,8 +436,7 @@ void PlanFragmentExecutor::send_report(bool done) {
     // but fragments still need to be cancelled (e.g. limit reached), the coordinator will
     // be waiting for a final report and profile.
     _report_status_cb(status, _is_report_success ? profile() : nullptr,
-                      _is_report_success ? load_channel_profile() : nullptr, done || !status.ok(),
-                      _query_ctx->get_query_statistics());
+                      _is_report_success ? load_channel_profile() : nullptr, done || !status.ok());
 }
 
 void PlanFragmentExecutor::stop_report_thread() {
