@@ -186,6 +186,29 @@ public:
                 print_id(query_id));
     }
 
+    void register_memory_statistics() {
+        if (query_mem_tracker) {
+            std::shared_ptr<QueryStatistics> qs = query_mem_tracker->get_query_statistics();
+            std::string query_id_str = print_id(query_id);
+            if (qs) {
+                _exec_env->runtime_query_statistics_mgr()->register_query_statistics(
+                        query_id_str, qs, coord_addr);
+            } else {
+                LOG(INFO) << " query " << query_id_str << " get memory query statistics failed ";
+            }
+        }
+    }
+
+    void register_cpu_statistics() {
+        if (!_cpu_statistics) {
+            _cpu_statistics = std::make_shared<QueryStatistics>();
+            _exec_env->runtime_query_statistics_mgr()->register_query_statistics(
+                    print_id(query_id), _cpu_statistics, coord_addr);
+        }
+    }
+
+    std::shared_ptr<QueryStatistics> get_cpu_statistics() { return _cpu_statistics; }
+
 public:
     TUniqueId query_id;
     DescriptorTbl* desc_tbl;
@@ -239,6 +262,8 @@ private:
     taskgroup::TaskGroupPtr _task_group;
     std::unique_ptr<RuntimeFilterMgr> _runtime_filter_mgr;
     const TQueryOptions _query_options;
+
+    std::shared_ptr<QueryStatistics> _cpu_statistics = nullptr;
 };
 
 } // namespace doris
