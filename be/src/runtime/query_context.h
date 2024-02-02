@@ -191,8 +191,10 @@ public:
             std::shared_ptr<QueryStatistics> qs = query_mem_tracker->get_query_statistics();
             std::string query_id_str = print_id(query_id);
             if (qs) {
-                _exec_env->runtime_query_statistics_mgr()->register_query_statistics(
-                        query_id_str, qs, coord_addr);
+                if (_exec_env->runtime_query_statistics_mgr()) { // FragmentMgrTest.normal
+                    _exec_env->runtime_query_statistics_mgr()->register_query_statistics(
+                            query_id_str, qs, coord_addr);
+                }
             } else {
                 LOG(INFO) << " query " << query_id_str << " get memory query statistics failed ";
             }
@@ -202,8 +204,10 @@ public:
     void register_cpu_statistics() {
         if (!_cpu_statistics) {
             _cpu_statistics = std::make_shared<QueryStatistics>();
-            _exec_env->runtime_query_statistics_mgr()->register_query_statistics(
-                    print_id(query_id), _cpu_statistics, coord_addr);
+            if (_exec_env->runtime_query_statistics_mgr()) { // FragmentMgrTest.normal
+                _exec_env->runtime_query_statistics_mgr()->register_query_statistics(
+                        print_id(query_id), _cpu_statistics, coord_addr);
+            }
         }
     }
 
