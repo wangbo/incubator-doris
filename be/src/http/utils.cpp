@@ -80,13 +80,17 @@ bool parse_basic_auth(const HttpRequest& req, AuthInfo* auth) {
     auto& auth_code = req.header(HTTP_AUTH_CODE);
     if (!token.empty()) {
         auth->token = token;
+        LOG(INFO) << "set token=" << token;
     } else if (!auth_code.empty()) {
         auth->auth_code = std::stoll(auth_code);
+        LOG(INFO) << "set code=" << auth->auth_code;
     } else {
         std::string full_user;
         if (!parse_basic_auth(req, &full_user, &auth->passwd)) {
+            LOG(INFO) << "set use failed";
             return false;
         }
+        LOG(INFO) << "set use=" << full_user;
         auto pos = full_user.find('@');
         if (pos != std::string::npos) {
             auth->user.assign(full_user.data(), pos);
