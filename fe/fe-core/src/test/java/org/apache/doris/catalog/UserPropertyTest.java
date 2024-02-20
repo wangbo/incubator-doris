@@ -106,7 +106,6 @@ public class UserPropertyTest {
         properties.add(Pair.of("max_qUERY_instances", "3000"));
         properties.add(Pair.of("parallel_fragment_exec_instance_num", "2000"));
         properties.add(Pair.of("sql_block_rules", "rule1,rule2"));
-        properties.add(Pair.of("cpu_resource_limit", "2"));
         properties.add(Pair.of("query_timeout", "500"));
 
         UserProperty userProperty = new UserProperty();
@@ -117,7 +116,6 @@ public class UserPropertyTest {
         Assert.assertEquals(3000, userProperty.getMaxQueryInstances());
         Assert.assertEquals(2000, userProperty.getParallelFragmentExecInstanceNum());
         Assert.assertEquals(new String[]{"rule1", "rule2"}, userProperty.getSqlBlockRules());
-        Assert.assertEquals(2, userProperty.getCpuResourceLimit());
         Assert.assertEquals(500, userProperty.getQueryTimeout());
         Assert.assertEquals(Sets.newHashSet(), userProperty.getCopiedResourceTags());
 
@@ -137,8 +135,6 @@ public class UserPropertyTest {
                 Assert.assertEquals("3000", value);
             } else if (key.equalsIgnoreCase("sql_block_rules")) {
                 Assert.assertEquals("rule1,rule2", value);
-            } else if (key.equalsIgnoreCase("cpu_resource_limit")) {
-                Assert.assertEquals("2", value);
             } else if (key.equalsIgnoreCase("query_timeout")) {
                 Assert.assertEquals("500", value);
             }
@@ -171,25 +167,5 @@ public class UserPropertyTest {
         properties.add(Pair.of("sql_block_rules", "test1, test2,test3"));
         userProperty.update(properties);
         Assert.assertEquals(3, userProperty.getSqlBlockRules().length);
-    }
-
-    @Test
-    public void testValidation() throws UserException {
-        List<Pair<String, String>> properties = Lists.newArrayList();
-        properties.add(Pair.of("cpu_resource_limit", "-1"));
-        UserProperty userProperty = new UserProperty();
-        userProperty.update(properties);
-        Assert.assertEquals(-1, userProperty.getCpuResourceLimit());
-
-        properties = Lists.newArrayList();
-        properties.add(Pair.of("cpu_resource_limit", "-2"));
-        userProperty = new UserProperty();
-        try {
-            userProperty.update(properties);
-            Assert.fail();
-        } catch (Exception e) {
-            Assert.assertTrue(e.getMessage().contains("is not valid"));
-        }
-        Assert.assertEquals(-1, userProperty.getCpuResourceLimit());
     }
 }

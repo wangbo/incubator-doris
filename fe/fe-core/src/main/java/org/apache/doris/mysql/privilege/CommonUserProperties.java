@@ -49,8 +49,6 @@ public class CommonUserProperties implements Writable {
     private int parallelFragmentExecInstanceNum = -1;
     @SerializedName("sqlBlockRules")
     private String sqlBlockRules = "";
-    @SerializedName("cpuResourceLimit")
-    private int cpuResourceLimit = -1;
     // The tag of the resource that the user is allowed to use
     @SerializedName("resourceTags")
     private Set<Tag> resourceTags = Sets.newHashSet();
@@ -109,14 +107,6 @@ public class CommonUserProperties implements Writable {
     void setSqlBlockRulesSplit(String sqlBlockRules) {
         // split
         this.sqlBlockRulesSplit = sqlBlockRules.replace(" ", "").split(",");
-    }
-
-    public int getCpuResourceLimit() {
-        return cpuResourceLimit;
-    }
-
-    public void setCpuResourceLimit(int cpuResourceLimit) {
-        this.cpuResourceLimit = cpuResourceLimit;
     }
 
     public void setResourceTags(Set<Tag> resourceTags) {

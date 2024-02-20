@@ -175,15 +175,6 @@ public class UserPropertyMgr implements Writable {
         return existProperty.getSqlBlockRules();
     }
 
-    public int getCpuResourceLimit(String qualifiedUser) {
-        UserProperty existProperty = propertyMap.get(qualifiedUser);
-        existProperty = getLdapPropertyIfNull(qualifiedUser, existProperty);
-        if (existProperty == null) {
-            return -1;
-        }
-        return existProperty.getCpuResourceLimit();
-    }
-
     public long getExecMemLimit(String qualifiedUser) {
         UserProperty existProperty = propertyMap.get(qualifiedUser);
         existProperty = getLdapPropertyIfNull(qualifiedUser, existProperty);

@@ -67,7 +67,6 @@ public class UserProperty implements Writable {
     private static final String PROP_RESOURCE_TAGS = "resource_tags";
     private static final String PROP_RESOURCE = "resource";
     private static final String PROP_SQL_BLOCK_RULES = "sql_block_rules";
-    private static final String PROP_CPU_RESOURCE_LIMIT = "cpu_resource_limit";
     private static final String PROP_EXEC_MEM_LIMIT = "exec_mem_limit";
     private static final String PROP_USER_QUERY_TIMEOUT = "query_timeout";
 
@@ -117,7 +116,6 @@ public class UserProperty implements Writable {
         ADVANCED_PROPERTIES.add(Pattern.compile("^" + PROP_PARALLEL_FRAGMENT_EXEC_INSTANCE_NUM + "$",
                 Pattern.CASE_INSENSITIVE));
         ADVANCED_PROPERTIES.add(Pattern.compile("^" + PROP_SQL_BLOCK_RULES + "$", Pattern.CASE_INSENSITIVE));
-        ADVANCED_PROPERTIES.add(Pattern.compile("^" + PROP_CPU_RESOURCE_LIMIT + "$", Pattern.CASE_INSENSITIVE));
         ADVANCED_PROPERTIES.add(Pattern.compile("^" + PROP_RESOURCE_TAGS + "$", Pattern.CASE_INSENSITIVE));
         ADVANCED_PROPERTIES.add(Pattern.compile("^" + PROP_EXEC_MEM_LIMIT + "$", Pattern.CASE_INSENSITIVE));
         ADVANCED_PROPERTIES.add(Pattern.compile("^" + PROP_USER_QUERY_TIMEOUT + "$", Pattern.CASE_INSENSITIVE));
@@ -165,10 +163,6 @@ public class UserProperty implements Writable {
         return commonProperties.getSqlBlockRulesSplit();
     }
 
-    public int getCpuResourceLimit() {
-        return commonProperties.getCpuResourceLimit();
-    }
-
     public String getWorkloadGroup() {
         return commonProperties.getWorkloadGroup();
     }
@@ -196,7 +190,6 @@ public class UserProperty implements Writable {
         long newMaxQueryInstances = this.commonProperties.getMaxQueryInstances();
         int newParallelFragmentExecInstanceNum = this.commonProperties.getParallelFragmentExecInstanceNum();
         String sqlBlockRules = this.commonProperties.getSqlBlockRules();
-        int cpuResourceLimit = this.commonProperties.getCpuResourceLimit();
         Set<Tag> resourceTags = this.commonProperties.getResourceTags();
         long execMemLimit = this.commonProperties.getExecMemLimit();
         int queryTimeout = this.commonProperties.getQueryTimeout();
@@ -274,24 +267,6 @@ public class UserProperty implements Writable {
                     }
                 }
                 sqlBlockRules = value;
-            } else if (keyArr[0].equalsIgnoreCase(PROP_CPU_RESOURCE_LIMIT)) {
-                // set property "cpu_resource_limit" = "2";
-                if (keyArr.length != 1) {
-                    throw new DdlException(PROP_CPU_RESOURCE_LIMIT + " format error");
-                }
-                int limit = -1;
-                try {
-                    limit = Integer.parseInt(value);
-                } catch (NumberFormatException e) {
-                    throw new DdlException(key + " is not number");
-                }
-
-                // -1 means unlimited
-                if (limit <= 0 && limit != -1) {
-                    throw new DdlException(key + " is not valid. Should not larger than 0 or equal to -1");
-                }
-
-                cpuResourceLimit = limit;
             } else if (keyArr[0].equalsIgnoreCase(PROP_RESOURCE_TAGS)) {
                 if (keyArr.length != 2) {
                     throw new DdlException(PROP_RESOURCE_TAGS + " format error");
@@ -358,7 +333,6 @@ public class UserProperty implements Writable {
         this.commonProperties.setMaxQueryInstances(newMaxQueryInstances);
         this.commonProperties.setParallelFragmentExecInstanceNum(newParallelFragmentExecInstanceNum);
         this.commonProperties.setSqlBlockRules(sqlBlockRules);
-        this.commonProperties.setCpuResourceLimit(cpuResourceLimit);
         this.commonProperties.setResourceTags(resourceTags);
         this.commonProperties.setExecMemLimit(execMemLimit);
         this.commonProperties.setQueryTimeout(queryTimeout);
@@ -482,9 +456,6 @@ public class UserProperty implements Writable {
 
         // sql block rules
         result.add(Lists.newArrayList(PROP_SQL_BLOCK_RULES, commonProperties.getSqlBlockRules()));
-
-        // cpu resource limit
-        result.add(Lists.newArrayList(PROP_CPU_RESOURCE_LIMIT, String.valueOf(commonProperties.getCpuResourceLimit())));
 
         // exec mem limit
         result.add(Lists.newArrayList(PROP_EXEC_MEM_LIMIT, String.valueOf(commonProperties.getExecMemLimit())));

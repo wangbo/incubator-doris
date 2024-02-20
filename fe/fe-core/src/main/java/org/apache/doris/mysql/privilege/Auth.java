@@ -1040,15 +1040,6 @@ public class Auth implements Writable {
         }
     }
 
-    public int getCpuResourceLimit(String qualifiedUser) {
-        readLock();
-        try {
-            return propertyMgr.getCpuResourceLimit(qualifiedUser);
-        } finally {
-            readUnlock();
-        }
-    }
-
     public Set<Tag> getResourceTags(String qualifiedUser) {
         readLock();
         try {

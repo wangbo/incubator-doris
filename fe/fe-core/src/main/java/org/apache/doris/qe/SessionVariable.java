@@ -246,8 +246,6 @@ public class SessionVariable implements Serializable, Writable {
 
     public static final String ENABLE_SINGLE_DISTINCT_COLUMN_OPT = "enable_single_distinct_column_opt";
 
-    public static final String CPU_RESOURCE_LIMIT = "cpu_resource_limit";
-
     public static final String ENABLE_PARALLEL_OUTFILE = "enable_parallel_outfile";
 
     public static final String SQL_QUOTE_SHOW_CREATE = "sql_quote_show_create";
@@ -882,9 +880,6 @@ public class SessionVariable implements Serializable, Writable {
 
     @VariableMgr.VarAttr(name = ENABLE_PARALLEL_OUTFILE)
     public boolean enableParallelOutfile = false;
-
-    @VariableMgr.VarAttr(name = CPU_RESOURCE_LIMIT)
-    public int cpuResourceLimit = -1;
 
     @VariableMgr.VarAttr(name = SQL_QUOTE_SHOW_CREATE)
     public boolean sqlQuoteShowCreate = true;
@@ -2492,10 +2487,6 @@ public class SessionVariable implements Serializable, Writable {
         return groupByAndHavingUseAliasFirst;
     }
 
-    public int getCpuResourceLimit() {
-        return cpuResourceLimit;
-    }
-
     public int getSendBatchParallelism() {
         return sendBatchParallelism;
     }
@@ -2855,12 +2846,6 @@ public class SessionVariable implements Serializable, Writable {
         tResult.setRuntimeFilterWaitTimeMs(runtimeFilterWaitTimeMs);
         tResult.setRuntimeFilterMaxInNum(runtimeFilterMaxInNum);
         tResult.setRuntimeFilterWaitInfinitely(runtimeFilterWaitInfinitely);
-
-        if (cpuResourceLimit > 0) {
-            TResourceLimit resourceLimit = new TResourceLimit();
-            resourceLimit.setCpuLimit(cpuResourceLimit);
-            tResult.setResourceLimit(resourceLimit);
-        }
 
         tResult.setEnableFunctionPushdown(enableFunctionPushdown);
         tResult.setEnableCommonExprPushdown(enableCommonExprPushdown);
