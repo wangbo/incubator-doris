@@ -31,6 +31,7 @@
 #include "common/status.h"
 #include "service/backend_options.h"
 #include "util/hash_util.hpp"
+#include "vec/exec/scan/scanner_scheduler.h"
 
 namespace doris {
 
@@ -39,10 +40,6 @@ class RuntimeProfile;
 class ThreadPool;
 class ExecEnv;
 class CgroupCpuCtl;
-
-namespace vectorized {
-class SimplifiedScanScheduler;
-}
 
 namespace pipeline {
 class PipelineTask;
