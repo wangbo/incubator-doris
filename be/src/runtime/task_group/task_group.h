@@ -29,6 +29,7 @@
 #include <unordered_set>
 
 #include "common/status.h"
+#include "pipeline/task_scheduler.h"
 #include "service/backend_options.h"
 #include "util/hash_util.hpp"
 #include "vec/exec/scan/scanner_scheduler.h"
@@ -43,7 +44,6 @@ class CgroupCpuCtl;
 
 namespace pipeline {
 class PipelineTask;
-class TaskScheduler;
 } // namespace pipeline
 
 namespace taskgroup {
