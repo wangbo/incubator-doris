@@ -409,6 +409,7 @@ void TaskScheduler::_do_work(size_t index) {
             break;
         case PipelineTaskState::RUNNABLE:
             task->set_running(false);
+            LOG(INFO) << "push task to sched:" << task->query_context()->get_task_scheduler()->_name;
             static_cast<void>(task->query_context()->get_task_scheduler()->task_queue()->push_back(
                     task, index));
             break;
