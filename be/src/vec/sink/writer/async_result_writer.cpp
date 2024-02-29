@@ -93,6 +93,7 @@ void AsyncResultWriter::start_writer(RuntimeState* state, RuntimeProfile* profil
     // not deconstructed before the thread exit.
     auto task_ctx = state->get_task_execution_context();
     if (state->get_query_ctx() && state->get_query_ctx()->get_non_pipe_exec_thread_pool()) {
+        LOG(INFO) << "get non pipe pool:" << state->get_query_ctx()->get_task_group()->name();
         ThreadPool* pool_ptr = state->get_query_ctx()->get_non_pipe_exec_thread_pool();
         static_cast<void>(pool_ptr->submit_func([this, state, profile, task_ctx]() {
             auto task_lock = task_ctx.lock();
