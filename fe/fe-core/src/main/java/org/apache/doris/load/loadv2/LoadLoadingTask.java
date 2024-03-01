@@ -20,6 +20,7 @@ package org.apache.doris.load.loadv2;
 import org.apache.doris.analysis.BrokerDesc;
 import org.apache.doris.analysis.UserIdentity;
 import org.apache.doris.catalog.Database;
+import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.EnvFactory;
 import org.apache.doris.catalog.OlapTable;
 import org.apache.doris.common.Config;
@@ -183,6 +184,7 @@ public class LoadLoadingTask extends LoadTask {
         } finally {
             try {
                 // a broker load job may have multiple task because of retry, here is task audit log
+                // which means a broker load job may have multiple audit log
                 if (auditEvent != null) {
                     auditEvent.queryId = DebugUtil.printId(loadId);
                     auditEvent.queryTime = System.currentTimeMillis() - beginTime;
