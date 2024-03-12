@@ -577,12 +577,12 @@ void FragmentMgr::remove_pipeline_context(
             _query_ctx_map.erase(query_id);
         }
     }
-    {
-        std::lock_guard<std::mutex> plock(q_context->pipeline_lock);
-        if (q_context->fragment_id_to_pipeline_ctx.contains(f_context->get_fragment_id())) {
-            q_context->fragment_id_to_pipeline_ctx.erase(f_context->get_fragment_id());
-        }
-    }
+    // {
+    //     std::lock_guard<std::mutex> plock(q_context->pipeline_lock);
+    //     if (q_context->fragment_id_to_pipeline_ctx.contains(f_context->get_fragment_id())) {
+    //         q_context->fragment_id_to_pipeline_ctx.erase(f_context->get_fragment_id());
+    //     }
+    // }
 }
 
 template <typename Params>
