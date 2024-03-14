@@ -126,8 +126,10 @@ Status SchemaWorkloadGroupsScanner::_get_workload_groups_block_from_fe() {
 
         for (int j = 0; j < _s_tbls_columns.size(); j++) {
             if (_s_tbls_columns[j].type == TYPE_BIGINT) {
+                LOG(INFO) << "log0314 idx="<< j << ", " << row.column_value[j].longVal;
                 insert_int_value(j, row.column_value[j].longVal, _workload_groups_block.get());
             } else {
+                LOG(INFO) << "log0314 idx="<< j << ", " << row.column_value[j].stringVal;
                 insert_string_value(j, row.column_value[j].stringVal, _workload_groups_block.get());
             }
         }
