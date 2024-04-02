@@ -137,13 +137,13 @@ public class WorkloadGroupMgr implements Writable, GsonPostProcessable {
     }
 
     public WorkloadGroupMgr() {
-        Map<String, String> properties = Maps.newHashMap();
-        properties.put(WorkloadGroup.CPU_SHARE, "1024");
-        properties.put(WorkloadGroup.MEMORY_LIMIT, "30%");
-        properties.put(WorkloadGroup.ENABLE_MEMORY_OVERCOMMIT, "true");
-        WorkloadGroup defaultWorkloadGroup = new WorkloadGroup(1, DEFAULT_GROUP_NAME, properties);
-        nameToWorkloadGroup.put(DEFAULT_GROUP_NAME, defaultWorkloadGroup);
-        idToWorkloadGroup.put(defaultWorkloadGroup.getId(), defaultWorkloadGroup);
+        // Map<String, String> properties = Maps.newHashMap();
+        // properties.put(WorkloadGroup.CPU_SHARE, "1024");
+        // properties.put(WorkloadGroup.MEMORY_LIMIT, "30%");
+        // properties.put(WorkloadGroup.ENABLE_MEMORY_OVERCOMMIT, "true");
+        // WorkloadGroup defaultWorkloadGroup = new WorkloadGroup(1, DEFAULT_GROUP_NAME, properties);
+        // nameToWorkloadGroup.put(DEFAULT_GROUP_NAME, defaultWorkloadGroup);
+        // idToWorkloadGroup.put(defaultWorkloadGroup.getId(), defaultWorkloadGroup);
     }
 
     public static WorkloadGroupMgr read(DataInput in) throws IOException {
