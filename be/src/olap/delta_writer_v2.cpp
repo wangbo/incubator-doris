@@ -127,9 +127,9 @@ Status DeltaWriterV2::init() {
     _rowset_writer = std::make_shared<BetaRowsetWriterV2>(_streams);
     RETURN_IF_ERROR(_rowset_writer->init(context));
     ThreadPool* wg_thread_pool_ptr = nullptr;
-    if (_state->get_query_ctx()) {
-        wg_thread_pool_ptr = _state->get_query_ctx()->get_non_pipe_exec_thread_pool();
-    }
+    // if (_state->get_query_ctx()) {
+    //     wg_thread_pool_ptr = _state->get_query_ctx()->get_non_pipe_exec_thread_pool();
+    // }
     RETURN_IF_ERROR(_memtable_writer->init(_rowset_writer, _tablet_schema, _partial_update_info,
                                            wg_thread_pool_ptr,
                                            _streams[0]->enable_unique_mow(_req.index_id)));
