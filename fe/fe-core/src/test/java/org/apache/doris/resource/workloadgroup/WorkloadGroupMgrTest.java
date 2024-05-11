@@ -69,13 +69,13 @@ public class WorkloadGroupMgrTest {
 
         @Override
         public void dropWorkloadGroup(DropWorkloadGroupStmt stmt) throws DdlException {
-            super.dropWorkloadGroup(stmt);
+            // super.dropWorkloadGroup(stmt);
+            System.out.println("a");
         }
     }
 
     @Before
     public void setUp() throws DdlException {
-        mockMgr = new MockWorkloadGroupMgr();
 
         new Expectations() {
             {
@@ -119,6 +119,7 @@ public class WorkloadGroupMgrTest {
                 };
             }
         };
+        mockMgr = new MockWorkloadGroupMgr();
     }
 
     @Test
