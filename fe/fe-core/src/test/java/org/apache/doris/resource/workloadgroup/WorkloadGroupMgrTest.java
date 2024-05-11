@@ -66,6 +66,11 @@ public class WorkloadGroupMgrTest {
 
     private static final class MockWorkloadGroupMgr extends WorkloadGroupMgr {
         public MockWorkloadGroupMgr() {}
+
+        @Override
+        public void dropWorkloadGroup(DropWorkloadGroupStmt stmt) throws DdlException {
+            super.dropWorkloadGroup(stmt);
+        }
     }
 
     @Before
