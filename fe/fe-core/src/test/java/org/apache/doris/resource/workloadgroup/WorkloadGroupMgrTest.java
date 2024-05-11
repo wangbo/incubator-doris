@@ -76,6 +76,7 @@ public class WorkloadGroupMgrTest {
 
     @Before
     public void setUp() throws DdlException {
+        Deencapsulation.setField(this, "mockMgr", mockMgr);
 
         new Expectations() {
             {
