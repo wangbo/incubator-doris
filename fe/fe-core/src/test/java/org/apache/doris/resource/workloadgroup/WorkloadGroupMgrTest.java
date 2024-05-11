@@ -60,10 +60,18 @@ public class WorkloadGroupMgrTest {
     private Auth auth;
 
 
+    private MockWorkloadGroupMgr mockMgr;
+
     private AtomicLong id = new AtomicLong(10);
+
+    private static final class MockWorkloadGroupMgr extends WorkloadGroupMgr {
+        public MockWorkloadGroupMgr() {}
+    }
 
     @Before
     public void setUp() throws DdlException {
+        mockMgr = new MockWorkloadGroupMgr();
+
         new Expectations() {
             {
                 env.getEditLog();
@@ -194,21 +202,20 @@ public class WorkloadGroupMgrTest {
     public void testDropWorkloadGroup() throws UserException {
         Config.enable_workload_group = true;
         ConnectContext context = new ConnectContext();
-        WorkloadGroupMgr workloadGroupMgr = new WorkloadGroupMgr();
         Map<String, String> properties = Maps.newHashMap();
         properties.put(WorkloadGroup.CPU_SHARE, "10");
         properties.put(WorkloadGroup.MEMORY_LIMIT, "30%");
         String name = "g1";
         CreateWorkloadGroupStmt createStmt = new CreateWorkloadGroupStmt(false, name, properties);
-        workloadGroupMgr.createWorkloadGroup(createStmt);
+        mockMgr.createWorkloadGroup(createStmt);
         context.getSessionVariable().setWorkloadGroup(name);
-        Assert.assertEquals(1, workloadGroupMgr.getWorkloadGroup(context).size());
+        Assert.assertEquals(1, mockMgr.getWorkloadGroup(context).size());
 
         DropWorkloadGroupStmt dropStmt = new DropWorkloadGroupStmt(false, name);
-        workloadGroupMgr.dropWorkloadGroup(dropStmt);
+        mockMgr.dropWorkloadGroup(dropStmt);
         try {
             context.getSessionVariable().setWorkloadGroup(name);
-            workloadGroupMgr.getWorkloadGroup(context);
+            mockMgr.getWorkloadGroup(context);
             Assert.fail();
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("does not exist"));
@@ -216,7 +223,7 @@ public class WorkloadGroupMgrTest {
 
         DropWorkloadGroupStmt dropDefaultStmt = new DropWorkloadGroupStmt(false, WorkloadGroupMgr.DEFAULT_GROUP_NAME);
         try {
-            workloadGroupMgr.dropWorkloadGroup(dropDefaultStmt);
+            mockMgr.dropWorkloadGroup(dropDefaultStmt);
         } catch (DdlException e) {
             Assert.assertTrue(e.getMessage().contains("is not allowed"));
         }
