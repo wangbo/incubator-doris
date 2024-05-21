@@ -56,23 +56,36 @@ public class QueueToken implements Comparable<QueueToken> {
     private long queueStartTime = -1;
     private long queueEndTime = -1;
 
-    // string is just a placeholder, it's meanless now
+    // string is just a placeholder, it's meaningless now
     private CompletableFuture<String> future;
     private QueryQueue queue;
 
-    public QueueToken(TokenState tokenState, long queueWaitTimeout, QueryQueue queryQueue) {
+    protected TUniqueId queryId;
+    protected int queryTimeoutMs;
+
+    public QueueToken(TokenState tokenState, long queueWaitTimeout, int queryTimeoutMs, QueryQueue queryQueue) {
         this.tokenId = tokenIdGenerator.addAndGet(1);
         this.tokenState = tokenState;
         this.queueWaitTimeout = queueWaitTimeout;
+        this.queryTimeoutMs = queryTimeoutMs;
         this.queue = queryQueue;
         this.future = new CompletableFuture();
     }
 
-    public void get(int queryTimeout) throws UserException {
+    public QueueToken(TUniqueId queryId, TokenState tokenState, int queueWaitTimeout, int queryTimeoutMs) {
+        this.queryId = queryId;
+        this.tokenId = tokenIdGenerator.addAndGet(1);
+        this.tokenState = tokenState;
+        this.queueWaitTimeout = queueWaitTimeout;
+        this.queryTimeoutMs = queryTimeoutMs;
+        this.future = new CompletableFuture();
+    }
+
+    public void get() throws UserException {
         if (tokenState == TokenState.READY_TO_RUN) {
             return;
         }
-        long waitTimeout = Math.min(queueWaitTimeout, queryTimeout);
+        long waitTimeout = Math.min(queueWaitTimeout, queryTimeoutMs);
         try {
             future.get(waitTimeout, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
@@ -97,6 +110,10 @@ public class QueueToken implements Comparable<QueueToken> {
         this.queueEndTime = currentTime;
         this.tokenState = TokenState.READY_TO_RUN;
         future.complete("");
+    }
+
+    public void completeThrowable(Throwable t) {
+        future.completeExceptionally(t);
     }
 
     public void cancel() {
@@ -141,5 +158,9 @@ public class QueueToken implements Comparable<QueueToken> {
 
     public long getTokenId() {
         return tokenId;
+    }
+
+    public TUniqueId getQueryId() {
+        return queryId;
     }
 }

@@ -1491,6 +1491,13 @@ struct TFetchSplitBatchResult {
     1: optional list<Planner.TScanRangeLocations> splits
 }
 
+struct TAdmissionRequest {
+    1: optional
+}
+
+struct TAdmissionResponse {
+}
+
 service FrontendService {
     TGetDbsResult getDbNames(1: TGetDbsParams params)
     TGetTablesResult getTableNames(1: TGetTablesParams params)

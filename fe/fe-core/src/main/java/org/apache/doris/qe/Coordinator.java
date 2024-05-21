@@ -648,8 +648,8 @@ public class Coordinator implements CoordInterface {
                         // throw exception during workload group manager.
                         throw new UserException("could not find query queue");
                     }
-                    queueToken = queryQueue.getToken();
-                    queueToken.get(this.queryOptions.getExecutionTimeout() * 1000);
+                    queueToken = queryQueue.getToken(this);
+                    queueToken.get();
                 }
             } else {
                 context.setWorkloadGroupName("");

@@ -18,6 +18,7 @@
 package org.apache.doris.resource.workloadgroup;
 
 import org.apache.doris.common.UserException;
+import org.apache.doris.qe.Coordinator;
 import org.apache.doris.resource.workloadgroup.QueueToken.TokenState;
 
 import com.google.common.base.Preconditions;
@@ -27,7 +28,6 @@ import org.apache.logging.log4j.Logger;
 import java.util.PriorityQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
-// note(wb) refer java BlockingQueue, but support altering capacity
 // todo(wb) add wait time to profile
 public class QueryQueue {
 
@@ -37,7 +37,7 @@ public class QueryQueue {
     // resource group property
     private int maxConcurrency;
     private int maxQueueSize;
-    private int queueTimeout; // ms
+    protected int queueTimeout; // ms
     // running property
     private volatile int currentRunningQueryNum;
 
@@ -99,14 +99,15 @@ public class QueryQueue {
                 + ", currentWaitingQueryNum=" + priorityTokenQueue.size();
     }
 
-    public QueueToken getToken() throws UserException {
+    public QueueToken getToken(Coordinator coord) throws UserException {
         queueLock.lock();
         try {
             if (LOG.isDebugEnabled()) {
                 LOG.info(this.debugString());
             }
             if (currentRunningQueryNum < maxConcurrency) {
-                QueueToken retToken = new QueueToken(TokenState.READY_TO_RUN, queueTimeout, this);
+                QueueToken retToken = new QueueToken(TokenState.READY_TO_RUN, queueTimeout,
+                        coord.getQueryOptions().getExecutionTimeout() * 1000, this);
                 retToken.complete();
                 currentRunningQueryNum++;
                 return retToken;
@@ -115,6 +116,7 @@ public class QueryQueue {
                 throw new UserException("query waiting queue is full, queue length=" + maxQueueSize);
             }
             QueueToken newQueryToken = new QueueToken(TokenState.ENQUEUE_SUCCESS, queueTimeout,
+                    coord.getQueryOptions().getExecutionTimeout() * 1000,
                     this);
             newQueryToken.setQueueTimeWhenQueueSuccess();
             this.priorityTokenQueue.offer(newQueryToken);
