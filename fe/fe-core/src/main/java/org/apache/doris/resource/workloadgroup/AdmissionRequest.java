@@ -28,7 +28,7 @@ public class AdmissionRequest {
     private long queryStartTime;
     private long feProcessId;
 
-    private boolean isQueryFinished = false;
+    private volatile boolean isQueryFinished = false;
 
     public AdmissionRequest(TUniqueId queryId, TNetworkAddress clientFeAddr, long wgId, int queryTimeout,
             int queueTimeout, long queryStartTime, long feProcessId) {
