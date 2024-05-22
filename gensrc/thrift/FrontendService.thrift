@@ -1492,10 +1492,19 @@ struct TFetchSplitBatchResult {
 }
 
 struct TAdmissionRequest {
-    1: optional
+    1: optional TUniqueId query_id
+    2: optional TNetworkAddress client_fe_addr
+    3: optional i64 wg_id
+    4: optional i32 query_timeout
+    5: optional i32 queue_timeout
+    6: optional i64 query_start_time
+    7: optional i64 fe_process_uuid
 }
 
 struct TAdmissionResponse {
+    1: optional TUniqueId query_id
+    2: optional TStatusCode status
+    3: optional string error_msg
 }
 
 service FrontendService {

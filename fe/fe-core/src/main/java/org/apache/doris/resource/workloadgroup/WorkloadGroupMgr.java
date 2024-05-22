@@ -242,6 +242,15 @@ public class WorkloadGroupMgr extends MasterDaemon implements Writable, GsonPost
         return tWorkloadGroups;
     }
 
+    public WorkloadGroup getWorkloadGroupById(long wgId) {
+        readLock();
+        try {
+            return idToWorkloadGroup.get(wgId);
+        } finally {
+            readUnlock();
+        }
+    }
+
     public List<TPipelineWorkloadGroup> getWorkloadGroupByUser(UserIdentity user, boolean checkAuth)
             throws UserException {
         String groupName = Env.getCurrentEnv().getAuth().getWorkloadGroup(user.getQualifiedUser());
