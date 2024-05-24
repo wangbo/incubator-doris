@@ -1269,6 +1269,8 @@ DEFINE_Int64(min_nonblock_close_thread_num, "12");
 // The max thread num for NonBlockCloseThreadPool
 DEFINE_Int64(max_nonblock_close_thread_num, "64");
 
+DEFINE_mInt32(max_column_reader_num, "10000");
+
 // clang-format off
 #ifdef BE_TEST
 // test s3

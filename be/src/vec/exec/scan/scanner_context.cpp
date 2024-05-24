@@ -80,6 +80,24 @@ ScannerContext::ScannerContext(RuntimeState* state, const TupleDescriptor* outpu
                                                       : state->query_parallel_instance_num());
     _max_thread_num = _max_thread_num == 0 ? 1 : _max_thread_num;
     _max_thread_num = std::min(_max_thread_num, (int32_t)scanners.size());
+
+    // this means user not specify scan thread num, so we can rerite _max_thread_num
+    if (_state->num_scanner_threads() <= 0 && _max_thread_num != 1) {
+        int32_t table_column_num = _output_tuple_desc->slots().size();
+        int32_t current_column_num = table_column_num * _max_thread_num;
+        if (current_column_num > config::max_column_reader_num) {
+            int32_t max_thread_num = config::max_column_reader_num / table_column_num;
+            max_thread_num = max_thread_num <= 0 ? 1 : max_thread_num;
+            if (max_thread_num < _max_thread_num) {
+                int32_t origin_max_thread_num = _max_thread_num;
+                _max_thread_num = max_thread_num;
+                LOG(INFO) << "origin max_thread_num:" << origin_max_thread_num
+                          << ", downgrade max_thread_num:" << _max_thread_num
+                          << ",column num:" << table_column_num;
+            }
+        }
+    }
+
     // 1. Calculate max concurrency
     // For select * from table limit 10; should just use one thread.
     if ((_parent && _parent->should_run_serial()) ||
