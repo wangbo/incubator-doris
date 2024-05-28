@@ -202,7 +202,7 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
     // record the time from scanner submission to actual execution in nanoseconds
     ctx->incr_ctx_scheduling_time(GetCurrentTimeNanos() - scan_task->last_submit_time);
     auto task_lock = ctx->task_exec_ctx();
-    if (task_lock == nullptr) {
+    if (task_lock == nullptr || ctx->done()) {
         return;
     }
 
@@ -255,11 +255,13 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
         }
         scanner->set_opened();
     }
-    // std::string query_ctx_is_cancel = state->get_query_ctx()->is_cancelled() ? "true" : "false";
+    std::string query_ctx_is_cancel2 = state->get_query_ctx()->is_cancelled() ? "true" : "false";
     std::string ctx_is_done = ctx->done() ? "true" : "false";
     LOG(INFO) << query_id << ", scanner exec ,is cancelled:" << is_cancelled
               << ", scanner is stop:" << is_stoped << ", scanner num:" << ctx->scanner_num
-              << ", query ctx is cancel:" << query_ctx_is_cancel << ",ctx is done:" << ctx_is_done;
+              << ", query ctx is cancel:" << query_ctx_is_cancel
+              << ", query ctx is cancel2:" << query_ctx_is_cancel2
+              << ",ctx is done:" << ctx_is_done;
 
     static_cast<void>(scanner->try_append_late_arrival_runtime_filter());
 
