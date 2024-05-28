@@ -108,7 +108,7 @@ void TaskScheduler::_do_work(size_t index) {
         task->set_running(true);
         task->set_task_queue(_task_queue.get());
         auto* fragment_ctx = task->fragment_context();
-        bool canceled = fragment_ctx->is_canceled();
+        bool canceled = fragment_ctx->get_query_ctx()->is_cancelled();
 
         // If the state is PENDING_FINISH, then the task is come from blocked queue, its is_pending_finish
         // has to return false. The task is finished and need to close now.
@@ -119,6 +119,8 @@ void TaskScheduler::_do_work(size_t index) {
             // If pipeline is canceled, it will report after pipeline closed, and will propagate
             // errors to downstream through exchange. So, here we needn't send_report.
             // fragment_ctx->send_report(true);
+            LOG(INFO) << print_id(fragment_ctx->get_query_ctx()->query_id())
+                      << " get cancel in task schedule ";
             _close_task(task, fragment_ctx->get_query_ctx()->exec_status());
             continue;
         }

@@ -147,7 +147,7 @@ public:
         _merge_controller_handlers.emplace_back(handler);
     }
 
-private:
+public :
     Status _build_pipelines(ObjectPool* pool, const doris::TPipelineFragmentParams& request,
                             const DescriptorTbl& descs, OperatorXPtr* root, PipelinePtr cur_pipe);
     Status _create_tree_helper(ObjectPool* pool, const std::vector<TPlanNode>& tnodes,

@@ -234,6 +234,10 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
     bool eos = false;
     RuntimeState* state = ctx->state();
     DCHECK(nullptr != state);
+    std::string query_ctx_is_cancel = state->get_query_ctx()->is_cancelled() ? "true" : "false";
+    if (state->get_query_ctx()->is_cancelled()) {
+        eos = true;
+    }
     if (!scanner->is_init()) {
         status = scanner->init();
         if (!status.ok()) {
@@ -251,7 +255,7 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
         }
         scanner->set_opened();
     }
-    std::string query_ctx_is_cancel = state->get_query_ctx()->is_cancelled() ? "true" : "false";
+    // std::string query_ctx_is_cancel = state->get_query_ctx()->is_cancelled() ? "true" : "false";
     std::string ctx_is_done = ctx->done() ? "true" : "false";
     LOG(INFO) << query_id << ", scanner exec ,is cancelled:" << is_cancelled
               << ", scanner is stop:" << is_stoped << ", scanner num:" << ctx->scanner_num
