@@ -209,6 +209,7 @@ void QueryContext::cancel(Status new_status, int fragment_id) {
         return;
     }
     DCHECK(!false_cancel && _is_cancelled);
+    LOG(INFO) << "set " << print_id(_query_id) << " cancel " << (int)_is_cancelled.load();
 
     set_ready_to_execute(true);
     std::vector<std::weak_ptr<pipeline::PipelineFragmentContext>> ctx_to_cancel;
