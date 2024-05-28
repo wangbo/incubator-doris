@@ -206,8 +206,11 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
         return;
     }
 
+    std::string query_id = print_id(ctx->state()->query_id());
+    std::string is_cancelled = ctx->state()->is_cancelled() ? "true" : "false";
     std::shared_ptr<ScannerDelegate> scanner_delegate = scan_task->scanner.lock();
     if (scanner_delegate == nullptr) {
+        LOG(INFO) << query_id << ", find null scanner ,is cancelled:" << is_cancelled;
         return;
     }
 
@@ -238,13 +241,18 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
         }
     }
 
+    std::string run_open = "false";
+    std::string is_stoped = scanner->is_stop() ? "true" : "false";
     if (!eos && !scanner->is_open()) {
         status = scanner->open(state);
+        run_open = "true";
         if (!status.ok()) {
             eos = true;
         }
         scanner->set_opened();
     }
+    LOG(INFO) << query_id << ", scanner exec ,is cancelled:" << is_cancelled
+              << ", scanner is stop:" << is_stoped << ", scanner num:" << ctx->scanner_num;
 
     static_cast<void>(scanner->try_append_late_arrival_runtime_filter());
 

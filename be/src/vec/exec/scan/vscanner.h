@@ -83,6 +83,8 @@ public:
     // Try to stop scanner, and all running readers.
     virtual void try_stop() { _should_stop = true; };
 
+    bool is_stop() { return _should_stop; }
+
     virtual std::string get_name() { return ""; }
 
     // return the readable name of current scan range.

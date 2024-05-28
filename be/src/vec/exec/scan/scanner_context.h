@@ -177,6 +177,8 @@ public:
 
     bool _should_reset_thread_name = true;
 
+    int scanner_num = -1;
+
 protected:
     ScannerContext(RuntimeState* state_, const TupleDescriptor* output_tuple_desc,
                    const RowDescriptor* output_row_descriptor,

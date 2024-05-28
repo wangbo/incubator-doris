@@ -168,7 +168,8 @@ QueryContext::~QueryContext() {
 
     _exec_env->spill_stream_mgr()->async_cleanup_query(_query_id);
 
-    LOG_INFO("Query {} deconstructed, {}", print_id(this->_query_id), mem_tracker_msg);
+    Status stack = Status::InternalError<true>("");
+    LOG_INFO("Query {} deconstructed, {}, stack:{}", print_id(this->_query_id), mem_tracker_msg, stack.msg());
 }
 
 void QueryContext::set_ready_to_execute(bool is_cancelled) {
