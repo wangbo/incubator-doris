@@ -238,6 +238,9 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
     if (state->get_query_ctx()->is_cancelled()) {
         eos = true;
     }
+    LOG(INFO) << query_id << ", LOG0530" << " begin exec, query is cancel:" << query_ctx_is_cancel
+              << ",ctx is done:" << (int)ctx->done();
+
     if (!scanner->is_init()) {
         status = scanner->init();
         if (!status.ok()) {
@@ -247,6 +250,7 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
 
     std::string run_open = "false";
     std::string is_stoped = scanner->is_stop() ? "true" : "false";
+    size_t begin_open_time = MonotonicMillis();
     if (!eos && !scanner->is_open()) {
         status = scanner->open(state);
         run_open = "true";
@@ -255,13 +259,14 @@ void ScannerScheduler::_scanner_scan(std::shared_ptr<ScannerContext> ctx,
         }
         scanner->set_opened();
     }
+    size_t open_time_cost = MonotonicMillis() - begin_open_time;
     std::string query_ctx_is_cancel2 = state->get_query_ctx()->is_cancelled() ? "true" : "false";
     std::string ctx_is_done = ctx->done() ? "true" : "false";
-    LOG(INFO) << query_id << ", scanner exec ,is cancelled:" << is_cancelled
+    LOG(INFO) << query_id << ", LOG0530 scanner exec ,is cancelled:" << is_cancelled
               << ", scanner is stop:" << is_stoped << ", scanner num:" << ctx->scanner_num
               << ", query ctx is cancel:" << query_ctx_is_cancel
-              << ", query ctx is cancel2:" << query_ctx_is_cancel2
-              << ",ctx is done:" << ctx_is_done;
+              << ", query ctx is cancel2:" << query_ctx_is_cancel2 << ",ctx is done:" << ctx_is_done
+              << ", open time cost:" << open_time_cost << ", run open:" << run_open;
 
     static_cast<void>(scanner->try_append_late_arrival_runtime_filter());
 
