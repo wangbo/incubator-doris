@@ -244,6 +244,7 @@ void Daemon::memory_gc_thread() {
     int32_t memory_gc_sleep_time_ms = config::memory_gc_sleep_time_ms;
     while (!_stop_background_threads_latch.wait_for(
             std::chrono::milliseconds(interval_milliseconds))) {
+        LOG(INFO) << "log0604:" << doris::GlobalMemoryArbitrator::process_mem_log_str();
         if (config::disable_memory_gc) {
             continue;
         }
