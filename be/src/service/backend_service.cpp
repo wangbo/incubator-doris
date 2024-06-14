@@ -1234,4 +1234,15 @@ void BaseBackendService::get_realtime_exec_status(TGetRealtimeExecStatusResponse
     response.__set_report_exec_status_params(*report_exec_status_params);
 }
 
+void BaseBackendService::get_resource_usage(TGetResourceUsageResult& result,
+                                            const TGetResourceUsageRequest& request) {
+    double be_memory_limit = (double)MemInfo::mem_limit();
+    double be_memory_usage = (double)doris::GlobalMemoryArbitrator::process_memory_usage();
+    double be_memory_usage_percent = be_memory_usage / be_memory_limit;
+    result.__set_memory_usage_percent(be_memory_usage_percent);
+    if (be_memory_usage_percent < 0 || be_memory_usage_percent > 1) {
+        LOG_INFO("find a invalid be memory usage value {}", be_memory_usage_percent);
+    }
+}
+
 } // namespace doris

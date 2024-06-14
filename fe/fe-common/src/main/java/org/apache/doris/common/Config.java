@@ -1758,6 +1758,13 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true, varType = VariableAnnotation.EXPERIMENTAL)
     public static boolean enable_cpu_hard_limit = false;
 
+    @ConfField(mutable = true)
+    public static double query_queue_by_be_used_memory_percent = 0.2;
+
+    @ConfField(mutable = true)
+    public static long get_be_resource_usage_interval_ms = 5000;
+
+
     @ConfField(mutable = false, masterOnly = true)
     public static int backend_rpc_timeout_ms = 60000; // 1 min
 

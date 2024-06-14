@@ -138,6 +138,9 @@ public:
     void get_realtime_exec_status(TGetRealtimeExecStatusResponse& response,
                                   const TGetRealtimeExecStatusRequest& request) override;
 
+    void get_resource_usage(TGetResourceUsageResult& result,
+                            const TGetResourceUsageRequest& request) override;
+
     ////////////////////////////////////////////////////////////////////////////
     // begin cloud backend functions
     ////////////////////////////////////////////////////////////////////////////

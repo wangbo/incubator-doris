@@ -50,6 +50,8 @@ import org.apache.doris.thrift.TExportTaskRequest;
 import org.apache.doris.thrift.TFinishTaskRequest;
 import org.apache.doris.thrift.TGetRealtimeExecStatusRequest;
 import org.apache.doris.thrift.TGetRealtimeExecStatusResponse;
+import org.apache.doris.thrift.TGetResourceUsageRequest;
+import org.apache.doris.thrift.TGetResourceUsageResult;
 import org.apache.doris.thrift.TGetTopNHotPartitionsRequest;
 import org.apache.doris.thrift.TGetTopNHotPartitionsResponse;
 import org.apache.doris.thrift.THeartbeatResult;
@@ -356,6 +358,11 @@ public class MockedBackendFactory {
         @Override
         public TPublishTopicResult publishTopicInfo(TPublishTopicRequest request) throws TException {
             return new TPublishTopicResult(new TStatus(TStatusCode.OK));
+        }
+
+        @Override
+        public TGetResourceUsageResult getResourceUsage(TGetResourceUsageRequest request) throws TException {
+            return null;
         }
 
         @Override

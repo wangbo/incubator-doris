@@ -333,6 +333,14 @@ struct TGetRealtimeExecStatusResponse {
     2: optional FrontendService.TReportExecStatusParams report_exec_status_params
 }
 
+struct TGetResourceUsageRequest {
+}
+
+struct TGetResourceUsageResult {
+    1: optional Status.TStatus status
+    2: optional double memory_usage_percent
+}
+
 service BackendService {
     // Called by coord to start asynchronous execution of plan fragment in backend.
     // Returns as soon as all incoming data streams have been set up.
@@ -401,4 +409,7 @@ service BackendService {
     TPublishTopicResult publish_topic_info(1:TPublishTopicRequest topic_request);
 
     TGetRealtimeExecStatusResponse get_realtime_exec_status(1:TGetRealtimeExecStatusRequest request);
+
+    TGetResourceUsageResult get_resource_usage(1: TGetResourceUsageRequest req);
+
 }
