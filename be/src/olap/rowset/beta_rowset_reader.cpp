@@ -44,6 +44,7 @@
 #include "olap/schema_cache.h"
 #include "olap/tablet_meta.h"
 #include "olap/tablet_schema.h"
+#include "runtime/query_context.h"
 #include "util/runtime_profile.h"
 #include "vec/core/block.h"
 #include "vec/olap/vgeneric_iterators.h"
@@ -238,6 +239,12 @@ Status BetaRowsetReader::get_segment_iterators(RowsetReaderContext* read_context
                 _read_context->runtime_state->query_options().enable_file_cache;
         _read_options.io_ctx.is_disposable =
                 _read_context->runtime_state->query_options().disable_file_cache;
+        if (_read_context->runtime_state->get_query_ctx() != nullptr) {
+            _read_options.scan_io_throttle_ctx.io_throttle =
+                    _read_context->runtime_state->get_query_ctx()->scan_io_throttle;
+            _read_options.scan_io_throttle_ctx.io_block_timeout =
+                    _read_context->runtime_state->get_query_ctx()->execution_timeout();
+        }
     }
 
     _read_options.io_ctx.expiration_time =

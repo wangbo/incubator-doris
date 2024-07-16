@@ -354,6 +354,7 @@ Status ColumnReader::read_page(const ColumnIteratorOptions& iter_opts, const Pag
             .stats = iter_opts.stats,
             .encoding_info = _encoding_info,
             .io_ctx = iter_opts.io_ctx,
+            .scan_io_throttle_ctx = iter_opts.scan_io_throttle_ctx,
     };
     // index page should not pre decode
     if (iter_opts.type == INDEX_PAGE) opts.pre_decode = false;

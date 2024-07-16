@@ -40,6 +40,7 @@ class ThreadPool;
 class ExecEnv;
 class CgroupCpuCtl;
 class QueryContext;
+class IOThrottle;
 
 namespace vectorized {
 class SimplifiedScanScheduler;
@@ -163,6 +164,8 @@ public:
 
     std::string thread_debug_info();
 
+    IOThrottle* get_scan_io_throttle();
+
 private:
     mutable std::shared_mutex _mutex; // lock _name, _version, _cpu_share, _memory_limit
     const uint64_t _id;
@@ -194,6 +197,7 @@ private:
     std::unique_ptr<vectorized::SimplifiedScanScheduler> _scan_task_sched {nullptr};
     std::unique_ptr<vectorized::SimplifiedScanScheduler> _remote_scan_task_sched {nullptr};
     std::unique_ptr<ThreadPool> _memtable_flush_pool {nullptr};
+    std::unique_ptr<IOThrottle> _scan_io_throttle {nullptr};
 };
 
 using WorkloadGroupPtr = std::shared_ptr<WorkloadGroup>;
@@ -212,6 +216,7 @@ struct WorkloadGroupInfo {
     const int min_remote_scan_thread_num = 0;
     const int spill_low_watermark = 0;
     const int spill_high_watermark = 0;
+    const int read_bytes_per_second = -1;
     // log cgroup cpu info
     uint64_t cgroup_cpu_shares = 0;
     int cgroup_cpu_hard_limit = 0;

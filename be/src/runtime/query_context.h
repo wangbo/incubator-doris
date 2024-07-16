@@ -259,6 +259,8 @@ public:
     // only for file scan node
     std::map<int, TFileScanRangeParams> file_scan_range_params_map;
 
+    IOThrottle* scan_io_throttle = nullptr;
+
 private:
     int _timeout_second;
     TUniqueId _query_id;

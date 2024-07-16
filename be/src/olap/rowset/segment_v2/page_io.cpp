@@ -143,18 +143,27 @@ Status PageIO::read_and_decompress_page(const PageReadOptions& opts, PageHandle*
                                   opts.file_reader->path().native());
     }
 
+    // if (opts.scan_io_throttle_ctx.io_throttle != nullptr) {
+    //     opts.scan_io_throttle_ctx.io_throttle->acquire(opts.scan_io_throttle_ctx.io_block_timeout);
+    // }
+    ExecEnv::GetInstance()->io_throttle->acquire(300000);
     // hold compressed page at first, reset to decompressed page later
     std::unique_ptr<DataPage> page =
             std::make_unique<DataPage>(page_size, opts.use_page_cache, opts.type);
     Slice page_slice(page->data(), page_size);
+    size_t bytes_read = 0;
     {
         SCOPED_RAW_TIMER(&opts.stats->io_ns);
-        size_t bytes_read = 0;
         RETURN_IF_ERROR(opts.file_reader->read_at(opts.page_pointer.offset, page_slice, &bytes_read,
                                                   &opts.io_ctx));
         DCHECK_EQ(bytes_read, page_size);
         opts.stats->compressed_bytes_read += page_size;
     }
+    // if (opts.scan_io_throttle_ctx.io_throttle != nullptr) {
+    //     opts.scan_io_throttle_ctx.io_throttle->update_next_io_time(bytes_read);
+    // }
+    ExecEnv::GetInstance()->io_throttle->total_read_bytes += bytes_read;
+    ExecEnv::GetInstance()->io_throttle->update_next_io_time(bytes_read);
 
     if (opts.verify_checksum) {
         uint32_t expect = decode_fixed32_le((uint8_t*)page_slice.data + page_slice.size - 4);

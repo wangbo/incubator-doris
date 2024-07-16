@@ -83,6 +83,7 @@ class RoutineLoadTaskExecutor;
 class SmallFileMgr;
 class BackendServiceClient;
 class TPaloBrokerServiceClient;
+class IOThrottle;
 class PBackendService_Stub;
 class PFunctionService_Stub;
 template <class T>
@@ -304,6 +305,8 @@ public:
 
     segment_v2::TmpFileDirs* get_tmp_file_dirs() { return _tmp_file_dirs.get(); }
     io::FDCache* file_cache_open_fd_cache() const { return _file_cache_open_fd_cache.get(); }
+
+    std::unique_ptr<IOThrottle> io_throttle = std::make_unique<IOThrottle>();
 
 private:
     ExecEnv();

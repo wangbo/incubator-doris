@@ -42,6 +42,7 @@
 #include "olap/rowset/segment_v2/parsed_page.h" // for ParsedPage
 #include "olap/types.h"
 #include "olap/utils.h"
+#include "runtime/workload_management/io_throttle.h"
 #include "util/once.h"
 #include "vec/columns/column.h"
 #include "vec/columns/column_array.h" // ColumnArray
@@ -96,6 +97,7 @@ struct ColumnIteratorOptions {
     // reader statistics
     OlapReaderStatistics* stats = nullptr; // Ref
     io::IOContext io_ctx;
+    IOThrottleCtx scan_io_throttle_ctx;
 
     void sanity_check() const {
         CHECK_NOTNULL(file_reader);

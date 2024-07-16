@@ -28,6 +28,7 @@
 #include "olap/rowset/segment_v2/row_ranges.h"
 #include "olap/tablet_schema.h"
 #include "runtime/runtime_state.h"
+#include "runtime/workload_management/io_throttle.h"
 #include "vec/core/block.h"
 #include "vec/exprs/vexpr.h"
 
@@ -120,6 +121,7 @@ public:
     std::map<std::string, PrimitiveType> target_cast_type_for_variants;
     RowRanges row_ranges;
     size_t topn_limit = 0;
+    IOThrottleCtx scan_io_throttle_ctx;
 };
 
 struct CompactionSampleInfo {

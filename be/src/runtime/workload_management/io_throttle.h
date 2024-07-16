@@ -17,38 +17,44 @@
 
 #pragma once
 
-#include <vector>
+#include <stdint.h>
 
-#include "gutil/ref_counted.h"
-#include "util/countdown_latch.h"
-#include "util/thread.h"
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 
 namespace doris {
 
-class Daemon {
+class IOThrottle;
+
+struct IOThrottleCtx {
+    IOThrottle* io_throttle = nullptr;
+    int io_block_timeout;
+};
+
+class IOThrottle {
 public:
-    Daemon() : _stop_background_threads_latch(1) {}
-    ~Daemon() = default;
+    IOThrottle() = default;
 
-    // Start background threads
-    void start();
+    ~IOThrottle() = default;
 
-    // Stop background threads
-    void stop();
+    bool acquire(int64_t block_timeout_ms);
+
+    // non-block acquire
+    bool try_acquire();
+
+    void update_next_io_time(int64_t bytes);
+
+    void set_io_bytes_per_second(int64_t read_bytes_per_second);
+
+    int64_t get_io_bytes_per_second() { return _io_bytes_per_second.load(); }
+
+    uint64_t total_read_bytes {0};
 
 private:
-    void tcmalloc_gc_thread();
-    void memory_maintenance_thread();
-    void memory_gc_thread();
-    void memtable_memory_refresh_thread();
-    void calculate_metrics_thread();
-    void je_purge_dirty_pages_thread() const;
-    void report_runtime_query_statistics_thread();
-    void wg_mem_used_refresh_thread();
-    void be_proc_monitor_thread();
-    void be_io_monitor_thread();
-
-    CountDownLatch _stop_background_threads_latch;
-    std::vector<scoped_refptr<Thread>> _threads;
+    std::mutex _mutex;
+    std::condition_variable wait_condition;
+    int64_t _next_io_time_micros {0};
+    std::atomic<int64_t> _io_bytes_per_second {-1};
 };
-} // namespace doris
+}; // namespace doris

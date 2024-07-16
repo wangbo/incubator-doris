@@ -1395,6 +1395,7 @@ Status SegmentIterator::_init_return_column_iterators() {
                     .file_reader = _file_reader.get(),
                     .stats = _opts.stats,
                     .io_ctx = _opts.io_ctx,
+                    .scan_io_throttle_ctx = _opts.scan_io_throttle_ctx,
             };
             RETURN_IF_ERROR(_column_iterators[cid]->init(iter_opts));
         }

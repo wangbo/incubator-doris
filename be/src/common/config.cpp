@@ -1331,6 +1331,8 @@ DEFINE_mBool(ignore_not_found_file_in_external_table, "true");
 
 DEFINE_mBool(enable_hdfs_mem_limiter, "true");
 
+DEFINE_mInt64(read_bytes_per_second, "104857600");
+
 // clang-format off
 #ifdef BE_TEST
 // test s3

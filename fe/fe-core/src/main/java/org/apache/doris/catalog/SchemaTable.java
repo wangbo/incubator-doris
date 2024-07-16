@@ -489,6 +489,7 @@ public class SchemaTable extends Table {
                             .column("SPILL_THRESHOLD_LOW_WATERMARK", ScalarType.createVarchar(256))
                             .column("SPILL_THRESHOLD_HIGH_WATERMARK", ScalarType.createVarchar(256))
                             .column("TAG", ScalarType.createVarchar(256))
+                            .column("READ_BYTES_PER_SECOND", ScalarType.createType(PrimitiveType.BIGINT))
                             .build()))
             .put("processlist",
                     new SchemaTable(SystemIdGenerator.getNextId(), "processlist", TableType.SCHEMA,

@@ -407,6 +407,16 @@ void Daemon::be_proc_monitor_thread() {
     }
 }
 
+void Daemon::be_io_monitor_thread() {
+    uint64_t pre_value = ExecEnv::GetInstance()->io_throttle->total_read_bytes;
+    while (!_stop_background_threads_latch.wait_for(std::chrono::milliseconds(1000))) {
+        uint64_t current_read_bytes = ExecEnv::GetInstance()->io_throttle->total_read_bytes;
+        uint64_t real_read_bytes = (current_read_bytes - pre_value) / 1024 / 1024;
+        pre_value = current_read_bytes;
+        LOG(INFO) << "be_io_monitor " << real_read_bytes << " MB/s.";
+    }
+}
+
 void Daemon::start() {
     Status st;
     st = Thread::create(
@@ -449,6 +459,11 @@ void Daemon::start() {
                 "Daemon", "be_proc_monitor_thread", [this]() { this->be_proc_monitor_thread(); },
                 &_threads.emplace_back());
     }
+
+    st = Thread::create(
+            "Daemon", "io_monitor_thread", [this]() { this->be_io_monitor_thread(); },
+            &_threads.emplace_back());
+
     CHECK(st.ok()) << st;
 }
 
