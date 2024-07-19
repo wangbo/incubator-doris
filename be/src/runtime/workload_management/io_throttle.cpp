@@ -21,10 +21,11 @@
 
 #include "common/config.h"
 #include "util/time.h"
+#include "common/logging.h"
 
 namespace doris {
 
-bool IOThrottle::acquire(int64_t block_timeout_ms) {
+bool IOThrottle::acquire(int64_t block_timeout_ms, int64_t* wait_count) {
     // if (_io_bytes_per_second.load() < 0) {
     //     return true;
     // }
@@ -36,16 +37,24 @@ bool IOThrottle::acquire(int64_t block_timeout_ms) {
     std::unique_lock<std::mutex> w_lock(_mutex);
     int64_t current_time = GetCurrentTimeMicros();
     int64_t block_finish_time = current_time + block_timeout_ms * 1000;
+    int64_t old_current_time = current_time;
+    int64_t old_next_io_time = _next_io_time_micros;
 
+    uint64_t wc = 0;
     while (current_time <= _next_io_time_micros) {
         if (current_time >= block_finish_time) {
             return false;
         }
         // wait_condition.wait_for(w_lock,
         //                         std::chrono::microseconds(_next_io_time_micros - current_time));
-        wait_condition.wait_for(w_lock, std::chrono::microseconds(1));
+        // wc++;
         current_time = GetCurrentTimeMicros();
     }
+    LOG(INFO) << "old current time=" << old_current_time << ", new cur time=" << current_time
+              << ", old nex time=" << old_next_io_time << ", new next time=" << _next_io_time_micros
+              << ",wait time=" << (current_time - old_current_time);
+    wc++;
+    *wait_count = wc;
     return true;
 }
 
@@ -65,12 +74,20 @@ void IOThrottle::update_next_io_time(int64_t io_bytes) {
     }
     std::unique_lock<std::mutex> w_lock(_mutex);
     double io_bytes_float = static_cast<double>(io_bytes);
-    double ret = (io_bytes_float / static_cast<double>(read_bytes_per_second)) * MICROS_PER_SEC;
+    double ret = (io_bytes_float / static_cast<double>(read_bytes_per_second)) *
+                 static_cast<double>(MICROS_PER_SEC);
     int64_t current_time = GetCurrentTimeMicros();
+    int64_t old_ = _next_io_time_micros;
+    bool reset_cur_time = false;
     if (current_time > _next_io_time_micros) {
         _next_io_time_micros = current_time;
+        reset_cur_time = true;
     }
     _next_io_time_micros += ret < 1 ? static_cast<int64_t>(0) : static_cast<int64_t>(ret);
+    LOG(INFO) << "io bytes:" << io_bytes << ", _next_io_time_micros=" << _next_io_time_micros
+              << ", old next_time=" << old_ << ", cur time=" << current_time
+              << ", delta=" << (_next_io_time_micros - old_)
+              << ",reset time=" << int(reset_cur_time);
 }
 
 void IOThrottle::set_io_bytes_per_second(int64_t io_bytes_per_second) {

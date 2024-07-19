@@ -113,6 +113,7 @@ Status PageIO::write_page(io::FileWriter* writer, const std::vector<Slice>& body
 
 Status PageIO::read_and_decompress_page(const PageReadOptions& opts, PageHandle* handle,
                                         Slice* body, PageFooterPB* footer) {
+    SCOPED_RAW_TIMER(&opts.stats->decompress_ns);
     opts.sanity_check();
     opts.stats->total_pages_num++;
 
@@ -123,7 +124,7 @@ Status PageIO::read_and_decompress_page(const PageReadOptions& opts, PageHandle*
     if (opts.use_page_cache && cache && cache->lookup(cache_key, &cache_handle, opts.type)) {
         // we find page in cache, use it
         *handle = PageHandle(std::move(cache_handle));
-        opts.stats->cached_pages_num++;
+        // opts.stats->cached_pages_num++;
         // parse body and footer
         Slice page_slice = handle->data();
         uint32_t footer_size = decode_fixed32_le((uint8_t*)page_slice.data + page_slice.size - 4);
@@ -146,14 +147,19 @@ Status PageIO::read_and_decompress_page(const PageReadOptions& opts, PageHandle*
     // if (opts.scan_io_throttle_ctx.io_throttle != nullptr) {
     //     opts.scan_io_throttle_ctx.io_throttle->acquire(opts.scan_io_throttle_ctx.io_block_timeout);
     // }
-    ExecEnv::GetInstance()->io_throttle->acquire(300000);
+    {
+        SCOPED_RAW_TIMER(&opts.stats->io_ns);
+        int64_t wait_count = 0;
+        ExecEnv::GetInstance()->io_throttle->acquire(300000, &wait_count);
+        opts.stats->cached_pages_num += wait_count;
+    }
     // hold compressed page at first, reset to decompressed page later
     std::unique_ptr<DataPage> page =
             std::make_unique<DataPage>(page_size, opts.use_page_cache, opts.type);
     Slice page_slice(page->data(), page_size);
     size_t bytes_read = 0;
     {
-        SCOPED_RAW_TIMER(&opts.stats->io_ns);
+        // SCOPED_RAW_TIMER(&opts.stats->io_ns);
         RETURN_IF_ERROR(opts.file_reader->read_at(opts.page_pointer.offset, page_slice, &bytes_read,
                                                   &opts.io_ctx));
         DCHECK_EQ(bytes_read, page_size);
@@ -191,7 +197,7 @@ Status PageIO::read_and_decompress_page(const PageReadOptions& opts, PageHandle*
                     "Bad page: page is compressed but codec is NO_COMPRESSION, file={}",
                     opts.file_reader->path().native());
         }
-        SCOPED_RAW_TIMER(&opts.stats->decompress_ns);
+        // SCOPED_RAW_TIMER(&opts.stats->decompress_ns);
         std::unique_ptr<DataPage> decompressed_page = std::make_unique<DataPage>(
                 footer->uncompressed_size() + footer_size + 4, opts.use_page_cache, opts.type);
 

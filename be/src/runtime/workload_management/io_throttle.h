@@ -38,7 +38,7 @@ public:
 
     ~IOThrottle() = default;
 
-    bool acquire(int64_t block_timeout_ms);
+    bool acquire(int64_t block_timeout_ms, int64_t* wait_count);
 
     // non-block acquire
     bool try_acquire();
