@@ -37,8 +37,9 @@ bool IOThrottle::acquire(int64_t block_timeout_ms, int64_t* wait_count) {
     std::unique_lock<std::mutex> w_lock(_mutex);
     int64_t current_time = GetCurrentTimeMicros();
     int64_t block_finish_time = current_time + block_timeout_ms * 1000;
-    int64_t old_current_time = current_time;
-    int64_t old_next_io_time = _next_io_time_micros;
+    
+    // int64_t old_current_time = current_time;
+    // int64_t old_next_io_time = _next_io_time_micros;
 
     uint64_t wc = 0;
     while (current_time <= _next_io_time_micros) {
@@ -77,8 +78,10 @@ void IOThrottle::update_next_io_time(int64_t io_bytes) {
     double ret = (io_bytes_float / static_cast<double>(read_bytes_per_second)) *
                  static_cast<double>(MICROS_PER_SEC);
     int64_t current_time = GetCurrentTimeMicros();
-    int64_t old_ = _next_io_time_micros;
-    bool reset_cur_time = false;
+    
+    // int64_t old_ = _next_io_time_micros;
+    // bool reset_cur_time = false;
+
     if (current_time > _next_io_time_micros) {
         _next_io_time_micros = current_time;
         reset_cur_time = true;
