@@ -79,8 +79,8 @@ void IOThrottle::update_next_io_time(int64_t io_bytes) {
                  static_cast<double>(MICROS_PER_SEC);
     int64_t current_time = GetCurrentTimeMicros();
     
-    // int64_t old_ = _next_io_time_micros;
-    // bool reset_cur_time = false;
+    int64_t old_ = _next_io_time_micros;
+    bool reset_cur_time = false;
 
     if (current_time > _next_io_time_micros) {
         _next_io_time_micros = current_time;
