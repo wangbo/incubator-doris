@@ -41,7 +41,7 @@ bool IOThrottle::acquire(int64_t block_timeout_ms, int64_t* wait_count) {
     // int64_t old_current_time = current_time;
     // int64_t old_next_io_time = _next_io_time_micros;
 
-    // uint64_t wc = 0;
+    uint64_t wc = 0;
     while (current_time <= _next_io_time_micros) {
         if (current_time >= block_finish_time) {
             return false;
