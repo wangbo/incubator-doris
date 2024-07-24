@@ -54,7 +54,7 @@ bool IOThrottle::acquire(int64_t block_timeout_ms, int64_t* wait_count) {
     // LOG(INFO) << "old current time=" << old_current_time << ", new cur time=" << current_time
     //           << ", old nex time=" << old_next_io_time << ", new next time=" << _next_io_time_micros
     //           << ",wait time=" << (current_time - old_current_time);
-    wc++;
+    // wc++;
     *wait_count = wc;
     return true;
 }
