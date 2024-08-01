@@ -120,6 +120,14 @@ Status SchemaScanOperatorX::init(const TPlanNode& tnode, RuntimeState* state) {
         _common_scanner_param->catalog =
                 state->obj_pool()->add(new std::string(tnode.schema_scan_node.catalog));
     }
+
+    if (tnode.schema_scan_node.__isset.fe_ip_list) {
+        for (const auto& fe_ip : tnode.schema_scan_node.fe_ip_list) {
+            _common_scanner_param->fe_ip_list.insert(fe_ip);
+        }
+    } else if (tnode.schema_scan_node.__isset.ip) {
+        _common_scanner_param->fe_ip_list.insert(tnode.schema_scan_node.ip);
+    }
     return Status::OK();
 }
 

@@ -19,9 +19,12 @@ package org.apache.doris.planner;
 
 import org.apache.doris.analysis.Analyzer;
 import org.apache.doris.analysis.TupleDescriptor;
+import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.SchemaTable;
 import org.apache.doris.common.Config;
+import org.apache.doris.common.Pair;
 import org.apache.doris.common.UserException;
+import org.apache.doris.common.proc.FrontendsProcNode;
 import org.apache.doris.common.util.Util;
 import org.apache.doris.datasource.FederationBackendPolicy;
 import org.apache.doris.qe.ConnectContext;
@@ -38,6 +41,7 @@ import com.google.common.collect.Lists;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -96,6 +100,18 @@ public class SchemaScanNode extends ScanNode {
         frontendPort = Config.rpc_port;
     }
 
+    private void setOtherFeIp(TPlanNode msg) {
+        if (SchemaTable.isShouldFetchAllFe(tableName) && ConnectContext.get()
+                .getSessionVariable().showAllFeConnection) {
+            List<String> feIpList = new ArrayList<>();
+            List<Pair<String, Integer>> ret = FrontendsProcNode.getFrontendWithRpcPort(Env.getCurrentEnv(), true);
+            for (Pair<String, Integer> pair : ret) {
+                feIpList.add(pair.first);
+            }
+            msg.schema_scan_node.setFeIpList(feIpList);
+        }
+    }
+
     @Override
     protected void toThrift(TPlanNode msg) {
         msg.node_type = TPlanNodeType.SCHEMA_SCAN_NODE;
@@ -128,6 +144,7 @@ public class SchemaScanNode extends ScanNode {
 
         TUserIdentity tCurrentUser = ConnectContext.get().getCurrentUserIdentity().toThrift();
         msg.schema_scan_node.setCurrentUserIdent(tCurrentUser);
+        setOtherFeIp(msg);
     }
 
     @Override
