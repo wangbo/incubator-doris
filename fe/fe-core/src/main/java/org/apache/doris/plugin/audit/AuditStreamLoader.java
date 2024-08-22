@@ -21,7 +21,9 @@ import org.apache.doris.catalog.InternalSchema;
 import org.apache.doris.common.Config;
 import org.apache.doris.common.FeConstants;
 import org.apache.doris.qe.GlobalVariable;
+import org.apache.doris.service.FrontendOptions;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -37,19 +39,16 @@ import java.util.stream.Collectors;
 public class AuditStreamLoader {
     private static final Logger LOG = LogManager.getLogger(AuditStreamLoader.class);
     private static String loadUrlPattern = "http://%s/api/%s/%s/_stream_load?";
-    private String hostPort;
     private String db;
     private String auditLogTbl;
-    private String auditLogLoadUrlStr;
     private String feIdentity;
 
     public AuditStreamLoader() {
-        this.hostPort = "127.0.0.1:" + Config.http_port;
         this.db = FeConstants.INTERNAL_DB_NAME;
         this.auditLogTbl = AuditLoaderPlugin.AUDIT_LOG_TABLE;
-        this.auditLogLoadUrlStr = String.format(loadUrlPattern, hostPort, db, auditLogTbl);
+        String localHost = FrontendOptions.getLocalHostAddress() + ":" + Config.http_port;
         // currently, FE identity is FE's IP, so we replace the "." in IP to make it suitable for label
-        this.feIdentity = hostPort.replaceAll("\\.", "_").replaceAll(":", "_");
+        this.feIdentity = localHost.replaceAll("\\.", "_").replaceAll(":", "_");
     }
 
     private HttpURLConnection getConnection(String urlStr, String label, String clusterToken) throws IOException {
@@ -108,8 +107,17 @@ public class AuditStreamLoader {
         return response.toString();
     }
 
+    private String getAuditLogLoadUrlStr() {
+        String hostPort = GlobalVariable.auditPluginFrontendHostPort;
+        if (StringUtils.isEmpty(hostPort)) {
+            hostPort = "127.0.0.1:" + Config.http_port;
+        }
+        return String.format(loadUrlPattern, hostPort, db, auditLogTbl);
+    }
+
     public LoadResponse loadBatch(StringBuilder sb, String clusterToken) {
         String label = genLabel();
+        String auditLogLoadUrlStr = getAuditLogLoadUrlStr();
 
         HttpURLConnection feConn = null;
         HttpURLConnection beConn = null;
