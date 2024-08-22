@@ -33,6 +33,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Calendar;
 import java.util.stream.Collectors;
 
@@ -57,7 +59,10 @@ public class AuditStreamLoader {
         conn.setInstanceFollowRedirects(false);
         conn.setRequestMethod("PUT");
         conn.setRequestProperty("token", clusterToken);
-        conn.setRequestProperty("Authorization", "Basic YWRtaW46"); // admin
+        // conn.setRequestProperty("Authorization", "Basic YWRtaW46"); // admin
+        String str = Base64.getEncoder()
+                .encodeToString(String.format("%s:%s", "admin", "").getBytes(StandardCharsets.UTF_8));
+        conn.setRequestProperty("Authorization", "Basic " + str);
         conn.addRequestProperty("Expect", "100-continue");
         conn.addRequestProperty("Content-Type", "text/plain; charset=UTF-8");
         conn.addRequestProperty("label", label);
