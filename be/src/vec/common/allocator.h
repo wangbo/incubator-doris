@@ -40,6 +40,7 @@
 #include "common/config.h"
 #include "common/status.h"
 #include "util/sse_util.hpp"
+#include "util/bit_util.h"
 
 #ifdef NDEBUG
 #define ALLOCATOR_ASLR 0
@@ -245,6 +246,10 @@ public:
 
     /// Allocate memory range.
     void* alloc_impl(size_t size, size_t alignment = 0) {
+        if ((size & (size - 1)) != 0) {
+            size = doris::BitUtil::next_power_of_two(size);
+        }
+
         memory_check(size);
         // consume memory in tracker before alloc, similar to early declaration.
         consume_memory(size);
@@ -313,6 +318,10 @@ public:
 
     /// Free memory range.
     void free(void* buf, size_t size) {
+        if ((size & (size - 1)) != 0) {
+            size = doris::BitUtil::next_power_of_two(size);
+        }
+
         if (use_mmap && size >= doris::config::mmap_threshold) {
             if (0 != munmap(buf, size)) {
                 throw_bad_alloc(fmt::format("Allocator: Cannot munmap {}.", size));
@@ -338,6 +347,11 @@ public:
             /// BTW, it's not possible to change alignment while doing realloc.
             return buf;
         }
+
+        if ((new_size & (new_size - 1)) != 0) {
+            new_size = doris::BitUtil::next_power_of_two(new_size);
+        }
+
         memory_check(new_size);
         consume_memory(new_size - old_size);
 
