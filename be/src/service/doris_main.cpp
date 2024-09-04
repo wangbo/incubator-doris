@@ -604,6 +604,23 @@ int main(int argc, char** argv) {
 
     exec_env->storage_engine().notify_listeners();
 
+    const size_t retainGrowLimit = doris::config::je_grow_size_bytes;
+    if (retainGrowLimit > 0) {
+        for (int i = 0; i < doris::config::je_arena_num; i++) {
+            int err = jemallctl(fmt::format("arena.{}.retain_grow_limit", i).c_str(), nullptr,
+                                nullptr, (void*)&retainGrowLimit, sizeof(retainGrowLimit));
+            while (err != 0) {
+                sleep(1);
+                err = jemallctl(fmt::format("arena.{}.retain_grow_limit", i).c_str(), nullptr,
+                                nullptr, (void*)&retainGrowLimit, sizeof(retainGrowLimit));
+            }
+
+            LOG(WARNING) << "Jemalloc retain_grow_limit succ " << i;
+        }
+    } else {
+        LOG(WARNING) << "skip Jemalloc retain_grow_limit " << retainGrowLimit;
+    }
+
     while (!doris::k_doris_exit) {
 #if defined(LEAK_SANITIZER)
         __lsan_do_leak_check();

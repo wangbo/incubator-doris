@@ -1294,6 +1294,10 @@ DEFINE_Bool(enable_file_logger, "true");
 // The minimum row group size when exporting Parquet files. default 128MB
 DEFINE_Int64(min_row_group_size, "134217728");
 
+DEFINE_Int64(je_grow_size_bytes, "-1");
+
+DEFINE_Int64(je_arena_num, "96");
+
 DEFINE_mInt64(compaction_memory_bytes_limit, "1073741824");
 
 DEFINE_mInt64(compaction_batch_size, "-1");

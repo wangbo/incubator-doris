@@ -1374,6 +1374,10 @@ DECLARE_mInt64(fetch_remote_schema_rpc_timeout_ms);
 
 DECLARE_Int64(s3_file_system_local_upload_buffer_size);
 
+DECLARE_Int64(je_grow_size_bytes);
+
+DECLARE_Int64(je_arena_num);
+
 //JVM monitoring enable. To prevent be from crashing due to jvm compatibility issues.
 DECLARE_Bool(enable_jvm_monitor);
 
