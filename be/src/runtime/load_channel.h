@@ -127,6 +127,7 @@ private:
     int64_t _backend_id;
 
     bool _enable_profile;
+    bool _need_release_memtracker = false;
 };
 
 inline std::ostream& operator<<(std::ostream& os, LoadChannel& load_channel) {

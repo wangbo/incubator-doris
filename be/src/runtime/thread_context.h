@@ -388,15 +388,6 @@ public:
                        const std::shared_ptr<MemTrackerLimiter>& mem_tracker)
             : query_id(query_id), query_mem_tracker(mem_tracker) {}
 
-    ~QueryThreadContext() {
-        if (used_for_load_channel) {
-            WorkloadGroupPtr wg_shared_ptr = wg_wptr.lock();
-            if (wg_shared_ptr) {
-                wg_shared_ptr->remove_mem_tracker_limiter(query_mem_tracker);
-            }
-        }
-    }
-
     // Not thread safe, generally be called in class constructor, shared_ptr use_count may be
     // wrong when called by multiple threads, cause crash after object be destroyed prematurely.
     void init_unlocked() {
@@ -411,20 +402,13 @@ public:
 #endif
     }
 
-    void set_workload_group_for_load_channel(WorkloadGroupPtr wg_shared_ptr) {
-        if (wg_shared_ptr) {
-            wg_shared_ptr->add_mem_tracker_limiter(query_mem_tracker);
-            wg_wptr = wg_shared_ptr;
-            used_for_load_channel = true;
-        }
-    }
+    std::shared_ptr<MemTrackerLimiter> get_memory_tracker() { return query_mem_tracker; }
+
+    WorkloadGroupPtr get_workload_group_ptr() { return wg_wptr.lock(); }
 
     TUniqueId query_id;
     std::shared_ptr<MemTrackerLimiter> query_mem_tracker;
     std::weak_ptr<WorkloadGroup> wg_wptr;
-    //NOTE(wb): currently if load channel is used for load, then worklaod group should be set manually,
-    // and load channel's memtracker should also be added and removed in QueryThreadContext.
-    bool used_for_load_channel = false;
 };
 
 class ScopedPeakMem {
