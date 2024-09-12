@@ -126,7 +126,7 @@ MemTrackerLimiter::~MemTrackerLimiter() {
             "tracker web or log, this indicates that there may be a memory leak. "
             "4. If you need to "
             "transfer memory tracking value between two trackers, can use transfer_to.";
-    if (_consumption->current_value() != 0) {
+    if (_consumption->current_value() != 0 || _type == Type::COMPACTION) {
         // TODO, expect mem tracker equal to 0 at the load/compaction/etc. task end.
 #ifndef NDEBUG
         if (_type == Type::COMPACTION || _type == Type::SCHEMA_CHANGE || _type == Type::QUERY ||
