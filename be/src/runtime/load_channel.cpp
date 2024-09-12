@@ -36,7 +36,8 @@ namespace doris {
 bvar::Adder<int64_t> g_loadchannel_cnt("loadchannel_cnt");
 
 LoadChannel::LoadChannel(const UniqueId& load_id, int64_t timeout_s, bool is_high_priority,
-                         std::string sender_ip, int64_t backend_id, bool enable_profile)
+                         std::string sender_ip, int64_t backend_id, bool enable_profile,
+                         int64_t wg_id)
         : _load_id(load_id),
           _timeout_s(timeout_s),
           _is_high_priority(is_high_priority),
@@ -50,11 +51,17 @@ LoadChannel::LoadChannel(const UniqueId& load_id, int64_t timeout_s, bool is_hig
         _query_thread_context = {_load_id.to_thrift(), query_context->query_mem_tracker,
                                  query_context->workload_group()};
     } else {
+        // disable memtale on sink
         _query_thread_context = {
                 _load_id.to_thrift(),
                 MemTrackerLimiter::create_shared(
                         MemTrackerLimiter::Type::LOAD,
                         fmt::format("(FromLoadChannel)Load#Id={}", _load_id.to_string()))};
+        if (wg_id > 0) {
+            WorkloadGroupPtr workload_group_ptr =
+                    ExecEnv::GetInstance()->workload_group_mgr()->get_task_group_by_id(wg_id);
+            _query_thread_context.set_workload_group_for_load_channel(workload_group_ptr);
+        }
     }
     g_loadchannel_cnt << 1;
     // _last_updated_time should be set before being inserted to
