@@ -65,6 +65,7 @@ LoadChannel::LoadChannel(const UniqueId& load_id, int64_t timeout_s, bool is_hig
                 wg_ptr = workload_group_ptr;
                 wg_ptr->add_mem_tracker_limiter(mem_tracker);
                 _need_release_memtracker = true;
+                LOG(INFO) << "set workload group for load channel:" << _load_id.to_string();
             }
         }
     }
