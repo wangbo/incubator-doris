@@ -938,7 +938,7 @@ public class ConnectContext {
             closeChannel();
         }
         // Now, cancel running query.
-        cancelQuery();
+        cancelQuery("cancel query by user");
     }
 
     // kill operation with no protect by timeout.
@@ -960,10 +960,10 @@ public class ConnectContext {
         }
     }
 
-    public void cancelQuery() {
+    public void cancelQuery(String cancelReason) {
         StmtExecutor executorRef = executor;
         if (executorRef != null) {
-            executorRef.cancel();
+            executorRef.cancel(new Status(TStatusCode.CANCELLED, cancelReason));
         }
     }
 

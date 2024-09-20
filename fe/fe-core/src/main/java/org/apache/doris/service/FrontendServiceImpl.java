@@ -1065,7 +1065,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             TUniqueId queryId = params.getQueryId();
             ConnectContext ctx = proxyQueryIdToConnCtx.get(queryId);
             if (ctx != null) {
-                ctx.cancelQuery();
+                ctx.cancelQuery("cancel query by forward request.");
             }
             final TMasterOpResult result = new TMasterOpResult();
             result.setStatusCode(0);
