@@ -99,7 +99,9 @@ Status SegcompactionWorker::_get_segcompaction_reader(
         seg_iterators.push_back(std::move(iter));
         segment_rows.emplace(seg_ptr->id(), seg_ptr->num_rows());
     }
+    LOG(INFO) << "LOG_MOW_2:" << record_rowids;
     if (record_rowids && _rowid_conversion != nullptr) {
+        LOG(INFO) << "LOG_MOW_3: reset_segment_map " << segment_rows.size();
         _rowid_conversion->reset_segment_map(segment_rows);
     }
 
@@ -249,7 +251,10 @@ Status SegcompactionWorker::_do_compact_segments(SegCompactionCandidatesSharedPt
 
     DCHECK(ctx.tablet);
     auto tablet = std::static_pointer_cast<Tablet>(ctx.tablet);
-    if (need_convert_delete_bitmap() && _rowid_conversion == nullptr) {
+    bool need = need_convert_delete_bitmap();
+    LOG(INFO) << "LOG_MOW_0:" << need;
+    if (need && _rowid_conversion == nullptr) {
+        LOG(INFO) << "LOG_MOW_0.1 make rowidconversion";
         _rowid_conversion = std::make_unique<SimpleRowIdConversion>(_writer->rowset_id());
     }
 
@@ -264,6 +269,7 @@ Status SegcompactionWorker::_do_compact_segments(SegCompactionCandidatesSharedPt
     Merger::Statistics key_merger_stats;
     OlapReaderStatistics key_reader_stats;
     /* compact group one by one */
+    LOG(INFO) << "LOG_MOW_1:" << column_groups.size();
     for (auto i = 0; i < column_groups.size(); ++i) {
         VLOG_NOTICE << "row source size: " << row_sources_buf.total_size();
         bool is_key = (i == 0);
