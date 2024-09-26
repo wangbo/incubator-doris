@@ -40,6 +40,7 @@ public:
             _segments_rowid_map.emplace(seg_rows.first,
                                         DorisVector<uint32_t>(seg_rows.second, UINT32_MAX));
         }
+        LOG(INFO) << "simplerid";
     }
 
     // add row id to the map

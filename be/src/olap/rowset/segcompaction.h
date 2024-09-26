@@ -52,7 +52,7 @@ public:
 
     ~SegcompactionWorker() {
         DCHECK(_seg_compact_mem_tracker != nullptr);
-        SCOPED_SWITCH_THREAD_MEM_TRACKER_LIMITER(_seg_compact_mem_tracker);
+        // SCOPED_SWITCH_THREAD_MEM_TRACKER_LIMITER(_seg_compact_mem_tracker);
         if (_rowid_conversion) {
             _rowid_conversion.reset();
         }
