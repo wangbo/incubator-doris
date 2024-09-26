@@ -386,6 +386,10 @@ bool SegcompactionWorker::need_convert_delete_bitmap() {
         return false;
     }
     auto tablet = _writer->context().tablet;
+    LOG(INFO) << "LOG_MOW_-1 " << (int)(tablet != nullptr) << " "
+              << (int)(tablet->keys_type() == KeysType::UNIQUE_KEYS) << " "
+              << (int)(tablet->enable_unique_key_merge_on_write()) << " "
+              << (int)tablet->tablet_schema()->has_sequence_col();
     return tablet != nullptr && tablet->keys_type() == KeysType::UNIQUE_KEYS &&
            tablet->enable_unique_key_merge_on_write() &&
            tablet->tablet_schema()->has_sequence_col();
