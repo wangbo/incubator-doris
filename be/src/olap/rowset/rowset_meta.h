@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "io/fs/file_system.h"
+#include "olap/metadata_adder.h"
 #include "olap/olap_common.h"
 #include "olap/rowset/rowset_fwd.h"
 #include "olap/storage_policy.h"
