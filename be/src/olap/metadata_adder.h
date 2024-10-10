@@ -15,21 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 #pragma once
-#include <bvar/bvar.h>
-#include <stdint.h>
 
-static bvar::Adder<int64_t> g_total_rowset_meta_mem_size("doris_total_rowset_meta_mem_size");
-static bvar::Adder<int64_t> g_total_rowset_meta_num("doris_total_rowset_meta_num");
-static bvar::Adder<int64_t> g_total_tablet_meta_mem_size("doris_total_tablet_meta_mem_size");
-static bvar::Adder<int64_t> g_total_tablet_meta_num("doris_total_tablet_meta_num");
-static bvar::Adder<int64_t> g_total_tablet_column_mem_size("doris_total_tablet_column_mem_size");
-static bvar::Adder<int64_t> g_total_tablet_column_num("doris_total_tablet_column_num");
-static bvar::Adder<int64_t> g_total_tablet_index_mem_size("doris_total_tablet_index_mem_size");
-static bvar::Adder<int64_t> g_total_tablet_index_num("doris_total_tablet_index_num");
-static bvar::Adder<int64_t> g_total_tablet_schema_mem_size("doris_total_tablet_schema_mem_size");
-static bvar::Adder<int64_t> g_total_tablet_schema_num("doris_total_tablet_schema_num");
-static bvar::Adder<int64_t> g_total_segment_mem_size("doris_total_segment_mem_size");
-static bvar::Adder<int64_t> g_total_segment_num("doris_total_segment_num");
+#include <stdint.h>
 
 namespace doris {
 
@@ -87,43 +74,4 @@ void MetadataAdder<T>::update_metadata_size() {
     add_mem_size(size_diff);
 }
 
-template <typename T>
-void MetadataAdder<T>::add_mem_size(int64_t val) {
-    if (val == 0) {
-        return;
-    }
-    if constexpr (std::is_same_v<T, RowsetMeta>) {
-        g_total_rowset_meta_mem_size << val;
-    } else if constexpr (std::is_same_v<T, TabletMeta>) {
-        g_total_tablet_meta_mem_size << val;
-    } else if constexpr (std::is_same_v<T, TabletColumn>) {
-        g_total_tablet_column_mem_size << val;
-    } else if constexpr (std::is_same_v<T, TabletIndex>) {
-        g_total_tablet_index_mem_size << val;
-    } else if constexpr (std::is_same_v<T, TabletSchema>) {
-        g_total_tablet_schema_mem_size << val;
-    } else if constexpr (std::is_same_v<T, segment_v2::Segment>) {
-        g_total_segment_mem_size << val;
-    }
-}
-
-template <typename T>
-void MetadataAdder<T>::add_num(int64_t val) {
-    if (val == 0) {
-        return;
-    }
-    if constexpr (std::is_same_v<T, RowsetMeta>) {
-        g_total_rowset_meta_num << val;
-    } else if constexpr (std::is_same_v<T, TabletMeta>) {
-        g_total_tablet_meta_num << val;
-    } else if constexpr (std::is_same_v<T, TabletColumn>) {
-        g_total_tablet_column_num << val;
-    } else if constexpr (std::is_same_v<T, TabletIndex>) {
-        g_total_tablet_index_num << val;
-    } else if constexpr (std::is_same_v<T, TabletSchema>) {
-        g_total_tablet_schema_num << val;
-    } else if constexpr (std::is_same_v<T, segment_v2::Segment>) {
-        g_total_segment_num << val;
-    }
-}
 }; // namespace doris
