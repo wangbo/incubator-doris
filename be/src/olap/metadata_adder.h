@@ -50,20 +50,20 @@ public:
 template <typename T>
 MetadataAdder<T>::MetadataAdder(const MetadataAdder<T>& other) {
     this->current_meta_size = other.current_meta_size;
-    add_num(1);
-    add_mem_size(this->current_meta_size);
+    add_num<T>(1);
+    add_mem_size<T>(this->current_meta_size);
 }
 
 template <typename T>
 MetadataAdder<T>::MetadataAdder() {
-    update_metadata_size();
-    add_num(1);
+    update_metadata_size<T>();
+    add_num<T>(1);
 }
 
 template <typename T>
 MetadataAdder<T>::~MetadataAdder() {
-    add_mem_size(-current_meta_size);
-    add_num(-1);
+    add_mem_size<T>(-current_meta_size);
+    add_num<T>(-1);
 }
 
 template <typename T>
@@ -71,7 +71,7 @@ void MetadataAdder<T>::update_metadata_size() {
     int64_t old_size = current_meta_size;
     int64_t current_meta_size = get_metadata_size();
     int64_t size_diff = current_meta_size - old_size;
-    add_mem_size(size_diff);
+    add_mem_size<T>(size_diff);
 }
 
 }; // namespace doris
