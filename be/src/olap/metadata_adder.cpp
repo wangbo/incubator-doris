@@ -19,18 +19,18 @@
 
 #include <bvar/bvar.h>
 
-static bvar::Adder<int64_t> g_total_rowset_meta_mem_size("doris_total_rowset_meta_mem_size");
-static bvar::Adder<int64_t> g_total_rowset_meta_num("doris_total_rowset_meta_num");
-static bvar::Adder<int64_t> g_total_tablet_meta_mem_size("doris_total_tablet_meta_mem_size");
-static bvar::Adder<int64_t> g_total_tablet_meta_num("doris_total_tablet_meta_num");
-static bvar::Adder<int64_t> g_total_tablet_column_mem_size("doris_total_tablet_column_mem_size");
-static bvar::Adder<int64_t> g_total_tablet_column_num("doris_total_tablet_column_num");
-static bvar::Adder<int64_t> g_total_tablet_index_mem_size("doris_total_tablet_index_mem_size");
-static bvar::Adder<int64_t> g_total_tablet_index_num("doris_total_tablet_index_num");
-static bvar::Adder<int64_t> g_total_tablet_schema_mem_size("doris_total_tablet_schema_mem_size");
-static bvar::Adder<int64_t> g_total_tablet_schema_num("doris_total_tablet_schema_num");
-static bvar::Adder<int64_t> g_total_segment_mem_size("doris_total_segment_mem_size");
-static bvar::Adder<int64_t> g_total_segment_num("doris_total_segment_num");
+bvar::Adder<int64_t> g_total_rowset_meta_mem_size("doris_total_rowset_meta_mem_size");
+bvar::Adder<int64_t> g_total_rowset_meta_num("doris_total_rowset_meta_num");
+bvar::Adder<int64_t> g_total_tablet_meta_mem_size("doris_total_tablet_meta_mem_size");
+bvar::Adder<int64_t> g_total_tablet_meta_num("doris_total_tablet_meta_num");
+bvar::Adder<int64_t> g_total_tablet_column_mem_size("doris_total_tablet_column_mem_size");
+bvar::Adder<int64_t> g_total_tablet_column_num("doris_total_tablet_column_num");
+bvar::Adder<int64_t> g_total_tablet_index_mem_size("doris_total_tablet_index_mem_size");
+bvar::Adder<int64_t> g_total_tablet_index_num("doris_total_tablet_index_num");
+bvar::Adder<int64_t> g_total_tablet_schema_mem_size("doris_total_tablet_schema_mem_size");
+bvar::Adder<int64_t> g_total_tablet_schema_num("doris_total_tablet_schema_num");
+bvar::Adder<int64_t> g_total_segment_mem_size("doris_total_segment_mem_size");
+bvar::Adder<int64_t> g_total_segment_num("doris_total_segment_num");
 
 namespace doris {
 

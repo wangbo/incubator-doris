@@ -43,6 +43,11 @@ RowsetMeta::~RowsetMeta() {
     }
 }
 
+int64_t RowsetMeta::get_metadata_size() {
+    return sizeof(RowsetMeta) + _rowset_meta_pb.ByteSizeLong();
+    ;
+}
+
 bool RowsetMeta::init(std::string_view pb_rowset_meta) {
     bool ret = _deserialize_from_pb(pb_rowset_meta);
     if (!ret) {
@@ -255,6 +260,8 @@ void RowsetMeta::merge_rowset_meta(const RowsetMeta& other) {
     if (rowset_state() == RowsetStatePB::BEGIN_PARTIAL_UPDATE) {
         set_rowset_state(RowsetStatePB::COMMITTED);
     }
+
+    update_metadata_size();
 }
 
 InvertedIndexFileInfo RowsetMeta::inverted_index_file_info(int seg_id) {

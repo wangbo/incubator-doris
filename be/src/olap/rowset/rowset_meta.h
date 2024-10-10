@@ -34,10 +34,12 @@
 
 namespace doris {
 
-class RowsetMeta {
+class RowsetMeta : public MetadataAdder<RowsetMeta> {
 public:
     RowsetMeta() = default;
     ~RowsetMeta();
+
+    int64_t get_metadata_size() override;
 
     bool init(std::string_view pb_rowset_meta);
 
