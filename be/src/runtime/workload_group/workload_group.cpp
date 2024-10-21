@@ -367,51 +367,45 @@ WorkloadGroupInfo WorkloadGroupInfo::parse_topic_info(
         enable_memory_overcommit = tworkload_group_info.enable_memory_overcommit;
     }
 
-    // 8 cpu soft limit or hard limit
-    bool enable_cpu_hard_limit = false;
-    if (tworkload_group_info.__isset.enable_cpu_hard_limit) {
-        enable_cpu_hard_limit = tworkload_group_info.enable_cpu_hard_limit;
-    }
-
-    // 9 scan thread num
+    // 8 scan thread num
     int scan_thread_num = config::doris_scanner_thread_pool_thread_num;
     if (tworkload_group_info.__isset.scan_thread_num && tworkload_group_info.scan_thread_num > 0) {
         scan_thread_num = tworkload_group_info.scan_thread_num;
     }
 
-    // 10 max remote scan thread num
+    // 9 max remote scan thread num
     int max_remote_scan_thread_num = vectorized::ScannerScheduler::get_remote_scan_thread_num();
     if (tworkload_group_info.__isset.max_remote_scan_thread_num &&
         tworkload_group_info.max_remote_scan_thread_num > 0) {
         max_remote_scan_thread_num = tworkload_group_info.max_remote_scan_thread_num;
     }
 
-    // 11 min remote scan thread num
+    // 10 min remote scan thread num
     int min_remote_scan_thread_num = config::doris_scanner_min_thread_pool_thread_num;
     if (tworkload_group_info.__isset.min_remote_scan_thread_num &&
         tworkload_group_info.min_remote_scan_thread_num > 0) {
         min_remote_scan_thread_num = tworkload_group_info.min_remote_scan_thread_num;
     }
 
-    // 12 spill low watermark
+    // 11 spill low watermark
     int spill_low_watermark = SPILL_LOW_WATERMARK_DEFAULT_VALUE;
     if (tworkload_group_info.__isset.spill_threshold_low_watermark) {
         spill_low_watermark = tworkload_group_info.spill_threshold_low_watermark;
     }
 
-    // 13 spil high watermark
+    // 12 spil high watermark
     int spill_high_watermark = SPILL_HIGH_WATERMARK_DEFAULT_VALUE;
     if (tworkload_group_info.__isset.spill_threshold_high_watermark) {
         spill_high_watermark = tworkload_group_info.spill_threshold_high_watermark;
     }
 
-    // 14 scan io
+    // 13 scan io
     int read_bytes_per_second = -1;
     if (tworkload_group_info.__isset.read_bytes_per_second) {
         read_bytes_per_second = tworkload_group_info.read_bytes_per_second;
     }
 
-    // 15 remote scan io
+    // 14 remote scan io
     int remote_read_bytes_per_second = -1;
     if (tworkload_group_info.__isset.remote_read_bytes_per_second) {
         remote_read_bytes_per_second = tworkload_group_info.remote_read_bytes_per_second;
@@ -424,7 +418,6 @@ WorkloadGroupInfo WorkloadGroupInfo::parse_topic_info(
             .enable_memory_overcommit = enable_memory_overcommit,
             .version = version,
             .cpu_hard_limit = cpu_hard_limit,
-            .enable_cpu_hard_limit = enable_cpu_hard_limit,
             .scan_thread_num = scan_thread_num,
             .max_remote_scan_thread_num = max_remote_scan_thread_num,
             .min_remote_scan_thread_num = min_remote_scan_thread_num,
@@ -439,7 +432,6 @@ void WorkloadGroup::upsert_task_scheduler(WorkloadGroupInfo* tg_info, ExecEnv* e
     std::string tg_name = tg_info->name;
     int cpu_hard_limit = tg_info->cpu_hard_limit;
     uint64_t cpu_shares = tg_info->cpu_share;
-    bool enable_cpu_hard_limit = tg_info->enable_cpu_hard_limit;
     int scan_thread_num = tg_info->scan_thread_num;
     int max_remote_scan_thread_num = tg_info->max_remote_scan_thread_num;
     int min_remote_scan_thread_num = tg_info->min_remote_scan_thread_num;
@@ -551,23 +543,9 @@ void WorkloadGroup::upsert_task_scheduler(WorkloadGroupInfo* tg_info, ExecEnv* e
         }
     }
 
-    // step 6: update cgroup cpu if needed
     if (_cgroup_cpu_ctl) {
-        if (enable_cpu_hard_limit) {
-            if (cpu_hard_limit > 0) {
-                _cgroup_cpu_ctl->update_cpu_hard_limit(cpu_hard_limit);
-                _cgroup_cpu_ctl->update_cpu_soft_limit(
-                        CgroupCpuCtl::cpu_soft_limit_default_value());
-            } else {
-                LOG(INFO) << "[upsert wg thread pool] enable cpu hard limit but value is "
-                             "illegal: "
-                          << cpu_hard_limit << ", gid=" << tg_id;
-            }
-        } else {
-            _cgroup_cpu_ctl->update_cpu_soft_limit(cpu_shares);
-            _cgroup_cpu_ctl->update_cpu_hard_limit(
-                    CPU_HARD_LIMIT_DEFAULT_VALUE); // disable cpu hard limit
-        }
+        _cgroup_cpu_ctl->update_cpu_hard_limit(cpu_hard_limit);
+        _cgroup_cpu_ctl->update_cpu_soft_limit(cpu_shares);
         _cgroup_cpu_ctl->get_cgroup_cpu_info(&(tg_info->cgroup_cpu_shares),
                                              &(tg_info->cgroup_cpu_hard_limit));
     }
