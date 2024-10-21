@@ -294,6 +294,19 @@ Status CgroupV1CpuCtl::init() {
         return Status::InternalError<false>("find an invalid wg_id {}", _wg_id);
     }
 
+    // init procs
+    std::string query_path_cpu_quota_file = _doris_cgroup_cpu_query_path + "/cpu.cfs_quota_us";
+    int val = config::be_proc_max_cpu > 0
+                      ? (_cpu_cfs_period_us * _cpu_core_num * config::be_proc_max_cpu / 100)
+                      : CGROUP_CPU_HARD_LIMIT_DEFAULT_VALUE;
+    std::string str_val = std::to_string(val);
+    std::string msg = "modify procs cpu quota value to " + str_val;
+    Status be_proc_file_ret =
+            CgroupCpuCtl::write_cg_sys_file(query_path_cpu_quota_file, str_val, msg, false);
+    if (!be_proc_file_ret.ok()) {
+        LOG(INFO) << "write be proc cpu quota failed";
+    }
+
     // workload group path
     _cgroup_v1_cpu_tg_path = _doris_cgroup_cpu_query_path + "/" + std::to_string(_wg_id);
     if (access(_cgroup_v1_cpu_tg_path.c_str(), F_OK) != 0) {

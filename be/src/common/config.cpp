@@ -1169,6 +1169,7 @@ DEFINE_mString(doris_cgroup_cpu_path, "");
 
 DEFINE_mBool(enable_be_proc_monitor, "false");
 DEFINE_mInt32(be_proc_monitor_interval_ms, "10000");
+DEFINE_mInt32(be_proc_max_cpu, "20");
 
 DEFINE_mBool(enable_workload_group_memory_gc, "true");
 
