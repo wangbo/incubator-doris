@@ -99,7 +99,6 @@ public:
         return _spill_high_watermark.load(std::memory_order_relaxed);
     }
 
-    void set_weighted_memory_ratio(double ratio);
     bool add_wg_refresh_interval_memory_growth(int64_t size) {
         auto realtime_total_mem_used =
                 _total_mem_used + _wg_refresh_interval_memory_growth.load() + size;

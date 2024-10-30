@@ -82,7 +82,6 @@ public:
 
     void to_pb(PQueryStatistics* statistics);
     void to_thrift(TQueryStatistics* statistics) const;
-    void from_pb(const PQueryStatistics& statistics);
     bool collected() const { return _collected; }
 
     int64_t get_scan_rows() { return scan_rows; }

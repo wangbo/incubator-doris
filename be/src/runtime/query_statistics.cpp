@@ -46,17 +46,6 @@ void QueryStatistics::merge(const QueryStatistics& other) {
     }
 }
 
-void QueryStatistics::to_pb(PQueryStatistics* statistics) {
-    DCHECK(statistics != nullptr);
-    statistics->set_scan_rows(scan_rows);
-    statistics->set_scan_bytes(scan_bytes);
-    statistics->set_cpu_ms(cpu_nanos / NANOS_PER_MILLIS);
-    statistics->set_returned_rows(returned_rows);
-    statistics->set_max_peak_memory_bytes(max_peak_memory_bytes);
-    statistics->set_scan_bytes_from_remote_storage(_scan_bytes_from_remote_storage);
-    statistics->set_scan_bytes_from_local_storage(_scan_bytes_from_local_storage);
-}
-
 void QueryStatistics::to_thrift(TQueryStatistics* statistics) const {
     DCHECK(statistics != nullptr);
     statistics->__set_scan_bytes(scan_bytes);
@@ -71,12 +60,11 @@ void QueryStatistics::to_thrift(TQueryStatistics* statistics) const {
     statistics->__set_scan_bytes_from_local_storage(_scan_bytes_from_local_storage);
 }
 
-void QueryStatistics::from_pb(const PQueryStatistics& statistics) {
-    scan_rows = statistics.scan_rows();
-    scan_bytes = statistics.scan_bytes();
-    cpu_nanos = statistics.cpu_ms() * NANOS_PER_MILLIS;
-    _scan_bytes_from_local_storage = statistics.scan_bytes_from_local_storage();
-    _scan_bytes_from_remote_storage = statistics.scan_bytes_from_remote_storage();
+// to_pb is only used for return returned_rows from result sink to FE.
+// newly added query statistics not need to add to to_pb()
+void QueryStatistics::to_pb(PQueryStatistics* statistics) {
+    DCHECK(statistics != nullptr);
+    statistics->set_returned_rows(returned_rows);
 }
 
 QueryStatistics::~QueryStatistics() {}
