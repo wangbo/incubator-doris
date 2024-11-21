@@ -36,6 +36,7 @@
 #include "runtime/memory/global_memory_arbitrator.h"
 #include "runtime/memory/mem_tracker_limiter.h"
 #include "runtime/workload_management/io_throttle.h"
+#include "util/doris_metrics.h"
 #include "util/mem_info.h"
 #include "util/parse_util.h"
 #include "util/runtime_profile.h"
@@ -83,6 +84,32 @@ WorkloadGroup::WorkloadGroup(const WorkloadGroupInfo& tg_info, bool need_create_
             std::make_unique<bvar::Adder<size_t>>(_name, "total_local_read_bytes");
     _total_local_scan_io_per_second = std::make_unique<bvar::PerSecond<bvar::Adder<size_t>>>(
             _name, "total_local_read_bytes_per_second", _total_local_scan_io_adder.get(), 1);
+
+    // update
+    std::shared_ptr<MetricEntity> wg_entity =
+            DorisMetrics::instance()->metric_registry()->register_entity("workload_group." + _name,
+                                                                         {{"name", _name}});
+
+    METRIC_cpu_time = new MetricPrototype(doris::MetricType::COUNTER, doris::MetricUnit::SECONDS,
+                                          "workload_group_cpu_time");
+    cpu_time_counter =
+            (IntAtomicCounter*)(wg_entity->register_metric<IntAtomicCounter>(METRIC_cpu_time));
+    cpu_time_counter->set_value(123);
+
+    METRIC_mem_used = new MetricPrototype(doris::MetricType::COUNTER, doris::MetricUnit::BYTES,
+                                          "workload_group_mem_used");
+    mem_used_counter =
+            (IntAtomicCounter*)(wg_entity->register_metric<IntAtomicCounter>(METRIC_mem_used));
+    mem_used_counter->set_value(456);
+
+    METRIC_scan_bytes = new MetricPrototype(doris::MetricType::COUNTER, doris::MetricUnit::BYTES,
+                                            "workload_group_scan_bytes");
+    scan_bytes_counter =
+            (IntAtomicCounter*)(wg_entity->register_metric<IntAtomicCounter>(METRIC_scan_bytes));
+    scan_bytes_counter->set_value(789);
+    // INT_ATOMIC_COUNTER_METRIC_REGISTER(wg_entity, cpu_time);
+    // INT_ATOMIC_COUNTER_METRIC_REGISTER(wg_entity, mem_usage_bytes);
+    // INT_ATOMIC_COUNTER_METRIC_REGISTER(wg_entity, scan_bytes);
 }
 
 std::string WorkloadGroup::debug_string() const {

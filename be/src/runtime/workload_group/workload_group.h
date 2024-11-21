@@ -32,6 +32,7 @@
 #include "common/status.h"
 #include "service/backend_options.h"
 #include "util/hash_util.hpp"
+#include "util/metrics.h"
 
 namespace doris {
 
@@ -50,6 +51,8 @@ class SimplifiedScanScheduler;
 namespace pipeline {
 class TaskScheduler;
 } // namespace pipeline
+
+// doris::MetricPrototype METRIC_cpu_time(MetricType::COUNTER, MetricUnit::SECONDS, "cpu_time");
 
 class WorkloadGroup;
 struct WorkloadGroupInfo;
@@ -266,6 +269,19 @@ private:
     std::unique_ptr<bvar::PerSecond<bvar::Adder<uint64_t>>> _cpu_usage_per_second;
     std::unique_ptr<bvar::Adder<size_t>> _total_local_scan_io_adder;
     std::unique_ptr<bvar::PerSecond<bvar::Adder<size_t>>> _total_local_scan_io_per_second;
+
+    // DEFINE_COUNTER_METRIC_PROTOTYPE_2ARG(m_cpu_time, MetricUnit::SECONDS);
+    // DEFINE_COUNTER_METRIC_PROTOTYPE_2ARG(m_mem_usage_bytes, MetricUnit::BYTES);
+    // DEFINE_COUNTER_METRIC_PROTOTYPE_2ARG(m_scan_bytes, MetricUnit::BYTES);
+
+    // IntAtomicCounter* mem_usage_bytes;
+    // IntAtomicCounter* scan_bytes;
+    doris::MetricPrototype* METRIC_cpu_time;
+    doris::MetricPrototype* METRIC_mem_used;
+    doris::MetricPrototype* METRIC_scan_bytes;
+    IntAtomicCounter* cpu_time_counter;
+    IntAtomicCounter* mem_used_counter;
+    IntAtomicCounter* scan_bytes_counter;
 };
 
 using WorkloadGroupPtr = std::shared_ptr<WorkloadGroup>;
