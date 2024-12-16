@@ -32,6 +32,7 @@ public:
     int64_t policy_id;
     std::string policy_name {""};
     std::string cond_eval_msg {""};
+    std::
 };
 
 } // namespace doris

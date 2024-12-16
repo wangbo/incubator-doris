@@ -138,7 +138,7 @@ public:
         }
     }
 
-    void set_workload_group(WorkloadGroupPtr& tg);
+    void set_workload_group(WorkloadGroupPtr& wg);
 
     int execution_timeout() const {
         return _query_options.__isset.execution_timeout ? _query_options.execution_timeout
@@ -178,7 +178,9 @@ public:
 
     TUniqueId query_id() const { return _query_id; }
 
-    vectorized::SimplifiedScanScheduler* get_scan_scheduler() { return _scan_task_scheduler; }
+    vectorized::SimplifiedScanScheduler* get_scan_scheduler() {
+        return _scan_task_scheduler.load();
+    }
 
     vectorized::SimplifiedScanScheduler* get_remote_scan_scheduler() {
         return _remote_scan_task_scheduler;
@@ -209,7 +211,7 @@ public:
 
     bool is_nereids() const { return _is_nereids; }
 
-    WorkloadGroupPtr workload_group() const { return _workload_group; }
+    WorkloadGroupPtr workload_group() const { return std::atomic_load(&_workload_group); }
 
     void inc_running_big_mem_op_num() {
         _running_big_mem_op_num.fetch_add(1, std::memory_order_relaxed);
@@ -242,8 +244,8 @@ public:
     std::map<int, TFileScanRangeParams> file_scan_range_params_map;
 
     void update_cpu_time(int64_t delta_cpu_time) {
-        if (_workload_group != nullptr) {
-            _workload_group->update_cpu_time(delta_cpu_time);
+        if (auto wg_ptr = workload_group()) {
+            wg_ptr->update_cpu_time(delta_cpu_time);
         }
     }
 
@@ -266,6 +268,8 @@ public:
         return _using_brpc_stubs;
     }
 
+    doris::pipeline::TaskScheduler* get_task_scheduler_ptr() { return _task_scheduler.load(); }
+
 private:
     int _timeout_second;
     TUniqueId _query_id;
@@ -287,7 +291,7 @@ private:
     std::shared_ptr<vectorized::SharedHashTableController> _shared_hash_table_controller;
     std::unordered_map<int, vectorized::RuntimePredicate> _runtime_predicates;
 
-    WorkloadGroupPtr _workload_group = nullptr;
+    WorkloadGroupPtr _workload_group {nullptr};
     std::unique_ptr<RuntimeFilterMgr> _runtime_filter_mgr;
     const TQueryOptions _query_options;
 
@@ -295,8 +299,8 @@ private:
     // to report the real message if failed.
     AtomicStatus _exec_status;
 
-    doris::pipeline::TaskScheduler* _task_scheduler = nullptr;
-    vectorized::SimplifiedScanScheduler* _scan_task_scheduler = nullptr;
+    std::atomic<doris::pipeline::TaskScheduler*> _task_scheduler = nullptr;
+    std::atomic<vectorized::SimplifiedScanScheduler*> _scan_task_scheduler = nullptr;
     ThreadPool* _memtable_flush_pool = nullptr;
     vectorized::SimplifiedScanScheduler* _remote_scan_task_scheduler = nullptr;
     std::unique_ptr<pipeline::Dependency> _execution_dependency;

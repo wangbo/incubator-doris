@@ -170,8 +170,8 @@ public:
 
     void upsert_task_scheduler(WorkloadGroupInfo* tg_info);
 
-    void get_query_scheduler(doris::pipeline::TaskScheduler** exec_sched,
-                             vectorized::SimplifiedScanScheduler** scan_sched,
+    void get_query_scheduler(std::atomic<doris::pipeline::TaskScheduler*>& exec_sched,
+                             std::atomic<vectorized::SimplifiedScanScheduler*>& scan_sched,
                              ThreadPool** memtable_flush_pool,
                              vectorized::SimplifiedScanScheduler** remote_scan_sched);
 

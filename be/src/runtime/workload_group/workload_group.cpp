@@ -593,13 +593,13 @@ void WorkloadGroup::upsert_task_scheduler(WorkloadGroupInfo* wg_info) {
     }
 }
 
-void WorkloadGroup::get_query_scheduler(doris::pipeline::TaskScheduler** exec_sched,
-                                        vectorized::SimplifiedScanScheduler** scan_sched,
-                                        ThreadPool** memtable_flush_pool,
-                                        vectorized::SimplifiedScanScheduler** remote_scan_sched) {
+void WorkloadGroup::get_query_scheduler(
+        std::atomic<doris::pipeline::TaskScheduler*>& exec_sched,
+        std::atomic<vectorized::SimplifiedScanScheduler*>& scan_sched,
+        ThreadPool** memtable_flush_pool, vectorized::SimplifiedScanScheduler** remote_scan_sched) {
     std::shared_lock<std::shared_mutex> rlock(_task_sched_lock);
-    *exec_sched = _task_sched.get();
-    *scan_sched = _scan_task_sched.get();
+    exec_sched.store(_task_sched.get());
+    scan_sched.store(_scan_task_sched.get());
     *remote_scan_sched = _remote_scan_task_sched.get();
     *memtable_flush_pool = _memtable_flush_pool.get();
 }

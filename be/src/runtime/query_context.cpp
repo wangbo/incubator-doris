@@ -154,8 +154,8 @@ QueryContext::~QueryContext() {
                 MemCounter::print_bytes(query_mem_tracker->peak_consumption()));
     }
     uint64_t group_id = 0;
-    if (_workload_group) {
-        group_id = _workload_group->id(); // before remove
+    if (auto wg_ptr = workload_group()) {
+        group_id = wg_ptr->id(); // before remove
     }
 
     _exec_env->runtime_query_statistics_mgr()->set_query_finished(print_id(_query_id));
@@ -307,29 +307,23 @@ void QueryContext::register_cpu_statistics() {
 }
 
 doris::pipeline::TaskScheduler* QueryContext::get_pipe_exec_scheduler() {
-    if (_workload_group) {
-        if (_task_scheduler) {
-            return _task_scheduler;
-        }
+    if (auto* task_sched_ptr = _task_scheduler.load()) {
+        return task_sched_ptr;
     }
     return _exec_env->pipeline_task_scheduler();
 }
 
 ThreadPool* QueryContext::get_memtable_flush_pool() {
-    if (_workload_group) {
-        return _memtable_flush_pool;
-    } else {
-        return nullptr;
-    }
+    return _memtable_flush_pool;
 }
 
-void QueryContext::set_workload_group(WorkloadGroupPtr& tg) {
-    _workload_group = tg;
+void QueryContext::set_workload_group(WorkloadGroupPtr& wg) {
     // Should add query first, then the workload group will not be deleted.
     // see task_group_manager::delete_workload_group_by_ids
-    _workload_group->add_mem_tracker_limiter(query_mem_tracker);
-    _workload_group->get_query_scheduler(&_task_scheduler, &_scan_task_scheduler,
-                                         &_memtable_flush_pool, &_remote_scan_task_scheduler);
+    wg->add_mem_tracker_limiter(query_mem_tracker);
+    wg->get_query_scheduler(_task_scheduler, _scan_task_scheduler, &_memtable_flush_pool,
+                            &_remote_scan_task_scheduler);
+    std::atomic_store(&_workload_group, wg);
 }
 
 void QueryContext::add_fragment_profile(

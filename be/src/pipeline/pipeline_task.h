@@ -161,7 +161,6 @@ public:
     }
 
     void set_task_queue(MultiCoreTaskQueue* task_queue) { _task_queue = task_queue; }
-    MultiCoreTaskQueue* get_task_queue() { return _task_queue; }
 
     static constexpr auto THREAD_TIME_SLICE = 100'000'000ULL;
 
@@ -240,6 +239,8 @@ public:
     bool wake_up_early() const { return _wake_up_early; }
 
 private:
+    void submit_self();
+
     friend class RuntimeFilterDependency;
     bool _is_blocked();
     bool _wait_to_start();

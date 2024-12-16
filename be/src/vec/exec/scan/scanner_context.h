@@ -150,7 +150,7 @@ public:
 
     RuntimeState* state() { return _state; }
 
-    SimplifiedScanScheduler* get_scan_scheduler() { return _scanner_scheduler; }
+    SimplifiedScanScheduler* get_simple_scan_scheduler();
 
     void stop_scanners(RuntimeState* state);
 
@@ -195,8 +195,7 @@ protected:
 
     int32_t _max_thread_num = 0;
     int64_t _max_bytes_in_queue = 0;
-    doris::vectorized::ScannerScheduler* _scanner_scheduler_global = nullptr;
-    SimplifiedScanScheduler* _scanner_scheduler = nullptr;
+    doris::vectorized::ScannerScheduler* _scanner_scheduler_global = nullptr;    
     moodycamel::ConcurrentQueue<std::weak_ptr<ScannerDelegate>> _scanners;
     int32_t _num_scheduled_scanners = 0;
     int32_t _num_finished_scanners = 0;
@@ -213,6 +212,8 @@ protected:
     std::shared_ptr<pipeline::Dependency> _dependency = nullptr;
     bool _ignore_data_distribution = false;
     bool _is_file_scan_operator = false;
+
+    doris::TabletStorageType _storage_type;
 
     // for scaling up the running scanners
     size_t _estimated_block_size = 0;

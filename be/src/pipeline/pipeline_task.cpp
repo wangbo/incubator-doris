@@ -32,6 +32,7 @@
 #include "pipeline/pipeline.h"
 #include "pipeline/pipeline_fragment_context.h"
 #include "pipeline/task_queue.h"
+#include "pipeline/task_scheduler.h"
 #include "runtime/descriptors.h"
 #include "runtime/query_context.h"
 #include "runtime/thread_context.h"
@@ -394,7 +395,7 @@ Status PipelineTask::execute(bool* eos) {
         }
     }
 
-    RETURN_IF_ERROR(get_task_queue()->push_back(this));
+    submit_self();
     return Status::OK();
 }
 
@@ -554,10 +555,15 @@ std::string PipelineTask::debug_string() {
 
 void PipelineTask::wake_up() {
     // call by dependency
-    static_cast<void>(get_task_queue()->push_back(this));
+    submit_self();
 }
 
 QueryContext* PipelineTask::query_context() {
     return _fragment_context->get_query_ctx();
 }
+
+void PipelineTask::submit_self() {
+    static_cast<void>(query_context()->get_task_scheduler_ptr()->schedule_task(this));
+}
+
 } // namespace doris::pipeline

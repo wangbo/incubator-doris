@@ -127,30 +127,14 @@ Status ScannerContext::init() {
     auto scanner = _all_scanners.front().lock();
     DCHECK(scanner != nullptr);
     // A query could have remote scan task and local scan task at the same time.
-    // So we need to compute the _scanner_scheduler in each scan operator instead of query context.
-    SimplifiedScanScheduler* simple_scan_scheduler = _state->get_query_ctx()->get_scan_scheduler();
-    SimplifiedScanScheduler* remote_scan_task_scheduler =
-            _state->get_query_ctx()->get_remote_scan_scheduler();
-    if (scanner->_scanner->get_storage_type() == TabletStorageType::STORAGE_TYPE_LOCAL) {
-        // scan_scheduler could be empty if query does not have a workload group.
-        if (simple_scan_scheduler) {
-            _scanner_scheduler = simple_scan_scheduler;
-        } else {
-            _scanner_scheduler = _scanner_scheduler_global->get_local_scan_thread_pool();
-        }
-    } else {
-        // remote_scan_task_scheduler could be empty if query does not have a workload group.
-        if (remote_scan_task_scheduler) {
-            _scanner_scheduler = remote_scan_task_scheduler;
-        } else {
-            _scanner_scheduler = _scanner_scheduler_global->get_remote_scan_thread_pool();
-        }
-    }
+    // So we need to keep the scan type.
+    _storage_type = scanner->_scanner->get_storage_type();
 
     // _scannner_scheduler will be used to submit scan task.
     // file_scan_operator currentlly has performance issue if we submit too many scan tasks to scheduler.
     // we should fix this problem in the future.
-    if (_scanner_scheduler->get_queue_size() * 2 > config::doris_scanner_thread_pool_queue_size ||
+    if (get_simple_scan_scheduler()->get_queue_size() * 2 >
+                config::doris_scanner_thread_pool_queue_size ||
         _is_file_scan_operator) {
         submit_many_scan_tasks_for_potential_performance_issue = false;
     }
@@ -539,6 +523,28 @@ void ScannerContext::_set_scanner_done() {
 
 void ScannerContext::update_peak_running_scanner(int num) {
     _local_state->_peak_running_scanner->add(num);
+}
+
+SimplifiedScanScheduler* ScannerContext::get_simple_scan_scheduler() {
+    // NOTE: choose scheduler at runtime because a query maybe moved from one workload group's scheduler
+    // to another worklaod group's scheduler.
+    if (_storage_type == TabletStorageType::STORAGE_TYPE_LOCAL) {
+        SimplifiedScanScheduler* local_simple_scan_scheduler =
+                _state->get_query_ctx()->get_scan_scheduler();
+        if (local_simple_scan_scheduler) {
+            return local_simple_scan_scheduler;
+        } else {
+            return _scanner_scheduler_global->get_local_scan_thread_pool();
+        }
+    } else {
+        SimplifiedScanScheduler* remote_simple_scan_scheduler =
+                _state->get_query_ctx()->get_remote_scan_scheduler();
+        if (remote_simple_scan_scheduler) {
+            return remote_simple_scan_scheduler;
+        } else {
+            return _scanner_scheduler_global->get_remote_scan_thread_pool();
+        }
+    }
 }
 
 } // namespace doris::vectorized

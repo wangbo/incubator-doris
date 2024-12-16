@@ -169,7 +169,7 @@ Status ScannerScheduler::submit(std::shared_ptr<ScannerContext> ctx,
         scanner_delegate->_scanner->start_wait_worker_timer();
         TabletStorageType type = scanner_delegate->_scanner->get_storage_type();
         auto sumbit_task = [&]() {
-            SimplifiedScanScheduler* scan_sched = ctx->get_scan_scheduler();
+            SimplifiedScanScheduler* scan_sched = ctx->get_simple_scan_scheduler();
             auto work_func = [scanner_ref = scan_task, ctx]() {
                 DorisMetrics::instance()->scanner_task_queued->increment(-1);
                 DorisMetrics::instance()->scanner_task_running->increment(1);

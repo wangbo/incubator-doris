@@ -33,7 +33,10 @@ void WorkloadActionCancelQuery::exec(WorkloadQueryInfo* query_info) {
 }
 
 void WorkloadActionMoveQuery::exec(WorkloadQueryInfo* query_info) {
+    
+    ExecEnv::GetInstance()->workload_group_mgr()->get_group(_dst_wg_id);
     LOG(INFO) << "[workload_schedule]move query action run group=" << _wg_name;
+
 };
 
 } // namespace doris
