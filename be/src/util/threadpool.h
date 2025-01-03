@@ -263,6 +263,9 @@ public:
         return arr;
     }
 
+    //NOTE: not thread safe
+    Status try_create_thread(int thread_num);
+
 private:
     friend class ThreadPoolBuilder;
     friend class ThreadPoolToken;
