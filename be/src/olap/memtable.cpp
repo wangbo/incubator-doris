@@ -142,6 +142,8 @@ MemTable::~MemTable() {
         SCOPED_CONSUME_MEM_TRACKER(_mem_tracker);
         g_memtable_cnt << -1;
         if (_keys_type != KeysType::DUP_KEYS) {
+            log_row_id_in_block("deconstructor");
+
             for (auto it = _row_in_blocks.begin(); it != _row_in_blocks.end(); it++) {
                 if (!(*it)->has_init_agg()) {
                     continue;
@@ -154,6 +156,9 @@ MemTable::~MemTable() {
                     function->destroy((*it)->agg_places(i));
                 }
             }
+        }
+        for (auto it = _row_in_blocks.begin(); it != _row_in_blocks.end(); it++) {
+            delete[] (*it)->_agg_mem;
         }
         std::for_each(_row_in_blocks.begin(), _row_in_blocks.end(),
                       std::default_delete<RowInBlock>());
@@ -415,8 +420,38 @@ void MemTable::_finalize_one_row(RowInBlock* row,
     }
 }
 
+void MemTable::log_row_id_in_block(std::string msg) {
+    if (_keys_type != KeysType::DUP_KEYS) {
+        set<char*> s1;
+        int count = 0;
+        for (auto it = _row_in_blocks.begin(); it != _row_in_blocks.end(); it++) {
+            if (!(*it)->has_init_agg()) {
+                continue;
+            }
+            set<char*> s2;
+            // We should release agg_places here, because they are not released when a
+            // load is canceled.
+            for (size_t i = _tablet_schema->num_key_columns(); i < _num_columns; ++i) {
+                char* addr = (*it)->agg_places(i);
+                if (s2.contains(addr)) {
+                    LOG(INFO) << "test0116 [" << msg << "]find double free in one rows, cidx=" << i;
+                }
+                s2.insert(addr);
+                if (s1.contains(addr)) {
+                    LOG(INFO) << "test0116 [" << msg << "]find double free for diff rows, cid=" << i
+                              << ",rowid=" << count;
+                    return;
+                }
+                s1.insert(addr);
+            }
+            count++;
+        }
+    }
+}
+
 template <bool is_final>
 void MemTable::_aggregate() {
+    log_row_id_in_block("agg_begin");
     SCOPED_RAW_TIMER(&_stat.agg_ns);
     _stat.agg_times++;
     vectorized::Block in_block = _input_mutable_block.to_block();
@@ -429,13 +464,21 @@ void MemTable::_aggregate() {
     RowInBlock* prev_row = nullptr;
     int row_pos = -1;
     //only init agg if needed
+
+    std::set<char*> set3;
+
     for (int i = 0; i < _row_in_blocks.size(); i++) {
         if (!temp_row_in_blocks.empty() &&
             (*_vec_row_comparator)(prev_row, _row_in_blocks[i]) == 0) {
             if (!prev_row->has_init_agg()) {
-                prev_row->init_agg_places(
-                        _arena->aligned_alloc(_total_size_of_aggregate_states, 16),
-                        _offsets_of_aggregate_states.data());
+                char* mem1 = _arena->aligned_alloc(_total_size_of_aggregate_states, 16);
+                if (set3.contains(mem1)) {
+                    LOG(INFO) << "test0116 find duplicate mem addr from arena, rowid=" << i << ", "
+                              << _total_size_of_aggregate_states;
+                }
+                set3.insert(mem1);
+                // char* ch = new char[_total_size_of_aggregate_states];
+                prev_row->init_agg_places(mem1, _offsets_of_aggregate_states.data());
                 for (auto cid = _tablet_schema->num_key_columns(); cid < _num_columns; cid++) {
                     auto col_ptr = mutable_block.mutable_columns()[cid].get();
                     auto data = prev_row->agg_places(cid);
@@ -457,10 +500,12 @@ void MemTable::_aggregate() {
             row_pos++;
         }
     }
+    log_row_id_in_block("agg_mid");
     if (!temp_row_in_blocks.empty()) {
         // finalize the last low
         _finalize_one_row<is_final>(temp_row_in_blocks.back(), block_data, row_pos);
     }
+    log_row_id_in_block("agg_final_last_row");
     if constexpr (!is_final) {
         // if is not final, we collect the agg results to input_block and then continue to insert
         _input_mutable_block.swap(_output_mutable_block);
@@ -480,8 +525,10 @@ void MemTable::shrink_memtable_by_agg() {
         return;
     }
     size_t same_keys_num = _sort();
+    log_row_id_in_block("after_sort");
     if (same_keys_num != 0) {
         _aggregate<false>();
+        log_row_id_in_block("after_agg");
     }
 }
 

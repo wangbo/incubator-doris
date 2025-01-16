@@ -206,6 +206,8 @@ public:
 
     void update_mem_type(MemType memtype) { _mem_type = memtype; }
 
+    void log_row_id_in_block(std::string msg);
+
 private:
     // for vectorized
     void _aggregate_two_row_in_block(vectorized::MutableBlock& mutable_block, RowInBlock* new_row,
