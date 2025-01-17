@@ -467,7 +467,7 @@ void MemTable::_aggregate() {
 
     std::set<char*> set3;
 
-    stringstream ss;
+    std::stringstream ss;
 
     for (int i = 0; i < _row_in_blocks.size(); i++) {
         if (!temp_row_in_blocks.empty() &&
