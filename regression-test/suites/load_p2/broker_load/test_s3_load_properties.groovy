@@ -484,8 +484,8 @@ suite("test_s3_load_properties", "p2") {
         attributesList.add(attributes)
     }
 
-    def ak = getS3AK()
-    def sk = getS3SK()
+    def ak = "LTAI5tCCiLTZFxfVnNERWRjy"
+    def sk = "fdE1ZB5bIQ7bmfJYdDu5iupoeysN51"
 
     for(String tbl : tables) {
         sql new File("""${ context.file.parent }/ddl/${tbl}_drop.sql""").text
