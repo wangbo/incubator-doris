@@ -467,14 +467,17 @@ void MemTable::_aggregate() {
 
     std::set<char*> set3;
 
+    stringstream ss;
+
     for (int i = 0; i < _row_in_blocks.size(); i++) {
         if (!temp_row_in_blocks.empty() &&
             (*_vec_row_comparator)(prev_row, _row_in_blocks[i]) == 0) {
             if (!prev_row->has_init_agg()) {
                 char* mem1 = _arena->aligned_alloc(_total_size_of_aggregate_states, 16);
+                ss << " rowid=" << i << ", size=" << _total_size_of_aggregate_states << " ";
                 if (set3.contains(mem1)) {
                     LOG(INFO) << "test0116 find duplicate mem addr from arena, rowid=" << i << ", "
-                              << _total_size_of_aggregate_states;
+                              << _total_size_of_aggregate_states << ", total=" << ss.str();
                 }
                 set3.insert(mem1);
                 // char* ch = new char[_total_size_of_aggregate_states];
