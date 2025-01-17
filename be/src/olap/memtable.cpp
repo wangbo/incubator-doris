@@ -157,9 +157,9 @@ MemTable::~MemTable() {
                 }
             }
         }
-        for (auto it = _row_in_blocks.begin(); it != _row_in_blocks.end(); it++) {
-            delete[] (*it)->_agg_mem;
-        }
+        // for (auto it = _row_in_blocks.begin(); it != _row_in_blocks.end(); it++) {
+        //     delete[] (*it)->_agg_mem;
+        // }
         std::for_each(_row_in_blocks.begin(), _row_in_blocks.end(),
                       std::default_delete<RowInBlock>());
         // Arena has to be destroyed after agg state, because some agg state's memory may be
