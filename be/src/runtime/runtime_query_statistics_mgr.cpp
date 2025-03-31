@@ -430,11 +430,24 @@ void RuntimeQueryStatisticsMgr::report_runtime_query_statistics() {
                     "[report_query_statistics]fe {} throw exception when report statistics, "
                     "reason:{}, you can see fe log for details.",
                     add_str, e.what());
+        } catch (apache::thrift::TException& e) {
+            LOG_WARNING(
+                    "[report_query_statistics]report workload runtime statistics to {} failed,  "
+                    "reason: {}",
+                    add_str, e.what());
+            std::this_thread::sleep_for(
+                    std::chrono::milliseconds(config::thrift_client_retry_interval_ms * 2));
+            // just reopen to disable this connection
+            static_cast<void>(coord.reopen(config::thrift_rpc_timeout_ms));
         } catch (apache::thrift::transport::TTransportException& e) {
             LOG_WARNING(
                     "[report_query_statistics]report workload runtime statistics to {} failed,  "
                     "reason: {}",
                     add_str, e.what());
+            std::this_thread::sleep_for(
+                    std::chrono::milliseconds(config::thrift_client_retry_interval_ms * 2));
+            // just reopen to disable this connection
+            static_cast<void>(coord.reopen(config::thrift_rpc_timeout_ms));
         } catch (std::exception& e) {
             LOG_WARNING(
                     "[report_query_statistics]unknown exception when report workload runtime "
