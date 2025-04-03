@@ -36,7 +36,9 @@ public class ComputeGroupMgr {
 
     public ComputeGroup getComputeGroupByName(String name) {
         if (Config.isCloudMode()) {
-            return new CloudComputeGroup("", name, (CloudSystemInfoService) systemInfoService);
+            CloudSystemInfoService cloudSystemInfoService = (CloudSystemInfoService) systemInfoService;
+            return new CloudComputeGroup(cloudSystemInfoService.getCloudClusterIdByName(name), name,
+                    cloudSystemInfoService);
         } else {
             return new ComputeGroup("", name, systemInfoService);
         }
