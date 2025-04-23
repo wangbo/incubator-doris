@@ -379,4 +379,8 @@ public class GrantStmt extends DdlStmt implements NotFallbackInParser {
     public StmtType stmtType() {
         return StmtType.GRANT;
     }
+
+    public void set(Set<Privilege> privileges) {
+        this.privileges = privileges;
+    }
 }

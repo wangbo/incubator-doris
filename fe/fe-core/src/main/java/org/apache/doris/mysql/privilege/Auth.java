@@ -2093,6 +2093,11 @@ public class Auth implements Writable {
         return sb.toString();
     }
 
+    // NOTE: this is not a deep copy;
+    public Map<String, Role> getCopiedRoles() {
+        return Maps.newHashMap(roleManager.getRoles());
+    }
+
     // ====== BEGIN CLOUD ======
     public List<String> getCloudClusterUsers(String clusterName) {
         return propertyMgr.getCloudClusterUsers(userManager.getAllUsers(), clusterName);

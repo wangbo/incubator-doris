@@ -50,6 +50,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.gson.annotations.SerializedName;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -692,6 +693,30 @@ public class WorkloadGroupMgr extends MasterDaemon implements Writable, GsonPost
         } finally {
             writeUnlock();
         }
+    }
+
+    public Map<String, List<String>> getWorkloadGroupNameMap() {
+        Map<String, List<String>> nameMap = Maps.newHashMap();
+        readLock();
+        try {
+            for (WorkloadGroup wg : idToWorkloadGroup.values()) {
+                String cgName = wg.getComputeGroup();
+                String wgName = wg.getName();
+                if (StringUtils.isEmpty(cgName)) {
+                    LOG.warn("should not find empty cg here, {}", wg);
+                    continue;
+                }
+                List<String> wgNamelist = nameMap.get(wgName);
+                if (wgNamelist == null) {
+                    wgNamelist = Lists.newArrayList();
+                    nameMap.put(wgName, wgNamelist);
+                }
+                wgNamelist.add(wg.getComputeGroup() + "." + wg.getName());
+            }
+        } finally {
+            readUnlock();
+        }
+        return nameMap;
     }
 
 }

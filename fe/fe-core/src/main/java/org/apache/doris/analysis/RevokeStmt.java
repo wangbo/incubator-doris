@@ -214,4 +214,8 @@ public class RevokeStmt extends DdlStmt implements NotFallbackInParser {
     public StmtType stmtType() {
         return StmtType.REVOKE;
     }
+
+    public void setPrivileges(Set<Privilege> privileges) {
+        this.privileges = privileges;
+    }
 }
