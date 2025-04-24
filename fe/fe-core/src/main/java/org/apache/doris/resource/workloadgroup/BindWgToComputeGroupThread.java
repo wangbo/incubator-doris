@@ -123,41 +123,39 @@ public class BindWgToComputeGroupThread extends Thread {
 
             Map<WorkloadGroupPattern, PrivBitSet> wgPrivMap = role.getWorkloadGroupPatternToPrivs();
             if (wgPrivMap.isEmpty()) {
-                LOG.info("skip role {} for empty privs.", role);
+                LOG.info("skip empty privs, role={}.", role);
                 continue;
             }
 
             Set<UserIdentity> uidSet = Env.getCurrentEnv().getAuth().getRoleUsers(role.getRoleName());
+            Optional<UserIdentity> uid = uidSet.stream().findFirst();
 
-            if (uidSet.size() == 1) {
-                Optional<UserIdentity> uid = uidSet.stream().findFirst();
-                if (uid.isPresent() && uid.get().isSystemUser()) {
-                    LOG.info("skip sys user: {}, role: {}", uid, role);
-                }
+            if (uidSet.size() == 1 && uid.isPresent() && uid.get().isSystemUser()) {
+                LOG.info("skip sys user, user={} , role={}.", uid, role);
                 continue;
             }
 
-            LOG.info("begin deal role: {}", role);
+            LOG.info("begin deal role={}", role);
 
             for (Map.Entry<WorkloadGroupPattern, PrivBitSet> wgPrivEntry : wgPrivMap.entrySet()) {
                 String wgPrivName = wgPrivEntry.getKey().getworkloadGroupName();
                 // skip new auth data or %
                 if (wgPrivName.contains(".")) {
-                    LOG.info("skip new workload group, role: {}, wg: {}", roleName, wgPrivName);
+                    LOG.info("skip new workload group, role={}, wg={}", roleName, wgPrivName);
                     continue;
                 }
 
                 if (wgPrivName.contains("%")) {
-                    LOG.info("skip % workload group, role {}", roleName);
+                    LOG.info("skip % workload group, role={}", roleName);
                     continue;
                 }
 
                 List<Privilege> privList = wgPrivEntry.getValue().toPrivilegeList();
                 if (privList.size() > 0) {
                     roleAuthList.add(Pair.of(roleName, Pair.of(wgPrivName, Sets.newHashSet(privList))));
-                    LOG.info("get priv list for role {}, priv {}", roleName, privList);
+                    LOG.info("get priv list for role={}, priv={}", roleName, privList);
                 } else {
-                    LOG.info("not find priv list for role {}, ", roleName);
+                    LOG.info("not find priv list for role={}, ", roleName);
                 }
             }
         }
@@ -175,12 +173,12 @@ public class BindWgToComputeGroupThread extends Thread {
                 GrantStmt grantStmt = new GrantStmt(null, roleName, wgPattern, null);
                 grantStmt.set(privileges);
                 Env.getCurrentEnv().getAuth().grant(grantStmt);
-                LOG.info("grant roleName: {} to new wg: {}, priv list: {}", roleName, newWgName, privileges);
+                LOG.info("grant roleName {} to new wg {}, priv list {}", roleName, newWgName, privileges);
             }
 
             RevokeStmt revokeOldWgStmt = new RevokeStmt(null, roleName, new WorkloadGroupPattern(oldWgName), null);
             revokeOldWgStmt.setPrivileges(privileges);
-            LOG.info("revoke roleName: {} from old wg: {}, priv list: {}", roleName, oldWgName, privileges);
+            LOG.info("revoke roleName {} from old wg {}, priv list {}", roleName, oldWgName, privileges);
             Env.getCurrentEnv().getAuth().revoke(revokeOldWgStmt);
         }
     }
