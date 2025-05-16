@@ -699,7 +699,7 @@ Status FragmentMgr::_get_or_create_query_ctx(const TPipelineFragmentParams& para
                     [&](phmap::flat_hash_map<TUniqueId, std::weak_ptr<QueryContext>>& map)
                             -> Status {
                         WorkloadGroupPtr workload_group_ptr = nullptr;
-                        std::string wg_info_str = "Workload Group not set";
+                        std::string wg_info_str = "workload group not set";
                         if (params.__isset.workload_groups && !params.workload_groups.empty()) {
                             uint64_t wg_id = params.workload_groups[0].id;
                             workload_group_ptr = _exec_env->workload_group_mgr()->get_group(wg_id);
