@@ -29,7 +29,7 @@ CloudIndexChangeCompaction::CloudIndexChangeCompaction(
         CloudStorageEngine& engine, CloudTabletSPtr tablet, bool is_drop,
         std::vector<TOlapTableIndex>& alter_inverted_indexes)
         : CloudCompactionMixin(engine, tablet,
-                               "BaseCompaction:" + std::to_string(tablet->tablet_id())),
+                               "CloudIndexChangeCompaction:" + std::to_string(tablet->tablet_id())),
           _is_drop(is_drop),
           _alter_inverted_indexes(alter_inverted_indexes) {}
 
