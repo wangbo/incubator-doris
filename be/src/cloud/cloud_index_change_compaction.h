@@ -45,6 +45,7 @@ public:
     bool is_base_compaction() const { return _compact_type == cloud::TabletCompactionJobPB::BASE; }
 
 private:
+
     void _update_tablet_for_cumu_compaction(cloud::FinishTabletJobResponse resp,
                                             DeleteBitmapPtr output_rowset_delete_bitmap);
     void _update_tablet_for_base_compaction(cloud::FinishTabletJobResponse resp,

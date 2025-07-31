@@ -20,6 +20,7 @@
 #include "cloud/cloud_meta_mgr.h"
 #include "cloud/config.h"
 #include "common/status.h"
+#include "cpp/sync_point.h"
 
 namespace doris {
 
@@ -34,6 +35,8 @@ CloudIndexChangeCompaction::CloudIndexChangeCompaction(
           _alter_inverted_indexes(alter_inverted_indexes) {}
 
 Status CloudIndexChangeCompaction::prepare_compact() {
+    TEST_SYNC_POINT_RETURN_WITH_VALUE("CloudIndexChangeCompaction::prepare_compact", Status::OK());
+
     std::set<int64_t> alter_index_ids;
     for (auto inverted_index : _alter_inverted_indexes) {
         alter_index_ids.insert(inverted_index.index_id);
@@ -61,22 +64,24 @@ Status CloudIndexChangeCompaction::prepare_compact() {
     }
 
     bool is_base_rowset = false;
-    RowsetSharedPtr input_rowset = cloud_tablet()->pick_a_rowset_for_index_change(
+    auto input_rowset_result = cloud_tablet()->pick_a_rowset_for_index_change(
             alter_index_ids, _is_drop, is_base_rowset);
     if (is_base_rowset) {
         _compact_type = cloud::TabletCompactionJobPB::BASE;
     } else {
         _compact_type = cloud::TabletCompactionJobPB::CUMULATIVE;
     }
-    if (input_rowset == nullptr) {
+    if (!input_rowset_result.has_value()) {
+        std::cout << "get a rowset" << std::endl;
         return Status::OK();
     }
 
-    _input_rowsets.push_back(input_rowset);
+    _input_rowsets.push_back(input_rowset_result.value());
 
-    _output_schema = _is_drop
-                             ? _build_output_rs_index_schema_for_drop(input_rowset->tablet_schema())
-                             : _build_output_rs_index_schema_for_add(input_rowset->tablet_schema());
+    _output_schema = _is_drop ? _build_output_rs_index_schema_for_drop(
+                                        input_rowset_result.value()->tablet_schema())
+                              : _build_output_rs_index_schema_for_add(
+                                        input_rowset_result.value()->tablet_schema());
 
     for (auto& rs : _input_rowsets) {
         _input_row_num += rs->num_rows();
@@ -165,12 +170,14 @@ Status CloudIndexChangeCompaction::request_global_lock(bool& should_skip_err) {
             LOG(WARNING) << msg;
             return Status::InternalError(msg);
         }
+        return st;
     }
 
     return Status::OK();
 }
 
 Status CloudIndexChangeCompaction::execute_compact() {
+    TEST_SYNC_POINT_RETURN_WITH_VALUE("CloudIndexChangeCompaction::execute_compact", Status::OK());
     SCOPED_ATTACH_TASK(_mem_tracker);
 
     using namespace std::chrono;

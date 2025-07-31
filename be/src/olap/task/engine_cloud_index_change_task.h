@@ -24,6 +24,7 @@ namespace doris {
 class CloudStorageEngine;
 class TAlterInvertedIndexReq;
 class TOlapTableIndex;
+class CloudTablet;
 
 class EngineCloudIndexChangeTask final : public EngineTask {
 public:
@@ -34,6 +35,8 @@ public:
     ~EngineCloudIndexChangeTask();
 
 private:
+    Result<std::shared_ptr<CloudTablet>> _get_tablet();
+
     CloudStorageEngine& _engine;
     std::vector<TOlapTableIndex> _alter_inverted_indexes;
 

@@ -38,6 +38,7 @@
 #include "common/cast_set.h"
 #include "common/config.h"
 #include "common/logging.h"
+#include "cpp/sync_point.h"
 #include "io/cache/block_file_cache_downloader.h"
 #include "io/cache/block_file_cache_factory.h"
 #include "olap/compaction.h"
@@ -884,8 +885,10 @@ void CloudTablet::set_cumulative_layer_point(int64_t new_point) {
                  << ", origin: " << _cumulative_point.load();
 }
 
-RowsetSharedPtr CloudTablet::pick_a_rowset_for_index_change(
+Result<RowsetSharedPtr> CloudTablet::pick_a_rowset_for_index_change(
         const std::set<int64_t>& alter_index_uids, bool is_drop_op, bool& is_base_rowset) {
+    TEST_SYNC_POINT_RETURN_WITH_VALUE("CloudTablet::pick_a_rowset_for_index_change",
+                                      Result<RowsetSharedPtr>(nullptr));
     std::shared_lock rlock(_meta_lock);
     for (const auto& [version, rs] : _rs_version_map) {
         if (version.first == 0) {

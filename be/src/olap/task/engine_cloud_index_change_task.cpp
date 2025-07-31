@@ -20,6 +20,7 @@
 #include "cloud/cloud_index_change_compaction.h"
 #include "cloud/cloud_tablet_mgr.h"
 #include "olap/tablet_manager.h"
+#include "cpp/sync_point.h"
 
 namespace doris {
 
@@ -37,6 +38,12 @@ EngineCloudIndexChangeTask::EngineCloudIndexChangeTask(CloudStorageEngine& engin
 
 EngineCloudIndexChangeTask::~EngineCloudIndexChangeTask() = default;
 
+Result<std::shared_ptr<CloudTablet>> EngineCloudIndexChangeTask::_get_tablet() {
+    TEST_SYNC_POINT_RETURN_WITH_VALUE("EngineCloudIndexChangeTask::_get_tablet",
+                                      Result<std::shared_ptr<CloudTablet>>(nullptr));
+    return _engine.tablet_mgr().get_tablet(_tablet_id);
+}
+
 Status EngineCloudIndexChangeTask::execute() {
     std::set<int64_t> alter_index_ids;
     for (auto inverted_index : _alter_inverted_indexes) {
@@ -53,19 +60,19 @@ Status EngineCloudIndexChangeTask::execute() {
         }
 
         // get tablet
-        auto result = _engine.tablet_mgr().get_tablet(_tablet_id);
-        CloudTabletSPtr tablet = result.value();
-        if (tablet == nullptr) {
+        auto result = _get_tablet();
+        if (!result.has_value()) {
             LOG(WARNING) << "[index_change]tablet: " << _tablet_id << " not exist";
             return Status::InternalError("tablet not exist, tablet_id={}.", _tablet_id);
         }
+        CloudTabletSPtr tablet = result.value();
 
         // pre check to determine whether this round of iteration is base compaction or cumu compaction.
         bool is_current_iter_base_compact = false;
         RETURN_IF_ERROR(tablet->sync_rowsets());
-        RowsetSharedPtr input_rowset = tablet->pick_a_rowset_for_index_change(
+        auto input_rowset_result = tablet->pick_a_rowset_for_index_change(
                 alter_index_ids, _is_drop, is_current_iter_base_compact);
-        if (input_rowset == nullptr) {
+        if (!input_rowset_result.has_value()) {
             LOG(INFO) << "[index_change]there are no rowsets need to do index change, task finish."
                       << tablet_id_str;
             return Status::OK();
