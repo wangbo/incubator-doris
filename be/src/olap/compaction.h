@@ -83,6 +83,9 @@ public:
     // 3. compute level should not be changed.
     virtual bool is_index_change_compaction() { return false; }
 
+private:
+    void set_delete_predicate_for_output_rowset();
+
 protected:
     Status merge_input_rowsets();
 

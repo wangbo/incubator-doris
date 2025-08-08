@@ -231,7 +231,24 @@ Status Compaction::merge_input_rowsets() {
                                                _output_version.to_string()));
 
     //RETURN_IF_ERROR(_engine.meta_mgr().commit_rowset(*_output_rowset->rowset_meta().get()));
+    set_delete_predicate_for_output_rowset();
 
+    _local_read_bytes_total = _stats.bytes_read_from_local;
+    _remote_read_bytes_total = _stats.bytes_read_from_remote;
+    DorisMetrics::instance()->local_compaction_read_bytes_total->increment(_local_read_bytes_total);
+    DorisMetrics::instance()->remote_compaction_read_bytes_total->increment(
+            _remote_read_bytes_total);
+    DorisMetrics::instance()->local_compaction_write_bytes_total->increment(
+            _stats.cached_bytes_total);
+
+    COUNTER_UPDATE(_output_rowset_data_size_counter, _output_rowset->data_disk_size());
+    COUNTER_UPDATE(_output_row_num_counter, _output_rowset->num_rows());
+    COUNTER_UPDATE(_output_segments_num_counter, _output_rowset->num_segments());
+
+    return check_correctness();
+}
+
+void Compaction::set_delete_predicate_for_output_rowset() {
     // Now we support delete in cumu compaction, to make all data in rowsets whose version
     // is below output_version to be delete in the future base compaction, we should carry
     // all delete predicate in the output rowset.
@@ -256,20 +273,6 @@ Status Compaction::merge_input_rowsets() {
             _output_rowset->rowset_meta()->set_delete_predicate(std::move(delete_predicate));
         }
     }
-
-    _local_read_bytes_total = _stats.bytes_read_from_local;
-    _remote_read_bytes_total = _stats.bytes_read_from_remote;
-    DorisMetrics::instance()->local_compaction_read_bytes_total->increment(_local_read_bytes_total);
-    DorisMetrics::instance()->remote_compaction_read_bytes_total->increment(
-            _remote_read_bytes_total);
-    DorisMetrics::instance()->local_compaction_write_bytes_total->increment(
-            _stats.cached_bytes_total);
-
-    COUNTER_UPDATE(_output_rowset_data_size_counter, _output_rowset->data_disk_size());
-    COUNTER_UPDATE(_output_row_num_counter, _output_rowset->num_rows());
-    COUNTER_UPDATE(_output_segments_num_counter, _output_rowset->num_segments());
-
-    return check_correctness();
 }
 
 int64_t Compaction::get_avg_segment_rows() {

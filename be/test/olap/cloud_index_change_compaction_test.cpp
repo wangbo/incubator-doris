@@ -19,6 +19,8 @@
 
 #include <gtest/gtest.h>
 
+#include "cloud/cloud_base_compaction.h"
+#include "cloud/cloud_cumulative_compaction.h"
 #include "cpp/sync_point.h"
 #include "json2pb/json_to_pb.h"
 #include "olap/rowset/beta_rowset.h"
@@ -465,6 +467,93 @@ TEST_F(CloudIndexChangeCompactionTest, build_output_schema_add_test) {
     const TabletIndex* col2_new_index = output_schema->inverted_index(col2_column);
     ASSERT_TRUE(col2_new_index->index_id() == add_col2_index.index_id);
     ASSERT_TRUE(col2_new_index->index_name() == add_col2_index.index_name);
+}
+
+TEST_F(CloudIndexChangeCompactionTest, basic_compaction_test) {
+    TabletSchemaPB schema_pb;
+    schema_pb.set_keys_type(KeysType::DUP_KEYS);
+
+    ColumnPB* column_pb = schema_pb.add_column();
+    column_pb->set_unique_id(10000);
+    column_pb->set_name("col1");
+    column_pb->set_type("int");
+    column_pb->set_is_key(true);
+    column_pb->set_is_nullable(true);
+    auto tablet_schema1 = std::make_shared<TabletSchema>();
+    tablet_schema1->init_from_pb(schema_pb);
+
+    auto tablet_schema2 = std::make_shared<TabletSchema>();
+    tablet_schema2->init_from_pb(schema_pb);
+
+    auto rowset_meta = std::make_shared<RowsetMeta>();
+    init_rs_meta(rowset_meta, 0, 1);
+    rowset_meta->set_num_segments(2);
+    rowset_meta->_schema = tablet_schema1;
+    RowsetSharedPtr rowset_ptr = std::make_shared<BetaRowset>(tablet_schema1, rowset_meta, "");
+
+    auto output_rowset_meta = std::make_shared<RowsetMeta>();
+    init_rs_meta(output_rowset_meta, 0, 1);
+    output_rowset_meta->set_num_segments(2);
+    output_rowset_meta->_schema = tablet_schema1;
+    RowsetSharedPtr output_rowset_ptr =
+            std::make_shared<BetaRowset>(tablet_schema1, output_rowset_meta, "");
+
+    CloudTabletSPtr tablet =
+            std::make_shared<CloudTablet>(*_engine, std::make_shared<TabletMeta>());
+
+    Version v1;
+    v1.first = 0;
+    v1.second = 2;
+    tablet->_rs_version_map[v1] = rowset_ptr;
+
+    std::vector<TOlapTableIndex> index_list;
+    CloudIndexChangeCompaction cloud_index_change_compaction(*_engine, tablet, false, index_list);
+    cloud_index_change_compaction._output_schema = tablet_schema2;
+
+    // test is_index_change_compaction
+    CloudBaseCompaction cloud_base_compaction(*_engine, tablet);
+    CloudCumulativeCompaction cloud_cumu_compaction(*_engine, tablet);
+    ASSERT_TRUE(cloud_index_change_compaction.is_index_change_compaction());
+    ASSERT_FALSE(cloud_base_compaction.is_index_change_compaction());
+    ASSERT_FALSE(cloud_cumu_compaction.is_index_change_compaction());
+
+    // test get_output_schema
+    cloud_base_compaction._input_rowsets.push_back(rowset_ptr);
+    reinterpret_cast<CloudCompactionMixin*>(&cloud_base_compaction)->build_basic_info();
+    ASSERT_TRUE(cloud_base_compaction.get_output_schema() == tablet_schema1);
+
+    cloud_cumu_compaction._input_rowsets.push_back(rowset_ptr);
+    reinterpret_cast<CloudCompactionMixin*>(&cloud_cumu_compaction)->build_basic_info();
+    ASSERT_TRUE(cloud_cumu_compaction.get_output_schema() == tablet_schema1);
+
+    cloud_index_change_compaction._input_rowsets.push_back(rowset_ptr);
+    reinterpret_cast<CloudCompactionMixin*>(&cloud_index_change_compaction)->build_basic_info();
+    ASSERT_TRUE(cloud_index_change_compaction.get_output_schema() != tablet_schema1);
+    ASSERT_TRUE(cloud_index_change_compaction.get_output_schema() == tablet_schema2);
+
+    // test delete predicate
+    cloud_index_change_compaction._input_rowsets.clear();
+    cloud_index_change_compaction._input_rowsets.push_back(rowset_ptr);
+    cloud_index_change_compaction._output_rowset = output_rowset_ptr;
+
+    DeletePredicatePB del_pred_pb;
+    InPredicatePB* in_pred = del_pred_pb.add_in_predicates();
+    in_pred->set_column_name("col1");
+    in_pred->set_is_not_in(true);
+    in_pred->add_values("123");
+    in_pred->add_values("456");
+    rowset_ptr->rowset_meta()->set_delete_predicate(del_pred_pb);
+
+    cloud_index_change_compaction._allow_delete_in_cumu_compaction = false;
+    reinterpret_cast<Compaction*>(&cloud_index_change_compaction)
+            ->set_delete_predicate_for_output_rowset();
+
+    auto& in_predicates = cloud_index_change_compaction._output_rowset->rowset_meta()
+                                  ->delete_predicate()
+                                  .in_predicates();
+    ASSERT_TRUE(in_predicates[0].column_name() == "col1");
+    ASSERT_TRUE(in_predicates[0].is_not_in() == true);
+    ASSERT_TRUE(in_predicates[0].values().size() == 2);
 }
 
 } // namespace doris
