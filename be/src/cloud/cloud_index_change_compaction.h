@@ -28,7 +28,7 @@ namespace doris {
 class CloudIndexChangeCompaction : public CloudCompactionMixin {
 public:
     CloudIndexChangeCompaction(CloudStorageEngine& engine, CloudTabletSPtr tablet, bool is_drop,
-                               std::vector<TOlapTableIndex>& _alter_inverted_indexes);
+                               std::vector<TOlapTableIndex>& _alter_indexes);
 
     ~CloudIndexChangeCompaction();
 
@@ -56,6 +56,10 @@ private:
     TabletSchemaSPtr _build_output_rs_index_schema_for_add(
             const TabletSchemaSPtr& input_rs_tablet_schema);
 
+    const TabletIndex* get_index_meta(const TOlapTableIndex& t_index,
+                                      const TabletSchemaSPtr& tablet_schema,
+                                      const TabletColumn& col);
+
 protected:
     std::string_view compaction_name() const override { return "CloudIndexChangeCompaction"; }
 
@@ -74,7 +78,7 @@ protected:
 
     bool _is_drop {false};
 
-    std::vector<TOlapTableIndex>& _alter_inverted_indexes;
+    std::vector<TOlapTableIndex>& _alter_indexes;
 
     cloud::TabletCompactionJobPB::CompactionType _compact_type;
 
