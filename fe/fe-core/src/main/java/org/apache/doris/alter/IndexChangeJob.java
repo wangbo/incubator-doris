@@ -43,7 +43,6 @@ import org.apache.doris.task.AgentTask;
 import org.apache.doris.task.AgentTaskExecutor;
 import org.apache.doris.task.AgentTaskQueue;
 import org.apache.doris.task.AlterInvertedIndexTask;
-import org.apache.doris.thrift.TColumn;
 import org.apache.doris.thrift.TStatusCode;
 import org.apache.doris.thrift.TTaskType;
 
@@ -116,8 +115,17 @@ public class IndexChangeJob implements Writable {
     protected long timeoutMs = -1;
     @SerializedName(value = "clsname")
     private String cloudClusterName = "";
+    // in cloud mode, schemaVersion/colList/idxList is used for rebuilding a full tablet schema in BE.
+    @SerializedName(value = "sv")
+    private int schemaVersion;
+    @SerializedName(value = "cols")
+    private List<Column> colList = Lists.newArrayList();
+    @SerializedName(value = "idxs")
+    private List<Index> idxList = null;
 
-    public IndexChangeJob(long jobId, long dbId, long tableId, String tableName, long timeoutMs) throws Exception {
+    public IndexChangeJob(long jobId, long dbId, long tableId, String tableName, long timeoutMs, int schemaVersion,
+            List<Column> colList, List<Index> indexList)
+            throws Exception {
         this.jobId = jobId;
         this.dbId = dbId;
         this.tableId = tableId;
@@ -127,6 +135,9 @@ public class IndexChangeJob implements Writable {
         this.jobState = JobState.WAITING_TXN;
         this.watershedTxnId = Env.getCurrentGlobalTransactionMgr().getNextTransactionId();
         this.timeoutMs = timeoutMs;
+        this.schemaVersion = schemaVersion;
+        this.colList = colList;
+        this.idxList = indexList;
     }
 
     public long getJobId() {
@@ -331,11 +342,6 @@ public class IndexChangeJob implements Writable {
 
         olapTable.readLock();
         try {
-            List<Column> originSchemaColumns = olapTable.getSchemaByIndexId(originIndexId, true);
-            for (Column col : originSchemaColumns) {
-                TColumn tColumn = col.toThrift();
-                col.setIndexFlag(tColumn, olapTable);
-            }
             int originSchemaHash = olapTable.getSchemaHashByIndexId(originIndexId);
             Partition partition = olapTable.getPartition(partitionId);
             MaterializedIndex origIdx = partition.getIndex(originIndexId);
@@ -350,12 +356,13 @@ public class IndexChangeJob implements Writable {
                         throw new AlterCancelException("originReplica:" + originReplica.getId()
                                 + " backendId < 0");
                     }
+
                     AlterInvertedIndexTask alterInvertedIndexTask = new AlterInvertedIndexTask(
                             originReplica.getBackendIdWithoutException(), db.getId(), olapTable.getId(),
                             partitionId, originIndexId, originTabletId,
-                            originSchemaHash, olapTable.getIndexes(),
-                            alterInvertedIndexes, originSchemaColumns,
-                            isDropOp, taskSignature, jobId);
+                            originSchemaHash, idxList,
+                            alterInvertedIndexes, colList,
+                            isDropOp, taskSignature, jobId, schemaVersion);
                     invertedIndexBatchTask.addTask(alterInvertedIndexTask);
                 }
             } // end for tablet

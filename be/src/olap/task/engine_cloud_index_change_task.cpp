@@ -27,9 +27,10 @@ namespace doris {
 EngineCloudIndexChangeTask::EngineCloudIndexChangeTask(CloudStorageEngine& engine,
                                                        const TAlterInvertedIndexReq& request)
         : _engine(engine),
-          _alter_inverted_indexes(request.alter_inverted_indexes),
+          _index_list(request.indexes_desc),
+          _columns(request.columns),
           _tablet_id(request.tablet_id),
-          _is_drop(request.is_drop_op) {
+          _schema_version(request.schema_version) {
     _mem_tracker = MemTrackerLimiter::create_shared(
             MemTrackerLimiter::Type::SCHEMA_CHANGE,
             fmt::format("EngineCloudIndexChangeTask#tabletId={}", std::to_string(_tablet_id)),
@@ -45,17 +46,17 @@ Result<std::shared_ptr<CloudTablet>> EngineCloudIndexChangeTask::_get_tablet() {
 }
 
 Status EngineCloudIndexChangeTask::execute() {
-    std::set<int64_t> alter_index_ids;
-    for (auto inverted_index : _alter_inverted_indexes) {
-        if (inverted_index.index_type != TIndexType::type::INVERTED &&
-            inverted_index.index_type != TIndexType::type::NGRAM_BF) {
-            return Status::InternalError("unexpected index type");
-        }
-        alter_index_ids.insert(inverted_index.index_id);
-    }
-
     int64_t begin_time = MonotonicSeconds();
     std::string tablet_id_str = " tableid:" + std::to_string(_tablet_id);
+    // get tablet
+    CloudTabletSPtr tablet = DORIS_TRY(_get_tablet());
+    if (tablet == nullptr) {
+        LOG(WARNING) << "[index_change]tablet: " << _tablet_id << " not exist";
+        return Status::InternalError("tablet not exist, tablet_id={}.", _tablet_id);
+    }
+    RETURN_IF_ERROR(tablet->sync_rowsets());
+    RETURN_IF_ERROR(tablet->check_rowset_schema_for_build_index(_columns, _schema_version));
+
     while (true) {
         int64_t time_cost = MonotonicSeconds() - begin_time;
         if (time_cost > config::cloud_index_change_task_timeout_second) {
@@ -74,21 +75,21 @@ Status EngineCloudIndexChangeTask::execute() {
         bool is_current_iter_base_compact = false;
         RETURN_IF_ERROR(tablet->sync_rowsets());
         auto pre_input_rowset = DORIS_TRY(tablet->pick_a_rowset_for_index_change(
-                alter_index_ids, _is_drop, is_current_iter_base_compact));
+                _schema_version, is_current_iter_base_compact));
         if (pre_input_rowset == nullptr) {
             LOG(INFO) << "[index_change]there are no rowsets need to do index change, task finish."
-                      << tablet_id_str;
+                      << tablet_id_str << ";"
+                      << "sc version:" << _schema_version;
             return Status::OK();
         }
 
         std::shared_ptr<CloudIndexChangeCompaction> index_change_compact =
-                std::make_shared<CloudIndexChangeCompaction>(_engine, tablet, _is_drop,
-                                                             _alter_inverted_indexes);
+                std::make_shared<CloudIndexChangeCompaction>(_engine, tablet, _schema_version,
+                                                             _index_list, _columns);
 
         Defer defer {[&]() {
             _engine.unregister_index_change_compaction(_tablet_id, is_current_iter_base_compact);
-            VLOG_DEBUG << "[index_change] unregister compaction , is drop:" << ((int)_is_drop)
-                       << tablet_id_str;
+            VLOG_DEBUG << "[index_change] unregister compaction , " << tablet_id_str;
         }};
 
         std::string err_msg;
@@ -120,6 +121,8 @@ Status EngineCloudIndexChangeTask::execute() {
                 (is_current_iter_base_compact && index_change_compact->is_base_compaction()) ||
                 (!is_current_iter_base_compact && !index_change_compact->is_base_compaction());
         if (!could_continue_execution) {
+            LOG_EVERY_T(INFO, 10) << "[index_change] pre rowset type not match real rowset type."
+                                  << tablet_id_str;
             continue;
         }
 

@@ -217,8 +217,9 @@ public:
     int64_t base_size() const { return _base_size; }
 
     std::vector<RowsetSharedPtr> pick_candidate_rowsets_to_full_compaction();
-    Result<RowsetSharedPtr> pick_a_rowset_for_index_change(
-            const std::set<int64_t>& alter_index_uids, bool is_drop_op, bool& is_base_rowset);
+    Result<RowsetSharedPtr> pick_a_rowset_for_index_change(int schema_version,
+                                                           bool& is_base_rowset);
+    Status check_rowset_schema_for_build_index(std::vector<TColumn>& columns, int schema_version);
 
     std::mutex& get_base_compaction_lock() { return _base_compaction_lock; }
     std::mutex& get_cumulative_compaction_lock() { return _cumulative_compaction_lock; }

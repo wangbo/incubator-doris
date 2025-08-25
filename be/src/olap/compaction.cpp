@@ -132,7 +132,8 @@ Compaction::Compaction(BaseTabletSPtr tablet, const std::string& label)
           _is_vertical(config::enable_vertical_compaction),
           _allow_delete_in_cumu_compaction(config::enable_delete_when_cumu_compaction),
           _enable_vertical_compact_variant_subcolumns(
-                  config::enable_vertical_compact_variant_subcolumns) {
+                  config::enable_vertical_compact_variant_subcolumns),
+          _enable_inverted_index_compaction(config::inverted_index_compaction_enable) {
     init_profile(label);
     SCOPED_SWITCH_THREAD_MEM_TRACKER_LIMITER(_mem_tracker);
     _rowid_conversion = std::make_unique<RowIdConversion>();
@@ -240,9 +241,9 @@ Status Compaction::merge_input_rowsets() {
     // extends schema to split variant subcolumns for vertical compaction but
     // the final rowset meta must not persist those extracted subcolumns.
     if (_enable_vertical_compact_variant_subcolumns &&
-        (get_output_schema()->num_variant_columns() > 0)) {
+        (_cur_tablet_schema->num_variant_columns() > 0)) {
         _output_rowset->rowset_meta()->set_tablet_schema(
-                get_output_schema()->copy_without_variant_extracted_columns());
+                _cur_tablet_schema->copy_without_variant_extracted_columns());
     }
 
     //RETURN_IF_ERROR(_engine.meta_mgr().commit_rowset(*_output_rowset->rowset_meta().get()));
@@ -583,8 +584,8 @@ Status CompactionMixin::execute_compact_impl(int64_t permits) {
 
 Status Compaction::do_inverted_index_compaction() {
     const auto& ctx = _output_rs_writer->context();
-    if (!config::inverted_index_compaction_enable || _input_row_num <= 0 ||
-        ctx.columns_to_do_index_compaction.empty() || is_index_change_compaction()) {
+    if (!_enable_inverted_index_compaction || _input_row_num <= 0 ||
+        ctx.columns_to_do_index_compaction.empty()) {
         return Status::OK();
     }
 
@@ -1134,7 +1135,7 @@ Status CloudCompactionMixin::update_delete_bitmap() {
 
 Status CompactionMixin::construct_output_rowset_writer(RowsetWriterContext& ctx) {
     // only do index compaction for dup_keys and unique_keys with mow enabled
-    if (config::inverted_index_compaction_enable &&
+    if (_enable_inverted_index_compaction &&
         (((_tablet->keys_type() == KeysType::UNIQUE_KEYS &&
            _tablet->enable_unique_key_merge_on_write()) ||
           _tablet->keys_type() == KeysType::DUP_KEYS))) {
@@ -1432,7 +1433,12 @@ Status CloudCompactionMixin::build_basic_info() {
     std::vector<RowsetMetaSharedPtr> rowset_metas(_input_rowsets.size());
     std::transform(_input_rowsets.begin(), _input_rowsets.end(), rowset_metas.begin(),
                    [](const RowsetSharedPtr& rowset) { return rowset->rowset_meta(); });
-    _cur_tablet_schema = _tablet->tablet_schema_with_merged_max_schema_version(rowset_metas);
+    if (is_index_change_compaction()) {
+        RETURN_IF_ERROR(rebuild_tablet_schema());
+    } else {
+        _cur_tablet_schema = _tablet->tablet_schema_with_merged_max_schema_version(rowset_metas);
+    }
+
     // if enable_vertical_compact_variant_subcolumns is true, we need to compact the variant subcolumns in seperate column groups
     // so get_extended_compaction_schema will extended the schema for variant columns
     if (_enable_vertical_compact_variant_subcolumns) {
@@ -1537,7 +1543,7 @@ Status CloudCompactionMixin::modify_rowsets() {
 
 Status CloudCompactionMixin::construct_output_rowset_writer(RowsetWriterContext& ctx) {
     // only do index compaction for dup_keys and unique_keys with mow enabled
-    if (config::inverted_index_compaction_enable &&
+    if (_enable_inverted_index_compaction &&
         (((_tablet->keys_type() == KeysType::UNIQUE_KEYS &&
            _tablet->enable_unique_key_merge_on_write()) ||
           _tablet->keys_type() == KeysType::DUP_KEYS))) {
@@ -1555,7 +1561,7 @@ Status CloudCompactionMixin::construct_output_rowset_writer(RowsetWriterContext&
     ctx.version = _output_version;
     ctx.rowset_state = VISIBLE;
     ctx.segments_overlap = NONOVERLAPPING;
-    ctx.tablet_schema = get_output_schema();
+    ctx.tablet_schema = _cur_tablet_schema;
     ctx.newest_write_timestamp = _newest_write_timestamp;
     ctx.write_type = DataWriteType::TYPE_COMPACTION;
     ctx.compaction_type = compaction_type();

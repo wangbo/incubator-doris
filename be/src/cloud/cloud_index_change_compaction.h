@@ -27,8 +27,9 @@ namespace doris {
 
 class CloudIndexChangeCompaction : public CloudCompactionMixin {
 public:
-    CloudIndexChangeCompaction(CloudStorageEngine& engine, CloudTabletSPtr tablet, bool is_drop,
-                               std::vector<TOlapTableIndex>& _alter_indexes);
+    CloudIndexChangeCompaction(CloudStorageEngine& engine, CloudTabletSPtr tablet,
+                               int32_t schema_version, std::vector<TOlapTableIndex>& index_list,
+                               std::vector<TColumn>& columns);
 
     ~CloudIndexChangeCompaction();
 
@@ -44,16 +45,13 @@ public:
 
     bool is_base_compaction() const { return _compact_type == cloud::TabletCompactionJobPB::BASE; }
 
+    Status rebuild_tablet_schema() override;
+
 private:
     void _update_tablet_for_cumu_compaction(cloud::FinishTabletJobResponse resp,
                                             DeleteBitmapPtr output_rowset_delete_bitmap);
     void _update_tablet_for_base_compaction(cloud::FinishTabletJobResponse resp,
                                             DeleteBitmapPtr output_rowset_delete_bitmap);
-
-    TabletSchemaSPtr _build_output_rs_index_schema_for_drop(
-            const TabletSchemaSPtr& input_rs_tablet_schema);
-    TabletSchemaSPtr _build_output_rs_index_schema_for_add(
-            const TabletSchemaSPtr& input_rs_tablet_schema);
 
 protected:
     std::string_view compaction_name() const override { return "CloudIndexChangeCompaction"; }
@@ -65,17 +63,15 @@ protected:
                                     : ReaderType::READER_CUMULATIVE_COMPACTION;
     }
 
-    TabletSchemaSPtr get_output_schema() override;
-
     Status modify_rowsets() override;
 
     Status garbage_collection() override;
 
-    TabletSchemaSPtr _output_schema {nullptr};
+    int32_t _schema_version;
 
-    bool _is_drop {false};
+    std::vector<TOlapTableIndex>& _index_list;
 
-    std::vector<TOlapTableIndex>& _alter_indexes;
+    std::vector<TColumn>& _columns;
 
     cloud::TabletCompactionJobPB::CompactionType _compact_type;
 

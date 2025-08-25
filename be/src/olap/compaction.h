@@ -75,8 +75,6 @@ public:
     virtual ReaderType compaction_type() const = 0;
     virtual std::string_view compaction_name() const = 0;
 
-    virtual TabletSchemaSPtr get_output_schema() { return _cur_tablet_schema; }
-
     // the difference between index change compmaction and other compaction.
     // 1. delete predicate should be kept when input is cumu rowset.
     // 2. inverted compaction should be skipped.
@@ -146,6 +144,8 @@ protected:
     TabletSchemaSPtr _cur_tablet_schema;
 
     std::unique_ptr<RuntimeProfile> _profile;
+
+    bool _enable_inverted_index_compaction {false};
 
     RuntimeProfile::Counter* _input_rowsets_data_size_counter = nullptr;
     RuntimeProfile::Counter* _input_rowsets_counter = nullptr;
@@ -228,6 +228,8 @@ protected:
     std::string _uuid;
 
     int64_t _expiration = 0;
+
+    virtual Status rebuild_tablet_schema() { return Status::OK(); }
 
 private:
     Status construct_output_rowset_writer(RowsetWriterContext& ctx) override;

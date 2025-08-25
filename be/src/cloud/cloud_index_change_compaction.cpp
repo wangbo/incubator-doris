@@ -27,27 +27,18 @@ namespace doris {
 CloudIndexChangeCompaction::~CloudIndexChangeCompaction() = default;
 
 CloudIndexChangeCompaction::CloudIndexChangeCompaction(CloudStorageEngine& engine,
-                                                       CloudTabletSPtr tablet, bool is_drop,
-                                                       std::vector<TOlapTableIndex>& alter_indexes)
+                                                       CloudTabletSPtr tablet,
+                                                       int32_t schema_version,
+                                                       std::vector<TOlapTableIndex>& index_list,
+                                                       std::vector<TColumn>& columns)
         : CloudCompactionMixin(engine, tablet,
                                "CloudIndexChangeCompaction:" + std::to_string(tablet->tablet_id())),
-          _is_drop(is_drop),
-          _alter_indexes(alter_indexes) {}
+          _schema_version(schema_version),
+          _index_list(index_list),
+          _columns(columns) {}
 
 Status CloudIndexChangeCompaction::prepare_compact() {
     TEST_SYNC_POINT_RETURN_WITH_VALUE("CloudIndexChangeCompaction::prepare_compact", Status::OK());
-
-    std::set<int64_t> alter_index_ids;
-    for (auto index : _alter_indexes) {
-        alter_index_ids.insert(index.index_id);
-    }
-
-    if (alter_index_ids.size() == 0) {
-        LOG(WARNING) << "[index_change] no index is specified.";
-        return Status::InternalError("no specified index.");
-    } else {
-        VLOG_DEBUG << "[index_change] alter_index_ids size=" << alter_index_ids.size();
-    }
 
     if (_tablet->tablet_state() != TABLET_RUNNING) {
         LOG(WARNING) << "[index_change] tablet state is not running. tablet_id="
@@ -64,8 +55,8 @@ Status CloudIndexChangeCompaction::prepare_compact() {
     }
 
     bool is_base_rowset = false;
-    auto input_rowset = DORIS_TRY(cloud_tablet()->pick_a_rowset_for_index_change(
-            alter_index_ids, _is_drop, is_base_rowset));
+    auto input_rowset = DORIS_TRY(
+            cloud_tablet()->pick_a_rowset_for_index_change(_schema_version, is_base_rowset));
     if (input_rowset == nullptr) {
         return Status::OK();
     }
@@ -85,6 +76,8 @@ Status CloudIndexChangeCompaction::prepare_compact() {
         _input_rowsets_index_size += rs->index_disk_size();
         _input_rowsets_total_size += rs->total_disk_size();
     }
+
+    _enable_inverted_index_compaction = false;
     LOG_INFO("[index_change]prepare CloudIndexChangeCompaction, tablet_id={}, range=[{}-{}]",
              _tablet->tablet_id(), _input_rowsets.front()->start_version(),
              _input_rowsets.back()->end_version())
@@ -103,12 +96,29 @@ Status CloudIndexChangeCompaction::prepare_compact() {
     return Status::OK();
 }
 
-TabletSchemaSPtr CloudIndexChangeCompaction::get_output_schema() {
-    TabletSchemaSPtr output_rs_tablet_schema = std::make_shared<TabletSchema>();
-    output_rs_tablet_schema->copy_from(*_cur_tablet_schema);
-    _output_schema = _is_drop ? _build_output_rs_index_schema_for_drop(output_rs_tablet_schema)
-                              : _build_output_rs_index_schema_for_add(output_rs_tablet_schema);
-    return _output_schema;
+Status CloudIndexChangeCompaction::rebuild_tablet_schema() {
+    DCHECK(_input_rowsets.size() == 1);
+    auto input_schema_ptr = _input_rowsets.back()->tablet_schema();
+
+    _cur_tablet_schema = std::make_shared<TabletSchema>();
+    _cur_tablet_schema->copy_from(*input_schema_ptr);
+    // rebuild tablet schema
+    _cur_tablet_schema->clear_columns();
+    _cur_tablet_schema->clear_index();
+
+    for (int i = 0; i < _columns.size(); i++) {
+        _cur_tablet_schema->append_column(TabletColumn(_columns[i]));
+    }
+
+    for (int i = 0; i < _index_list.size(); i++) {
+        TabletIndex index;
+        const auto& t_idx = _index_list[i];
+        index.init_from_thrift(t_idx, *_cur_tablet_schema);
+        _cur_tablet_schema->append_index(std::move(index));
+    }
+
+    _cur_tablet_schema->set_schema_version(_schema_version);
+    return Status::OK();
 }
 
 Status CloudIndexChangeCompaction::request_global_lock(bool& should_skip_err) {
@@ -456,105 +466,6 @@ Status CloudIndexChangeCompaction::garbage_collection() {
                 .error(st);
     }
     return st;
-}
-
-TabletSchemaSPtr CloudIndexChangeCompaction::_build_output_rs_index_schema_for_drop(
-        const TabletSchemaSPtr& output_rs_tablet_schema) {
-    for (const auto& t_index : _alter_indexes) {
-        DCHECK_EQ(t_index.columns.size(), 1);
-        auto column_name = t_index.columns[0];
-        auto column_idx = output_rs_tablet_schema->field_index(column_name);
-        if (column_idx < 0) {
-            if (!t_index.column_unique_ids.empty()) {
-                auto column_unique_id = t_index.column_unique_ids[0];
-                column_idx = output_rs_tablet_schema->field_index(column_unique_id);
-            }
-            if (column_idx < 0) {
-                LOG(WARNING) << "[index_change]referenced column was missing. "
-                             << "[column=" << column_name << " referenced_column=" << column_idx
-                             << "]";
-                continue;
-            }
-        }
-
-        auto column = output_rs_tablet_schema->column(column_idx);
-        if (t_index.index_type == TIndexType::type::INVERTED) {
-            std::vector<const TabletIndex*> exist_index_list =
-                    output_rs_tablet_schema->inverted_indexs(column);
-            if (exist_index_list.size() == 0) {
-                LOG(WARNING) << "[index_change]column: " << column_name
-                             << " has no inverted index, index_id: " << t_index.index_id
-                             << " for drop.";
-                continue;
-            }
-            for (const auto& index_meta : exist_index_list) {
-                output_rs_tablet_schema->remove_index(index_meta->index_id());
-            }
-        } else if (t_index.index_type == TIndexType::type::NGRAM_BF) {
-            auto index_meta = output_rs_tablet_schema->get_ngram_bf_index(column.unique_id());
-            if (index_meta == nullptr) {
-                LOG(WARNING) << "[index_change]column: " << column_name
-                             << " has no ngram index, index_id: " << t_index.index_id
-                             << " for drop.";
-                continue;
-            }
-            output_rs_tablet_schema->remove_index(index_meta->index_id());
-        }
-    }
-
-    return output_rs_tablet_schema;
-}
-
-TabletSchemaSPtr CloudIndexChangeCompaction::_build_output_rs_index_schema_for_add(
-        const TabletSchemaSPtr& input_rs_tablet_schema) {
-    TabletSchemaSPtr output_rs_tablet_schema = std::make_shared<TabletSchema>();
-    output_rs_tablet_schema->copy_from(*input_rs_tablet_schema);
-
-    for (auto t_index : _alter_indexes) {
-        TabletIndex index;
-        index.init_from_thrift(t_index, *output_rs_tablet_schema);
-        auto column_uid = index.col_unique_ids()[0];
-        if (column_uid < 0) {
-            LOG(WARNING) << "[index_change]referenced column was missing. "
-                         << "[column=" << t_index.columns[0] << " referenced_column=" << column_uid
-                         << "]";
-            continue;
-        }
-        const TabletColumn& column = output_rs_tablet_schema->column_by_uid(column_uid);
-        if (t_index.index_type == TIndexType::type::INVERTED) {
-            std::vector<const TabletIndex*> exist_index_list =
-                    output_rs_tablet_schema->inverted_indexs(column);
-            for (const auto& exist_index : exist_index_list) {
-                if (exist_index->index_id() != index.index_id()) {
-                    LOG(WARNING) << fmt::format(
-                            "column: {} has a exist inverted index, but the index id not "
-                            "equal "
-                            "request's index id, exist index id: {}, request's index id: "
-                            "{}, "
-                            "remove exist index in new output_rs_tablet_schema",
-                            column_uid, exist_index->index_id(), index.index_id());
-                    output_rs_tablet_schema->remove_index(exist_index->index_id());
-                }
-            }
-        } else if (t_index.index_type == TIndexType::type::NGRAM_BF) {
-            const TabletIndex* exist_index =
-                    output_rs_tablet_schema->get_ngram_bf_index(column.unique_id());
-            if (exist_index && exist_index->index_id() != index.index_id()) {
-                LOG(WARNING) << fmt::format(
-                        "[index_change]column: {} has a exist ngram index, but the index id not "
-                        "equal "
-                        "request's index id, exist index id: {}, request's index id: {}, "
-                        "remove exist index in new output_rs_tablet_schema",
-                        column_uid, exist_index->index_id(), index.index_id());
-                output_rs_tablet_schema->remove_index(exist_index->index_id());
-            }
-        } else {
-            LOG(WARNING) << "unexpected index type:" << t_index.index_type;
-            continue;
-        }
-        output_rs_tablet_schema->append_index(std::move(index));
-    }
-    return output_rs_tablet_schema;
 }
 
 } // namespace doris

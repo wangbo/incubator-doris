@@ -25,24 +25,23 @@ class CloudStorageEngine;
 class TAlterInvertedIndexReq;
 class TOlapTableIndex;
 class CloudTablet;
+class TColumn;
 
 class EngineCloudIndexChangeTask final : public EngineTask {
 public:
     Status execute() override;
 
-    EngineCloudIndexChangeTask(CloudStorageEngine& engine,
-                               const TAlterInvertedIndexReq& alter_inverted_index_request);
+    EngineCloudIndexChangeTask(CloudStorageEngine& engine, const TAlterInvertedIndexReq& request);
     ~EngineCloudIndexChangeTask();
 
 private:
     Result<std::shared_ptr<CloudTablet>> _get_tablet();
 
     CloudStorageEngine& _engine;
-    std::vector<TOlapTableIndex> _alter_inverted_indexes;
-
+    std::vector<TOlapTableIndex> _index_list;
+    std::vector<TColumn> _columns;
     int64_t _tablet_id;
-    bool _is_drop;
-
+    int32_t _schema_version;
 }; // EngineTask
 
 } // namespace doris

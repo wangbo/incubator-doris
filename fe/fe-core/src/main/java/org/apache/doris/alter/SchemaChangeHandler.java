@@ -101,6 +101,7 @@ import org.apache.doris.task.AgentTaskExecutor;
 import org.apache.doris.task.AgentTaskQueue;
 import org.apache.doris.task.ClearAlterTask;
 import org.apache.doris.task.UpdateTabletMetaInfoTask;
+import org.apache.doris.thrift.TColumn;
 import org.apache.doris.thrift.TInvertedIndexFileStorageFormat;
 import org.apache.doris.thrift.TStorageFormat;
 import org.apache.doris.thrift.TStorageMedium;
@@ -1956,6 +1957,18 @@ public class SchemaChangeHandler extends AlterHandler {
                 LOG.debug("in process indexSchemaMap:{}", indexSchemaMap);
             }
 
+            // Check if the index supports light index change and session variable is enabled
+            boolean enableAddIndexForNewData = true;
+            try {
+                ConnectContext context = ConnectContext.get();
+                if (context != null && context.getSessionVariable() != null) {
+                    enableAddIndexForNewData = context.getSessionVariable().isEnableAddIndexForNewData();
+                }
+            } catch (Exception e) {
+                LOG.warn("Failed to get session variable enable_add_index_for_new_data, "
+                        + "using default value: false", e);
+            }
+
             List<Index> newIndexes = olapTable.getCopiedIndexes();
             List<Index> alterIndexes = new ArrayList<>();
             Map<Long, Set<String>> indexOnPartitions = new HashMap<>();
@@ -2099,18 +2112,6 @@ public class SchemaChangeHandler extends AlterHandler {
                     }
                     lightSchemaChange = false;
 
-                    // Check if the index supports light index change and session variable is enabled
-                    boolean enableAddIndexForNewData = true;
-                    try {
-                        ConnectContext context = ConnectContext.get();
-                        if (context != null && context.getSessionVariable() != null) {
-                            enableAddIndexForNewData = context.getSessionVariable().isEnableAddIndexForNewData();
-                        }
-                    } catch (Exception e) {
-                        LOG.warn("Failed to get session variable enable_add_index_for_new_data, "
-                                + "using default value: false", e);
-                    }
-
                     // ngram_bf index can do light_schema_change in both local and cloud mode
                     // inverted index can only do light_schema_change in local mode
                     if (index.isLightAddIndexSupported(enableAddIndexForNewData)) {
@@ -2149,9 +2150,16 @@ public class SchemaChangeHandler extends AlterHandler {
                         }
                     }
                     // for inverted index, light schema change is supported in both cloud and local mode;
-                    // for ngram index, light schema change is supported only in local mode;
-                    if (found != null && (found.getIndexType() == IndexDef.IndexType.INVERTED
-                            || (Config.isCloudMode() && found.getIndexType() == IndexType.NGRAM_BF))) {
+                    // for ngram index, light schema change is supported only in cloud mode;
+                    boolean supportLightIndexChange = false;
+                    if (Config.isCloudMode()) {
+                        supportLightIndexChange = enableAddIndexForNewData && (
+                                found.getIndexType() == IndexType.NGRAM_BF
+                                        || found.getIndexType() == IndexDef.IndexType.INVERTED);
+                    } else {
+                        supportLightIndexChange = found.getIndexType() == IndexDef.IndexType.INVERTED;
+                    }
+                    if (found != null && supportLightIndexChange) {
                         alterIndexes.add(found);
                         isDropIndex = true;
                         lightIndexChange = true;
@@ -3236,11 +3244,22 @@ public class SchemaChangeHandler extends AlterHandler {
             long timeoutSecond = Config.alter_table_timeout_second;
             for (Map.Entry<Long, List<Column>> entry : changedIndexIdToSchema.entrySet()) {
                 long originIndexId = entry.getKey();
+
+                MaterializedIndexMeta indexMeta = olapTable.getIndexMetaByIndexId(originIndexId);
+                List<Column> colList = indexMeta.getSchema(false);
+                for (Column col : colList) {
+                    TColumn tColumn = col.toThrift();
+                    col.setIndexFlag(tColumn, olapTable);
+                }
+                List<Index> indexList = indexMeta.getIndexes();
+                int schemaVersion = indexMeta.getSchemaVersion();
+
                 for (Partition partition : olapTable.getPartitions()) {
                     // create job
                     long jobId = Env.getCurrentEnv().getNextId();
                     IndexChangeJob indexChangeJob = new IndexChangeJob(
-                            jobId, db.getId(), olapTable.getId(), olapTable.getName(), timeoutSecond * 1000);
+                            jobId, db.getId(), olapTable.getId(), olapTable.getName(), timeoutSecond * 1000,
+                            schemaVersion, colList, indexList);
                     indexChangeJob.setOriginIndexId(originIndexId);
                     indexChangeJob.setAlterInvertedIndexInfo(isDropOp, alterIndexes);
                     indexChangeJob.setCloudClusterName(cloudClusterName);
