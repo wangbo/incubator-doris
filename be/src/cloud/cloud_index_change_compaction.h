@@ -44,6 +44,8 @@ public:
 
     bool is_base_compaction() const { return _compact_type == cloud::TabletCompactionJobPB::BASE; }
 
+    Status commit_rowset() override;
+
 private:
     void _update_tablet_for_cumu_compaction(cloud::FinishTabletJobResponse resp,
                                             DeleteBitmapPtr output_rowset_delete_bitmap);
@@ -72,6 +74,8 @@ protected:
     Status garbage_collection() override;
 
     TabletSchemaSPtr _output_schema {nullptr};
+
+    TabletSchemaSPtr _input_rowset_origin_schema {nullptr};
 
     bool _is_drop {false};
 

@@ -83,6 +83,8 @@ public:
     // 3. compute level should not be changed.
     virtual bool is_index_change_compaction() { return false; }
 
+    virtual Status commit_rowset() { return Status::OK(); }
+
 private:
     void set_delete_predicate_for_output_rowset();
 
@@ -215,6 +217,8 @@ public:
     Status execute_compact() override;
 
     int64_t initiator() const;
+
+    Status commit_rowset() override;
 
 protected:
     CloudTablet* cloud_tablet() { return static_cast<CloudTablet*>(_tablet.get()); }

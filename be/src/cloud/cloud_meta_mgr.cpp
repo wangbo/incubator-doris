@@ -961,7 +961,8 @@ Status CloudMetaMgr::prepare_rowset(const RowsetMeta& rs_meta, const std::string
 }
 
 Status CloudMetaMgr::commit_rowset(RowsetMeta& rs_meta, const std::string& job_id,
-                                   RowsetMetaSharedPtr* existed_rs_meta) {
+                                   RowsetMetaSharedPtr* existed_rs_meta,
+                                   std::function<void(CreateRowsetRequest&)> set_request_callback) {
     VLOG_DEBUG << "commit rowset, tablet_id: " << rs_meta.tablet_id()
                << ", rowset_id: " << rs_meta.rowset_id() << " txn_id: " << rs_meta.txn_id();
     {
@@ -974,6 +975,11 @@ Status CloudMetaMgr::commit_rowset(RowsetMeta& rs_meta, const std::string& job_i
     req.set_cloud_unique_id(config::cloud_unique_id);
     req.set_txn_id(rs_meta.txn_id());
     req.set_tablet_job_id(job_id);
+    req.set_allocated_index_tablet_schema(nullptr);
+
+    if (set_request_callback) {
+        set_request_callback(req);
+    }
 
     RowsetMetaPB rs_meta_pb = rs_meta.get_rowset_pb();
     doris_rowset_meta_to_cloud(req.mutable_rowset_meta(), std::move(rs_meta_pb));

@@ -2380,7 +2380,12 @@ void MetaServiceImpl::commit_rowset(::google::protobuf::RpcController* controlle
         }
         put_schema_kv(code, msg, txn.get(), schema_key, rowset_meta.tablet_schema());
         if (code != MetaServiceCode::OK) return;
-        rowset_meta.set_allocated_tablet_schema(nullptr);
+
+        if (request->has_index_tablet_schema()) {
+            rowset_meta.mutable_tablet_schema()->CopyFrom(request->index_tablet_schema());
+        } else {
+            rowset_meta.set_allocated_tablet_schema(nullptr);
+        }
     }
 
     if (is_version_write_enabled(instance_id)) {

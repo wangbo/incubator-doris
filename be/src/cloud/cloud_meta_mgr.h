@@ -81,7 +81,8 @@ public:
                           std::shared_ptr<RowsetMeta>* existed_rs_meta = nullptr);
 
     Status commit_rowset(RowsetMeta& rs_meta, const std::string& job_id,
-                         std::shared_ptr<RowsetMeta>* existed_rs_meta = nullptr);
+                         std::shared_ptr<RowsetMeta>* existed_rs_meta = nullptr,
+                         std::function<void(CreateRowsetRequest&)> set_request_callback = nullptr);
 
     Status update_tmp_rowset(const RowsetMeta& rs_meta);
 

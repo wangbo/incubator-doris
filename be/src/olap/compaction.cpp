@@ -1460,6 +1460,10 @@ CloudCompactionMixin::CloudCompactionMixin(CloudStorageEngine& engine, CloudTabl
     _uuid = ss.str();
 }
 
+Status CloudCompactionMixin::commit_rowset() {
+    return _engine.meta_mgr().commit_rowset(*_output_rowset->rowset_meta().get(), _uuid);
+}
+
 Status CloudCompactionMixin::execute_compact_impl(int64_t permits) {
     OlapStopWatch watch;
 
@@ -1485,7 +1489,7 @@ Status CloudCompactionMixin::execute_compact_impl(int64_t permits) {
     // Currently, updates are only made in the time_series.
     update_compaction_level();
 
-    RETURN_IF_ERROR(_engine.meta_mgr().commit_rowset(*_output_rowset->rowset_meta().get(), _uuid));
+    RETURN_IF_ERROR(commit_rowset());
 
     // 4. modify rowsets in memory
     RETURN_IF_ERROR(modify_rowsets());

@@ -1201,6 +1201,7 @@ message CreateRowsetRequest {
     optional int64 txn_id = 4;
     optional string tablet_job_id = 5;
     optional string request_ip = 6;
+    optional TabletSchemaCloudPB index_tablet_schema = 7;
 }
 
 message CreateRowsetResponse {

@@ -19,6 +19,7 @@
 
 #include "cloud/cloud_meta_mgr.h"
 #include "cloud/config.h"
+#include "cloud/pb_convert.h"
 #include "common/status.h"
 #include "cpp/sync_point.h"
 
@@ -69,6 +70,8 @@ Status CloudIndexChangeCompaction::prepare_compact() {
     if (input_rowset == nullptr) {
         return Status::OK();
     }
+
+    _input_rowset_origin_schema = input_rowset->tablet_schema();
 
     if (is_base_rowset) {
         _compact_type = cloud::TabletCompactionJobPB::BASE;
@@ -555,6 +558,19 @@ TabletSchemaSPtr CloudIndexChangeCompaction::_build_output_rs_index_schema_for_a
         output_rs_tablet_schema->append_index(std::move(index));
     }
     return output_rs_tablet_schema;
+}
+
+Status CloudIndexChangeCompaction::commit_rowset() {
+    TabletSchemaSPtr index_schema = _output_rowset->rowset_meta()->tablet_schema();
+    _output_rowset->rowset_meta()->set_tablet_schema(_input_rowset_origin_schema);
+    return _engine.meta_mgr().commit_rowset(
+            *_output_rowset->rowset_meta().get(), _uuid, nullptr,
+            [index_schema](cloud::CreateRowsetRequest& req) {
+                TabletSchemaPB tablet_meta_pb;
+                index_schema->to_schema_pb(&tablet_meta_pb);
+                auto cloud_tablet_schema = cloud::doris_tablet_schema_to_cloud(tablet_meta_pb);
+                req.set_allocated_index_tablet_schema(&cloud_tablet_schema);
+            });
 }
 
 } // namespace doris
