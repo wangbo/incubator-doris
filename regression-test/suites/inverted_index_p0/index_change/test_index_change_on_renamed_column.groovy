@@ -27,21 +27,6 @@ suite("test_index_change_on_renamed_column") {
     def alter_res = "null"
     def useTime = 0
 
-    def wait_for_latest_op_on_table_finish = { table_name, OpTimeout ->
-        for(int t = delta_time; t <= OpTimeout; t += delta_time){
-            alter_res = sql """SHOW ALTER TABLE COLUMN WHERE TableName = "${table_name}" ORDER BY CreateTime DESC LIMIT 1;"""
-            alter_res = alter_res.toString()
-            if(alter_res.contains("FINISHED")) {
-                sleep(3000) // wait change table state to normal
-                logger.info(table_name + " latest alter job finished, detail: " + alter_res)
-                break
-            }
-            useTime = t
-            sleep(delta_time)
-        }
-        assertTrue(useTime <= OpTimeout, "wait_for_latest_op_on_table_finish timeout")
-    }
-
     def wait_for_build_index_on_partition_finish = { table_name, OpTimeout ->
         for(int t = delta_time; t <= OpTimeout; t += delta_time){
             alter_res = sql """SHOW BUILD INDEX WHERE TableName = "${table_name}";"""
@@ -84,7 +69,7 @@ suite("test_index_change_on_renamed_column") {
     
     // create inverted 
     sql """ alter table ${tableName} add index idx_s(s) USING INVERTED PROPERTIES('parser' = 'english')"""
-    wait_for_latest_op_on_table_finish(tableName, timeout)
+    wait_for_last_col_change_finish(tableName, timeout)
     
     qt_select1 """ SELECT * FROM ${tableName} order by id; """
 
@@ -92,10 +77,8 @@ suite("test_index_change_on_renamed_column") {
     sql """ alter table ${tableName} rename column s s1; """
 
     // build inverted index on renamed column
-    if (!isCloudMode()) {
-        sql """ build index idx_s on ${tableName} """
-        wait_for_build_index_on_partition_finish(tableName, timeout)
-    }
+    build_index_on_table("idx_s", tableName)
+    wait_for_build_index_on_partition_finish(tableName, timeout)
 
     def show_result = sql "show index from ${tableName}"
     logger.info("show index from " + tableName + " result: " + show_result)
@@ -114,7 +97,7 @@ suite("test_index_change_on_renamed_column") {
 
     // drop inverted index on renamed column
     sql """ alter table ${tableName} drop index idx_s; """
-    wait_for_latest_op_on_table_finish(tableName, timeout)
+    wait_for_last_build_index_finish(tableName, timeout)
     show_result = sql "show index from ${tableName}"
     logger.info("show index from " + tableName + " result: " + show_result)
     assertEquals(show_result.size(), 0)

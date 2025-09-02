@@ -22,7 +22,7 @@ def delta_time = 1000
 Suite.metaClass.wait_for_last_build_index_finish = {table_name, OpTimeout ->
     def useTime = 0
     for(int t = delta_time; t <= OpTimeout; t += delta_time){
-        def alter_res = sql """show build index order by CreateTime desc limit 1;"""
+        def alter_res = sql """SHOW BUILD INDEX WHERE TableName = "${table_name}" ORDER BY CreateTime DESC LIMIT 1;"""
         alter_res = alter_res.toString()
         if(alter_res.contains("FINISHED")) {
             sleep(3000) // wait change table state to normal
@@ -38,7 +38,16 @@ Suite.metaClass.wait_for_last_build_index_finish = {table_name, OpTimeout ->
     assertTrue(useTime <= OpTimeout, "wait for last build index finish timeout")
 }
 
-Suite.metaClass.wait_for_latest_col_change_table_finish = { table_name, OpTimeout ->
+Suite.metaClass.build_index_on_table = {index_name, table_name ->
+    if (isCloudMode()) {
+        sql """build index on ${table_name}"""
+    } else {
+        sql """build index ${index_name} on ${table_name}"""
+    }
+
+}
+
+Suite.metaClass.wait_for_last_col_change_finish = { table_name, OpTimeout ->
     def useTime = 0
 
     for (int t = delta_time; t <= OpTimeout; t += delta_time) {
@@ -52,5 +61,10 @@ Suite.metaClass.wait_for_latest_col_change_table_finish = { table_name, OpTimeou
         useTime = t
         sleep(delta_time)
     }
-    assertTrue(useTime <= OpTimeout, "wait_for_latest_op_on_table_finish timeout")
+    assertTrue(useTime <= OpTimeout, "wait_for_last_col_change_finish timeout")
+}
+
+Suite.metaClass.wait_for_last_schema_change_finish = {table_name, OpTimeout ->
+    wait_for_last_col_change_finish(table_name, OpTimeout)
+    wait_for_last_build_index_finish(table_name, OpTimeout)
 }
